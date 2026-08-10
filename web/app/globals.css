@@ -24,3 +24,57 @@ body {
   color: var(--foreground);
   font-family: Arial, Helvetica, sans-serif;
 }
+
+:root {
+  --ink: #0a0f1d;
+  --midnight: #0f1b33;
+  --midnight-soft: #16233f;
+  --blue: #2f6fed;
+  --blue-deep: #1d4ed8;
+  --sun: #fdba3d;
+  --sun-soft: #ffd88a;
+  --leaf: #34c77b;
+  --paper: #f6f8fc;
+  --mist: #edf1f8;
+  --line: #e2e8f4;
+  --ink-soft: #64748b;
+  --ink-strong: #0f172a;
+}
+ 
+/* Kalau pakai Tailwind v4 (ada @import "tailwindcss"; di paling atas file) */
+@theme inline {
+  --color-ink: var(--ink);
+  --color-midnight: var(--midnight);
+  --color-midnight-soft: var(--midnight-soft);
+  --color-blue: var(--blue);
+  --color-blue-deep: var(--blue-deep);
+  --color-sun: var(--sun);
+  --color-sun-soft: var(--sun-soft);
+  --color-leaf: var(--leaf);
+  --color-paper: var(--paper);
+  --color-mist: var(--mist);
+  --color-line: var(--line);
+  --color-ink-soft: var(--ink-soft);
+  --color-ink-strong: var(--ink-strong);
+ 
+  --font-display: "Space Grotesk", "Segoe UI", ui-sans-serif, system-ui, sans-serif;
+  --font-body: "Plus Jakarta Sans", "Segoe UI", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
+}
+ 
+html {
+  scroll-behavior: smooth;
+}
+ 
+body {
+  background: var(--paper);
+  color: var(--ink-strong);
+  font-family: var(--font-body), ui-sans-serif, system-ui, sans-serif;
+}
+ 
+.focus-ring:focus-visible {
+  outline: 2px solid var(--blue);
+  outline-offset: 3px;
+  border-radius: 6px;
+}
+ 
