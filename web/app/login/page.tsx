@@ -1,26 +1,46 @@
 "use client";
 
 import { useState } from "react";
-import GoogleLoginButton from "../components/GoogleLoginButton";
+import { useRouter } from "next/navigation";
 
 export default function LoginPage() {
+  const router = useRouter();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [remember, setRemember] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    setError("");
     setLoading(true);
     try {
-      // TODO: ganti dengan endpoint API login pedagang kamu
-      // const res = await fetch("/api/auth/login", {
-      //   method: "POST",
-      //   headers: { "Content-Type": "application/json" },
-      //   body: JSON.stringify({ email, password, remember }),
-      // });
-      console.log({ email, password, remember });
+      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/login`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email, password }),
+      });
+
+      const data = await res.json();
+
+      if (!res.ok) {
+        // Backend selalu balikin { "error": "..." } kalau gagal
+        setError(data.error || "Login gagal, coba lagi.");
+        return;
+      }
+
+      // Sukses: data berbentuk { token, user: { id, name, email } }
+      localStorage.setItem("cfd_token", data.token);
+      if (remember) {
+        localStorage.setItem("cfd_remember", "1");
+      }
+
+      // TODO: ganti route ini kalau dashboard per-role sudah ada
+      router.push("/dashboard");
+    } catch {
+      setError("Tidak bisa terhubung ke server. Periksa koneksi kamu.");
     } finally {
       setLoading(false);
     }
@@ -44,7 +64,14 @@ export default function LoginPage() {
           {/* Aksen garis warna di atas */}
           <div className="h-1.5 w-full bg-gradient-to-r from-[#2563EB] via-[#3B82F6] to-[#22C55E]" />
 
-          <form onSubmit={handleSubmit} className="p-7 pb-0 space-y-5">
+          <form onSubmit={handleSubmit} className="p-7 space-y-5">
+            {/* Error message */}
+            {error && (
+              <div className="rounded-lg bg-red-50 border border-red-200 px-3.5 py-2.5 text-sm text-red-600">
+                {error}
+              </div>
+            )}
+
             {/* Email */}
             <div>
               <label
@@ -203,18 +230,6 @@ export default function LoginPage() {
               )}
             </button>
           </form>
-
-          {/* Divider + Google Login */}
-          <div className="px-7 pb-7 pt-5">
-            <div className="flex items-center gap-3">
-              <div className="h-px flex-1 bg-slate-200" />
-              <span className="text-xs text-slate-400">atau</span>
-              <div className="h-px flex-1 bg-slate-200" />
-            </div>
-            <div className="mt-4 flex justify-center">
-              <GoogleLoginButton />
-            </div>
-          </div>
         </div>
 
         {/* Link daftar */}

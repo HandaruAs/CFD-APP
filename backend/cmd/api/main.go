@@ -8,7 +8,6 @@ import (
 	"cfd-backend/internal/database"
 	"cfd-backend/internal/handlers"
 	"cfd-backend/internal/middleware"
-	"cfd-backend/internal/oauth"
 	"cfd-backend/internal/repository"
 
 	"github.com/gin-gonic/gin"
@@ -24,42 +23,97 @@ func main() {
 	permRepo := repository.NewPermissionRepository(db)
 	pedagangRepo := repository.NewPedagangRepository(db)
 
-	googleVerifier := oauth.NewGoogleVerifier(cfg.GoogleClientID)
-
-	authHandler := handlers.NewAuthHandler(userRepo, cfg.JWTSecret, googleVerifier)
+	authHandler := handlers.NewAuthHandler(userRepo, cfg.JWTSecret)
 	pedagangHandler := handlers.NewPedagangHandler(pedagangRepo)
 
 	router := gin.Default()
 	router.Use(middleware.CORSMiddleware(cfg.CORSAllowedOrigins))
 
+	// Health check
 	router.GET("/health", func(c *gin.Context) {
 		c.JSON(200, gin.H{"status": "ok"})
 	})
 
-	// Route publik, gak butuh login
+	// ============ ENDPOINT PUBLIK (TIDAK PERLU LOGIN) ============
 	router.POST("/api/register", authHandler.RegisterPedagang)
 	router.POST("/api/login", authHandler.Login)
 
-	// Register/login pedagang lewat Google. Satu endpoint ini otomatis
-	// bikin akun baru (role pedagang) kalau google_id-nya belum pernah
-	// terdaftar, atau login kalau sudah pernah.
-	router.POST("/api/auth/google", authHandler.GoogleLogin)
-
-	// Route yang cuma butuh login (siapapun rolenya)
+	// ============ ENDPOINT PROTECTED (BUTUH LOGIN) ============
+	// Endpoint ini bisa diakses oleh semua user yang sudah login (tanpa cek role)
 	router.GET("/api/me", middleware.AuthMiddleware(cfg.JWTSecret), authHandler.Me)
 
-	// Route pengajuan usaha — dipanggil dari dashboard setelah login
-	// (baik lewat email/password ataupun nanti Google OAuth)
-	router.POST("/api/pedagang/pengajuan", middleware.AuthMiddleware(cfg.JWTSecret), pedagangHandler.AjukanUsaha)
-	router.GET("/api/pedagang/pengajuan", middleware.AuthMiddleware(cfg.JWTSecret), pedagangHandler.StatusPengajuan)
+	// ============ ENDPOINT KHUSUS ROLE ============
 
-	// Contoh route yang butuh login DAN permission spesifik
+	// 1. Endpoint untuk PEDAGANG saja
+	router.GET("/api/pedagang/dashboard",
+		middleware.AuthMiddleware(cfg.JWTSecret),
+		middleware.RoleMiddleware(userRepo, "pedagang"),
+		func(c *gin.Context) {
+			userID, _ := c.Get("user_id")
+			c.JSON(http.StatusOK, gin.H{
+				"message": "Selamat datang di Dashboard Pedagang!",
+				"user_id": userID,
+			})
+		},
+	)
+
+	// 2. Endpoint untuk PETUGAS_CFD saja
+	router.GET("/api/petugas/dashboard",
+		middleware.AuthMiddleware(cfg.JWTSecret),
+		middleware.RoleMiddleware(userRepo, "petugas_cfd"),
+		func(c *gin.Context) {
+			userID, _ := c.Get("user_id")
+			c.JSON(http.StatusOK, gin.H{
+				"message": "Selamat datang di Dashboard Petugas CFD!",
+				"user_id": userID,
+			})
+		},
+	)
+
+	// 3. Endpoint untuk SUPERADMIN saja
+	router.GET("/api/admin/dashboard",
+		middleware.AuthMiddleware(cfg.JWTSecret),
+		middleware.RoleMiddleware(userRepo, "superadmin"),
+		func(c *gin.Context) {
+			userID, _ := c.Get("user_id")
+			c.JSON(http.StatusOK, gin.H{
+				"message": "Selamat datang di Dashboard Super Admin!",
+				"user_id": userID,
+			})
+		},
+	)
+
+	// 4. Endpoint untuk SUPERADMIN DAN PETUGAS_CFD (multi-role)
+	router.GET("/api/verifikasi/pengajuan",
+		middleware.AuthMiddleware(cfg.JWTSecret),
+		middleware.RoleMiddleware(userRepo, "superadmin", "petugas_cfd"),
+		func(c *gin.Context) {
+			c.JSON(http.StatusOK, gin.H{
+				"message": "Halaman verifikasi pengajuan (Superadmin & Petugas CFD)",
+			})
+		},
+	)
+
+	// 5. Contoh endpoint yang butuh login DAN permission spesifik (sudah ada)
 	router.GET("/api/admin/check",
 		middleware.AuthMiddleware(cfg.JWTSecret),
 		middleware.PermissionMiddleware(permRepo, "users.read"),
 		func(c *gin.Context) {
 			c.JSON(http.StatusOK, gin.H{"message": "kamu punya akses users.read"})
 		},
+	)
+
+	// ============ ENDPOINT PEDAGANG (Handler terpisah) ============
+	router.POST("/api/pedagang/pengajuan",
+		middleware.AuthMiddleware(cfg.JWTSecret),
+		middleware.RoleMiddleware(userRepo, "pedagang"),
+		pedagangHandler.AjukanUsaha,
+	)
+	
+	router.GET("/api/pedagang/pengajuan",
+		middleware.AuthMiddleware(cfg.JWTSecret),
+		middleware.RoleMiddleware(userRepo, "pedagang"),
+		pedagangHandler.StatusPengajuan,
 	)
 
 	log.Printf("server jalan di port %s", cfg.Port)
