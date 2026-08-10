@@ -13,7 +13,6 @@ type Config struct {
 	DatabaseURL        string
 	JWTSecret          string
 	CORSAllowedOrigins []string
-	GoogleClientID     string
 }
 
 func Load() *Config {
@@ -26,7 +25,6 @@ func Load() *Config {
 		DatabaseURL:        getEnv("DATABASE_URL", ""),
 		JWTSecret:          getEnv("JWT_SECRET", ""),
 		CORSAllowedOrigins: strings.Split(getEnv("CORS_ALLOWED_ORIGINS", "http://localhost:3000"), ","),
-		GoogleClientID:     getEnv("GOOGLE_CLIENT_ID", ""),
 	}
 
 	if cfg.DatabaseURL == "" {
@@ -38,10 +36,6 @@ func Load() *Config {
 	}
 	if len(cfg.JWTSecret) < 32 {
 		log.Println("PERINGATAN: JWT_SECRET terlalu pendek (<32 karakter), sebaiknya pakai random string yang lebih panjang")
-	}
-
-	if cfg.GoogleClientID == "" {
-		log.Println("PERINGATAN: GOOGLE_CLIENT_ID belum diisi, endpoint /api/auth/google akan selalu menolak token")
 	}
 
 	return cfg

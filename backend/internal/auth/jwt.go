@@ -1,8 +1,8 @@
 package auth
 
 import (
+	"errors"
 	"time"
-
 	"github.com/golang-jwt/jwt/v5"
 )
 
@@ -11,12 +11,14 @@ type Claims struct {
 	jwt.RegisteredClaims
 }
 
+// GenerateToken membuat JWT token untuk user
 func GenerateToken(userID string, secret string) (string, error) {
 	claims := Claims{
 		UserID: userID,
 		RegisteredClaims: jwt.RegisteredClaims{
-			ExpiresAt: jwt.NewNumericDate(time.Now().Add(24 * time.Hour)),
+			ExpiresAt: jwt.NewNumericDate(time.Now().Add(24 * time.Hour)), // Token berlaku 24 jam
 			IssuedAt:  jwt.NewNumericDate(time.Now()),
+			NotBefore: jwt.NewNumericDate(time.Now()),
 		},
 	}
 
@@ -24,15 +26,19 @@ func GenerateToken(userID string, secret string) (string, error) {
 	return token.SignedString([]byte(secret))
 }
 
-func ParseToken(tokenString string, secret string) (*Claims, error) {
-	claims := &Claims{}
-
-	token, err := jwt.ParseWithClaims(tokenString, claims, func(t *jwt.Token) (interface{}, error) {
+// ValidateToken memvalidasi token dan mengembalikan userID
+func ValidateToken(tokenString string, secret string) (string, error) {
+	token, err := jwt.ParseWithClaims(tokenString, &Claims{}, func(token *jwt.Token) (interface{}, error) {
 		return []byte(secret), nil
 	})
-	if err != nil || !token.Valid {
-		return nil, err
+
+	if err != nil {
+		return "", err
 	}
 
-	return claims, nil
+	if claims, ok := token.Claims.(*Claims); ok && token.Valid {
+		return claims.UserID, nil
+	}
+
+	return "", errors.New("invalid token")
 }
