@@ -90,13 +90,6 @@ export default function RegisterPage() {
             />
 
             <TextField
-              label="Nama Usaha"
-              name="businessName"
-              placeholder="Masukkan nama usaha"
-              icon={<Store className="h-4 w-4" />}
-            />
-
-            <TextField
               label="Alamat Email"
               name="email"
               type="email"
