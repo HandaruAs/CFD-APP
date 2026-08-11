@@ -21,5 +21,7 @@ export const config = {
     "/profil-usaha/:path*",
     "/status-verifikasi/:path*",
     "/jadwal-lokasi/:path*",
+    "/petugas/:path*",
+    "/admin/:path*",
   ],
 };
