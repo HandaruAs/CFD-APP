@@ -2,9 +2,7 @@ package repository
 
 import (
 	"context"
-	"errors"
 
-	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -16,7 +14,12 @@ func NewUserRepository(db *pgxpool.Pool) *UserRepository {
 	return &UserRepository{db: db}
 }
 
-func (r *UserRepository) RegisterPedagang(ctx context.Context, email, passwordHash, name, phone, nik, namaUsaha, jenisDagangan, alamat string) (string, error) {
+// RegisterPedagang bikin AKUN saja (users + role pedagang). Sengaja TIDAK
+// menyentuh pedagang_profiles sama sekali — data usaha (NIK, nama usaha,
+// dll) itu tanggung jawab PedagangRepository.CreatePengajuan yang dipanggil
+// terpisah lewat /api/pedagang/pengajuan SETELAH user ini login. Role
+// 'pedagang' selalu di-assign otomatis di sini, tidak pernah dari input.
+func (r *UserRepository) RegisterPedagang(ctx context.Context, email, passwordHash, name, phone string) (string, error) {
 	tx, err := r.db.Begin(ctx)
 	if err != nil {
 		return "", err
@@ -43,15 +46,6 @@ func (r *UserRepository) RegisterPedagang(ctx context.Context, email, passwordHa
 	_, err = tx.Exec(ctx,
 		`INSERT INTO user_roles (user_id, role_id) VALUES ($1, $2)`,
 		userID, roleID,
-	)
-	if err != nil {
-		return "", err
-	}
-
-	_, err = tx.Exec(ctx,
-		`INSERT INTO pedagang_profiles (user_id, nik, nama_usaha, jenis_dagangan, alamat, status_verifikasi)
-		 VALUES ($1, $2, $3, $4, $5, 'pending')`,
-		userID, nik, namaUsaha, jenisDagangan, alamat,
 	)
 	if err != nil {
 		return "", err
@@ -109,68 +103,25 @@ func (r *UserRepository) GetByID(ctx context.Context, id string) (*UserProfile, 
 	return &u, nil
 }
 
-// GetOrCreateByGoogle dipanggil setelah ID token Google berhasil divalidasi.
-// Beda dari Opsi A: pencarian & penyimpanan identitas Google lewat tabel
-// terpisah user_oauth_accounts, bukan kolom langsung di users. Ini bikin
-// users tetap "netral" dari provider manapun, dan gampang nambah provider
-// lain nanti tanpa ubah struktur users.
-func (r *UserRepository) GetOrCreateByGoogle(ctx context.Context, googleID, email, name string) (string, error) {
-	var userID string
+// GetUserRole ambil slug role milik user (superadmin/petugas/pedagang),
+// dipakai abis login dan di /api/me biar FRONTEND TAHU HARUS REDIRECT KE
+// DASHBOARD MANA. Desain saat ini asumsinya 1 user = 1 role aktif, jadi
+// ambil yang paling lama di-assign kalau suatu saat ada lebih dari satu.
+// Kalau user belum punya role sama sekali (seharusnya tidak pernah terjadi
+// karena register & seeder selalu assign role), balikin pgx.ErrNoRows.
+func (r *UserRepository) GetUserRole(ctx context.Context, userID string) (string, error) {
+	var slug string
 	err := r.db.QueryRow(ctx,
-		`SELECT user_id FROM user_oauth_accounts
-		 WHERE provider = 'google' AND provider_user_id = $1 AND deleted_at IS NULL`,
-		googleID,
-	).Scan(&userID)
-	if err == nil {
-		return userID, nil // sudah pernah login sebelumnya
-	}
-	if !errors.Is(err, pgx.ErrNoRows) {
-		return "", err
-	}
-
-	// belum pernah login -> bikin akun baru + link akun Google-nya
-	tx, err := r.db.Begin(ctx)
+		`SELECT r.slug
+		 FROM user_roles ur
+		 JOIN roles r ON r.id = ur.role_id AND r.deleted_at IS NULL
+		 WHERE ur.user_id = $1 AND ur.deleted_at IS NULL
+		 ORDER BY ur.created_at ASC
+		 LIMIT 1`,
+		userID,
+	).Scan(&slug)
 	if err != nil {
 		return "", err
 	}
-	defer tx.Rollback(ctx)
-
-	err = tx.QueryRow(ctx,
-		`INSERT INTO users (email, name) VALUES ($1, $2) RETURNING id`,
-		email, name,
-	).Scan(&userID)
-	if err != nil {
-		return "", err
-	}
-
-	var roleID string
-	err = tx.QueryRow(ctx,
-		`SELECT id FROM roles WHERE slug = 'pedagang' AND deleted_at IS NULL`,
-	).Scan(&roleID)
-	if err != nil {
-		return "", err
-	}
-
-	_, err = tx.Exec(ctx,
-		`INSERT INTO user_roles (user_id, role_id) VALUES ($1, $2)`,
-		userID, roleID,
-	)
-	if err != nil {
-		return "", err
-	}
-
-	_, err = tx.Exec(ctx,
-		`INSERT INTO user_oauth_accounts (user_id, provider, provider_user_id, email)
-		 VALUES ($1, 'google', $2, $3)`,
-		userID, googleID, email,
-	)
-	if err != nil {
-		return "", err
-	}
-
-	if err := tx.Commit(ctx); err != nil {
-		return "", err
-	}
-
-	return userID, nil
+	return slug, nil
 }

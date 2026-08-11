@@ -3,37 +3,44 @@ package middleware
 import (
 	"net/http"
 	"strings"
-
 	"cfd-backend/internal/auth"
 
 	"github.com/gin-gonic/gin"
 )
 
-// AuthMiddleware memvalidasi token JWT yang dikirim lewat header:
-// Authorization: Bearer <token>
-// Kalau valid, user_id disimpan di context biar bisa dipakai handler
-// atau middleware selanjutnya (misal PermissionMiddleware).
 func AuthMiddleware(jwtSecret string) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		header := c.GetHeader("Authorization")
-		if header == "" {
-			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "token tidak ditemukan"})
+		// Ambil token dari header Authorization
+		authHeader := c.GetHeader("Authorization")
+		if authHeader == "" {
+			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{
+				"error": "authorization header required",
+			})
 			return
 		}
 
-		parts := strings.SplitN(header, " ", 2)
-		if len(parts) != 2 || !strings.EqualFold(parts[0], "Bearer") {
-			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "format token salah, harus 'Bearer <token>'"})
+		// Format: Bearer <token>
+		parts := strings.Split(authHeader, " ")
+		if len(parts) != 2 || parts[0] != "Bearer" {
+			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{
+				"error": "invalid authorization format, use Bearer <token>",
+			})
 			return
 		}
 
-		claims, err := auth.ParseToken(parts[1], jwtSecret)
+		tokenString := parts[1]
+		
+		// Validasi token
+		userID, err := auth.ValidateToken(tokenString, jwtSecret)
 		if err != nil {
-			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "token tidak valid atau kadaluarsa"})
+			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{
+				"error": "invalid or expired token",
+			})
 			return
 		}
 
-		c.Set("user_id", claims.UserID)
+		// Simpan user_id di context untuk digunakan handler selanjutnya
+		c.Set("user_id", userID)
 		c.Next()
 	}
 }
