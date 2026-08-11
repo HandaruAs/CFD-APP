@@ -38,7 +38,9 @@ const HISTORY_TEXT: Record<Status, string> = {
 
 export default async function StatusVerifikasiPage({
   searchParams,
-}: PageProps<"/status-verifikasi">) {
+}: {
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
+}) {
   const params = await searchParams;
   const raw = Array.isArray(params.status) ? params.status[0] : params.status;
   const status: Status =
@@ -69,7 +71,7 @@ function StatusLink({ status, active }: { status: Status; active: boolean }) {
   };
   return (
     <Link
-      href={`/status-verifikasi?status=${status}`}
+      href={`/user/status-verifikasi?status=${status}`}
       className={`rounded-full px-sm py-1 transition-colors ${
         active
           ? "bg-primary text-on-primary"
