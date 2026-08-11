@@ -22,8 +22,8 @@ func RoleMiddleware(userRepo *repository.UserRepository, allowedRoles ...string)
 			return
 		}
 
-		// Ambil roles user dari database
-		roles, err := userRepo.GetUserRoles(c.Request.Context(), userID.(string))
+		// Ambil role user dari database (desain saat ini: 1 user = 1 role)
+		role, err := userRepo.GetUserRole(c.Request.Context(), userID.(string))
 		if err != nil {
 			c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{
 				"error": "gagal mengambil data role user",
@@ -31,22 +31,20 @@ func RoleMiddleware(userRepo *repository.UserRepository, allowedRoles ...string)
 			return
 		}
 
-		// Cek apakah user memiliki salah satu role yang diizinkan
+		// Cek apakah role user termasuk yang diizinkan
 		for _, allowed := range allowedRoles {
-			for _, role := range roles {
-				if role == allowed {
-					// User punya akses, lanjutkan ke handler berikutnya
-					c.Next()
-					return
-				}
+			if role == allowed {
+				// User punya akses, lanjutkan ke handler berikutnya
+				c.Next()
+				return
 			}
 		}
 
 		// User tidak punya role yang diizinkan
 		c.AbortWithStatusJSON(http.StatusForbidden, gin.H{
-			"error": "anda tidak memiliki akses ke resource ini",
+			"error":          "anda tidak memiliki akses ke resource ini",
 			"required_roles": allowedRoles,
-			"your_roles":     roles,
+			"your_role":      role,
 		})
 	}
 }

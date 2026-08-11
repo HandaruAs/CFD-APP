@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link"; // PERBAIKAN 1: Import Link
 
 export default function LoginPage() {
   const router = useRouter();
@@ -26,19 +27,22 @@ export default function LoginPage() {
       const data = await res.json();
 
       if (!res.ok) {
-        // Backend selalu balikin { "error": "..." } kalau gagal
         setError(data.error || "Login gagal, coba lagi.");
         return;
       }
 
-      // Sukses: data berbentuk { token, user: { id, name, email } }
       localStorage.setItem("cfd_token", data.token);
+      localStorage.setItem("cfd_user", JSON.stringify(data.user));
       if (remember) {
         localStorage.setItem("cfd_remember", "1");
       }
 
-      // TODO: ganti route ini kalau dashboard per-role sudah ada
-      router.push("/dashboard");
+      const dashboardByRole: Record<string, string> = {
+        pedagang: "/status-verifikasi",
+        petugas_cfd: "/petugas",
+        superadmin: "/admin",
+      };
+      router.push(dashboardByRole[data.user?.role] ?? "/status-verifikasi");
     } catch {
       setError("Tidak bisa terhubung ke server. Periksa koneksi kamu.");
     } finally {
@@ -198,12 +202,14 @@ export default function LoginPage() {
                 />
                 Ingat Saya
               </label>
-              <a
+              
+              {/* PERBAIKAN 2: Gunakan <Link>, bukan <a> */}
+              <Link
                 href="/forgot-password"
                 className="text-sm font-medium text-[#2563EB] hover:text-[#1D4ED8]"
               >
                 Lupa Kata Sandi?
-              </a>
+              </Link>
             </div>
 
             {/* Submit */}
@@ -235,12 +241,14 @@ export default function LoginPage() {
         {/* Link daftar */}
         <p className="text-center text-sm text-slate-500 mt-6">
           Belum punya akun?{" "}
-          <a
+          
+          {/* PERBAIKAN 3: Gunakan <Link>, bukan <a> */}
+          <Link
             href="/register"
             className="font-medium text-[#2563EB] hover:text-[#1D4ED8]"
           >
             Daftar di sini
-          </a>
+          </Link>
         </p>
       </div>
     </div>
