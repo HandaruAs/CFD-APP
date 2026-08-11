@@ -22,9 +22,11 @@ func main() {
 	userRepo := repository.NewUserRepository(db)
 	permRepo := repository.NewPermissionRepository(db)
 	pedagangRepo := repository.NewPedagangRepository(db)
+	menuRepo := repository.NewMenuRepository(db)
 
 	authHandler := handlers.NewAuthHandler(userRepo, cfg.JWTSecret)
 	pedagangHandler := handlers.NewPedagangHandler(pedagangRepo)
+	menuHandler := handlers.NewMenuHandler(menuRepo, userRepo)
 
 	router := gin.Default()
 	router.Use(middleware.CORSMiddleware(cfg.CORSAllowedOrigins))
@@ -41,6 +43,11 @@ func main() {
 	// ============ ENDPOINT PROTECTED (BUTUH LOGIN) ============
 	// Endpoint ini bisa diakses oleh semua user yang sudah login (tanpa cek role)
 	router.GET("/api/me", middleware.AuthMiddleware(cfg.JWTSecret), authHandler.Me)
+
+	// Menu dinamis -- otomatis nyesuain isinya sama role user yang lagi
+	// login (dibaca dari DB, bukan dari token), dipanggil frontend abis
+	// login buat render sidebar.
+	router.GET("/api/menus", middleware.AuthMiddleware(cfg.JWTSecret), menuHandler.GetMyMenus)
 
 	// ============ ENDPOINT KHUSUS ROLE ============
 
@@ -60,7 +67,7 @@ func main() {
 	// 2. Endpoint untuk PETUGAS_CFD saja
 	router.GET("/api/petugas/dashboard",
 		middleware.AuthMiddleware(cfg.JWTSecret),
-		middleware.RoleMiddleware(userRepo, "petugas_cfd"),
+		middleware.RoleMiddleware(userRepo, "petugas"),
 		func(c *gin.Context) {
 			userID, _ := c.Get("user_id")
 			c.JSON(http.StatusOK, gin.H{
@@ -86,7 +93,7 @@ func main() {
 	// 4. Endpoint untuk SUPERADMIN DAN PETUGAS_CFD (multi-role)
 	router.GET("/api/verifikasi/pengajuan",
 		middleware.AuthMiddleware(cfg.JWTSecret),
-		middleware.RoleMiddleware(userRepo, "superadmin", "petugas_cfd"),
+		middleware.RoleMiddleware(userRepo, "superadmin", "petugas"),
 		func(c *gin.Context) {
 			c.JSON(http.StatusOK, gin.H{
 				"message": "Halaman verifikasi pengajuan (Superadmin & Petugas CFD)",
@@ -109,7 +116,7 @@ func main() {
 		middleware.RoleMiddleware(userRepo, "pedagang"),
 		pedagangHandler.AjukanUsaha,
 	)
-	
+
 	router.GET("/api/pedagang/pengajuan",
 		middleware.AuthMiddleware(cfg.JWTSecret),
 		middleware.RoleMiddleware(userRepo, "pedagang"),

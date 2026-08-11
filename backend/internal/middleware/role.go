@@ -10,7 +10,7 @@ import (
 
 // RoleMiddleware cek apakah user memiliki salah satu role yang diizinkan
 // Contoh penggunaan:
-//   RoleMiddleware(userRepo, "superadmin", "petugas_cfd")
+//   RoleMiddleware(userRepo, "superadmin", "petugas")
 func RoleMiddleware(userRepo *repository.UserRepository, allowedRoles ...string) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		// Ambil user_id dari context (sudah di-set oleh AuthMiddleware)
