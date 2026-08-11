@@ -32,6 +32,7 @@ export default function LoginPage() {
       }
 
       localStorage.setItem("cfd_token", data.token);
+      document.cookie = `cfd_token=${data.token}; path=/; max-age=86400`;
       localStorage.setItem("cfd_user", JSON.stringify(data.user));
       if (remember) {
         localStorage.setItem("cfd_remember", "1");
