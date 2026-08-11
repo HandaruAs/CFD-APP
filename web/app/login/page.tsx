@@ -37,12 +37,38 @@ export default function LoginPage() {
         localStorage.setItem("cfd_remember", "1");
       }
 
+      const role = data.user?.role;
+
+      if (role === "pedagang") {
+        // Pedagang: cek dulu ke database apakah dia udah pernah isi
+        // data usaha. Kalau belum, arahkan ke form pendaftaran usaha
+        // dulu sebelum ke halaman status verifikasi.
+        try {
+          const pengajuanRes = await fetch(
+            `${process.env.NEXT_PUBLIC_API_URL}/api/pedagang/pengajuan`,
+            { headers: { Authorization: `Bearer ${data.token}` } }
+          );
+          const pengajuanData = await pengajuanRes.json();
+
+          if (pengajuanRes.ok && pengajuanData.has_pengajuan === false) {
+            router.push("/pendaftaran");
+          } else {
+            router.push("/status-verifikasi");
+          }
+        } catch {
+          // Gagal cek status (server sempat gak respon) -> jangan
+          // block proses login, arahkan ke status-verifikasi dulu
+          // sebagai default yang aman.
+          router.push("/status-verifikasi");
+        }
+        return;
+      }
+
       const dashboardByRole: Record<string, string> = {
-        pedagang: "/status-verifikasi",
-        petugas_cfd: "/petugas",
+        petugas: "/petugas",
         superadmin: "/admin",
       };
-      router.push(dashboardByRole[data.user?.role] ?? "/status-verifikasi");
+      router.push(dashboardByRole[role] ?? "/status-verifikasi");
     } catch {
       setError("Tidak bisa terhubung ke server. Periksa koneksi kamu.");
     } finally {
@@ -202,7 +228,7 @@ export default function LoginPage() {
                 />
                 Ingat Saya
               </label>
-              
+
               {/* PERBAIKAN 2: Gunakan <Link>, bukan <a> */}
               <Link
                 href="/forgot-password"
@@ -241,7 +267,7 @@ export default function LoginPage() {
         {/* Link daftar */}
         <p className="text-center text-sm text-slate-500 mt-6">
           Belum punya akun?{" "}
-          
+
           {/* PERBAIKAN 3: Gunakan <Link>, bukan <a> */}
           <Link
             href="/register"
