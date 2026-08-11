@@ -3,9 +3,9 @@
 import { useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import {
   User,
-  Store,
   Mail,
   Lock,
   Eye,
@@ -13,12 +13,81 @@ import {
   ShieldCheck,
   Building2,
   ArrowRight,
+  AlertCircle,
 } from "lucide-react";
 
 export default function RegisterPage() {
+  const router = useRouter();
+
+  // Form register AKUN saja (nama, email, password) — sesuai backend
+  // RegisterPedagangRequest. NIK/nama usaha/jenis dagangan/alamat itu
+  // form "pengajuan usaha" yang terpisah, diisi dari dashboard setelah
+  // user login, BUKAN di sini.
+  const [fullName, setFullName] = useState("");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [agreed, setAgreed] = useState(false);
+
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirm, setShowConfirm] = useState(false);
-  const [agreed, setAgreed] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    setError(null);
+
+    // Validasi di sisi client dulu, biar user dapat feedback cepat
+    // sebelum request ke server (backend tetap validasi ulang semuanya).
+    if (!fullName.trim() || !email.trim() || !password || !confirmPassword) {
+      setError("Semua field wajib diisi.");
+      return;
+    }
+    if (password.length < 8) {
+      setError("Kata sandi minimal 8 karakter.");
+      return;
+    }
+    if (password !== confirmPassword) {
+      setError("Konfirmasi kata sandi tidak cocok.");
+      return;
+    }
+    if (!agreed) {
+      setError("Kamu harus menyetujui Syarat & Ketentuan serta Kebijakan Privasi.");
+      return;
+    }
+
+    setLoading(true);
+    try {
+      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/register`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: fullName,
+          email,
+          password,
+        }),
+      });
+
+      const data = await res.json();
+
+      if (!res.ok) {
+        // Backend balikin { "error": "..." }, contoh: "email sudah terdaftar"
+        setError(data.error || "Pendaftaran gagal, silakan coba lagi.");
+        setLoading(false);
+        return;
+      }
+
+      // Register cuma bikin akun (role pedagang), belum ada pengajuan
+      // usaha & belum login (belum ada token). Arahkan ke halaman login
+      // dengan flag biar bisa ditampilkan pesan sukses di sana.
+      router.push("/login?registered=1");
+    } catch (err) {
+      console.error("Gagal menghubungi server:", err);
+      setError("Tidak bisa terhubung ke server. Coba lagi nanti.");
+      setLoading(false);
+    }
+  }
 
   return (
     <main className="flex min-h-screen items-center justify-center bg-[#eef1f7] p-6">
@@ -54,8 +123,8 @@ export default function RegisterPage() {
             {/* Paragraf & fitur — cuma tampil di desktop biar mobile tidak kepanjangan */}
             <p className="hidden max-w-sm text-sm leading-relaxed text-slate-500 md:block">
               Bergabunglah dengan CFD Hub, platform resmi manajemen pelaku
-              usaha Car Free Day. Daftarkan usaha Anda untuk mendapatkan akses
-              ruang dagang yang terstruktur dan transparan.
+              usaha Car Free Day. Buat akun dulu, lalu lengkapi pengajuan
+              usaha dari dashboard untuk mendapatkan akses ruang dagang.
             </p>
           </div>
 
@@ -78,15 +147,26 @@ export default function RegisterPage() {
         <div className="flex flex-col justify-center px-8 py-10 sm:px-12">
           <h2 className="text-2xl font-bold text-slate-900">Daftar Akun</h2>
           <p className="mt-1 text-sm text-slate-500">
-            Lengkapi data di bawah ini untuk mendaftarkan usaha Anda.
+            Buat akun dulu — data usaha (NIK, jenis dagangan, dll) diisi
+            belakangan dari dashboard.
           </p>
 
-          <form className="mt-6 space-y-4" onSubmit={(e) => e.preventDefault()}>
+          {error && (
+            <div className="mt-4 flex items-start gap-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2.5 text-sm text-red-700">
+              <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
+              <span>{error}</span>
+            </div>
+          )}
+
+          <form className="mt-6 space-y-4" onSubmit={handleSubmit}>
             <TextField
               label="Nama Lengkap"
               name="fullName"
               placeholder="Masukkan nama lengkap"
               icon={<User className="h-4 w-4" />}
+              value={fullName}
+              onChange={(e) => setFullName(e.target.value)}
+              disabled={loading}
             />
 
             <TextField
@@ -95,6 +175,9 @@ export default function RegisterPage() {
               type="email"
               placeholder="nama@email.com"
               icon={<Mail className="h-4 w-4" />}
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              disabled={loading}
             />
 
             <TextField
@@ -103,6 +186,9 @@ export default function RegisterPage() {
               type={showPassword ? "text" : "password"}
               placeholder="Minimal 8 karakter"
               icon={<Lock className="h-4 w-4" />}
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              disabled={loading}
               rightIcon={
                 <button
                   type="button"
@@ -127,6 +213,9 @@ export default function RegisterPage() {
               type={showConfirm ? "text" : "password"}
               placeholder="Ulangi kata sandi"
               icon={<Lock className="h-4 w-4" />}
+              value={confirmPassword}
+              onChange={(e) => setConfirmPassword(e.target.value)}
+              disabled={loading}
               rightIcon={
                 <button
                   type="button"
@@ -150,6 +239,7 @@ export default function RegisterPage() {
                 type="checkbox"
                 checked={agreed}
                 onChange={(e) => setAgreed(e.target.checked)}
+                disabled={loading}
                 className="mt-0.5 h-4 w-4 rounded border-slate-300 text-[#1c3f7c] focus:ring-[#1c3f7c]"
               />
               <span>
@@ -167,10 +257,17 @@ export default function RegisterPage() {
 
             <button
               type="submit"
-              className="flex w-full items-center justify-center gap-2 rounded-lg bg-[#1c3f7c] py-3 text-sm font-semibold text-white transition-colors hover:bg-[#152f5e] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#1c3f7c] focus-visible:ring-offset-2"
+              disabled={loading}
+              className="flex w-full items-center justify-center gap-2 rounded-lg bg-[#1c3f7c] py-3 text-sm font-semibold text-white transition-colors hover:bg-[#152f5e] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#1c3f7c] focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60"
             >
-              Daftar
-              <ArrowRight className="h-4 w-4" />
+              {loading ? (
+                "Memproses..."
+              ) : (
+                <>
+                  Daftar
+                  <ArrowRight className="h-4 w-4" />
+                </>
+              )}
             </button>
           </form>
 
@@ -196,6 +293,9 @@ function TextField({
   placeholder,
   icon,
   rightIcon,
+  value,
+  onChange,
+  disabled,
 }: {
   label: string;
   name: string;
@@ -203,6 +303,9 @@ function TextField({
   placeholder: string;
   icon: React.ReactNode;
   rightIcon?: React.ReactNode;
+  value: string;
+  onChange: (e: React.ChangeEvent<HTMLInputElement>) => void;
+  disabled?: boolean;
 }) {
   return (
     <div>
@@ -219,7 +322,11 @@ function TextField({
           name={name}
           type={type}
           placeholder={placeholder}
-          className="w-full border-none bg-transparent text-sm text-slate-800 placeholder:text-slate-400 focus:outline-none focus:ring-0"
+          value={value}
+          onChange={onChange}
+          disabled={disabled}
+          required
+          className="w-full border-none bg-transparent text-sm text-slate-800 placeholder:text-slate-400 focus:outline-none focus:ring-0 disabled:opacity-60"
         />
         {rightIcon}
       </div>
@@ -259,4 +366,7 @@ function Feature({
  *
  * Kalau belum ada file di public/images/cfd-hero.jpg, area ini bakal
  * kosong/error gambar — pastikan filenya sudah ditaruh dulu.
+ *
+ * Env yang dibutuhkan (.env.local):
+ * NEXT_PUBLIC_API_URL=http://localhost:8080
  */
