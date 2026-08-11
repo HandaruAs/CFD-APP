@@ -6,7 +6,6 @@ import (
 
 	"cfd-backend/internal/auth"
 	"cfd-backend/internal/models"
-	"cfd-backend/internal/oauth"
 	"cfd-backend/internal/repository"
 
 	"github.com/gin-gonic/gin"
@@ -15,13 +14,12 @@ import (
 )
 
 type AuthHandler struct {
-	userRepo       *repository.UserRepository
-	jwtSecret      string
-	googleVerifier *oauth.GoogleVerifier
+	userRepo  *repository.UserRepository
+	jwtSecret string
 }
 
-func NewAuthHandler(userRepo *repository.UserRepository, jwtSecret string, googleVerifier *oauth.GoogleVerifier) *AuthHandler {
-	return &AuthHandler{userRepo: userRepo, jwtSecret: jwtSecret, googleVerifier: googleVerifier}
+func NewAuthHandler(userRepo *repository.UserRepository, jwtSecret string) *AuthHandler {
+	return &AuthHandler{userRepo: userRepo, jwtSecret: jwtSecret}
 }
 
 func (h *AuthHandler) RegisterPedagang(c *gin.Context) {
@@ -106,52 +104,6 @@ func (h *AuthHandler) Login(c *gin.Context) {
 	resp.User.Role = role
 
 	c.JSON(http.StatusOK, resp)
-}
-
-// GoogleLogin — endpoint tunggal buat register DAN login lewat Google.
-// Frontend kirim ID token yang didapat langsung dari Google (bukan bikin
-// sendiri). Kalau ini pertama kalinya akun Google ini dipakai, otomatis
-// dibikinin akun baru (role pedagang, tanpa password). Kalau udah pernah,
-// tinggal login. Pedagang masih perlu panggil /api/pedagang/pengajuan
-// terpisah setelah ini buat lengkapi biodata usahanya.
-func (h *AuthHandler) GoogleLogin(c *gin.Context) {
-	var req models.GoogleLoginRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-		return
-	}
-
-	claims, err := h.googleVerifier.Verify(c.Request.Context(), req.IDToken)
-	if err != nil {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "token Google tidak valid"})
-		return
-	}
-
-	userID, err := h.userRepo.GetOrCreateByGoogle(c.Request.Context(), claims.Sub, claims.Email, claims.Name)
-	if err != nil {
-		var pgErr *pgconn.PgError
-		if errors.As(err, &pgErr) && pgErr.Code == "23505" {
-			c.JSON(http.StatusConflict, gin.H{"error": "email ini sudah terdaftar lewat cara lain, silakan login manual"})
-			return
-		}
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "gagal login dengan Google"})
-		return
-	}
-
-	token, err := auth.GenerateToken(userID, h.jwtSecret)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "gagal membuat token"})
-		return
-	}
-
-	c.JSON(http.StatusOK, gin.H{
-		"token": token,
-		"user": gin.H{
-			"id":    userID,
-			"name":  claims.Name,
-			"email": claims.Email,
-		},
-	})
 }
 
 // Me mengembalikan data user yang lagi login, diambil dari user_id

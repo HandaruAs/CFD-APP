@@ -14,8 +14,3 @@ type LoginResponse struct {
 		Role string `json:"role"`
 	} `json:"user"`
 }
-
-
-//type GoogleLoginRequest struct {
-	//IDToken string `json:"id_token" binding:"required"`
-//}
