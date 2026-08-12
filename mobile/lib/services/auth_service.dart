@@ -3,10 +3,6 @@ import 'package:http/http.dart' as http;
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:mobile/config/api_config.dart';
 
-// --- PERHATIKAN: Baris ini saya hapus karena dobel import ---
-// import '../config/api_config.dart'; 
-// ------------------------------------------------------------
-
 /// Data user yang tersimpan setelah login/register berhasil.
 /// Field-nya sengaja sama persis kayak LoginResponse.User di backend
 /// (internal/models/auth.go) -- termasuk 'role' yang dipakai buat
@@ -83,7 +79,6 @@ class AuthService {
     } catch (e) {
       print("❌ [REGISTER] ERROR TIDAK TERDUGA (Koneksi/CORS dll):");
       print(e.toString());
-      // Lempar kembali error agar UI tahu ada masalah
       rethrow; 
     }
   }
@@ -126,7 +121,6 @@ class AuthService {
     } catch (e) {
       print("❌ [LOGIN] ERROR TIDAK TERDUGA (Koneksi/CORS dll):");
       print(e.toString());
-      // Lempar kembali error agar UI tahu ada masalah
       rethrow;
     }
   }

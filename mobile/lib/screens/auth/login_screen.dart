@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:mobile/services/auth_service.dart';
 import 'package:mobile/screens/user/home_screen.dart';
+import 'package:mobile/layouts/main_layout.dart';
 import 'package:mobile/screens/auth/register_screen.dart';
+import 'package:mobile/screens/pedagang/pedagang_dashboard.dart'; // Import halaman dashboard pedagang
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -42,11 +44,15 @@ class _LoginScreenState extends State<LoginScreen> {
 
       if (!mounted) return;
 
-      // Redirect ke HomeScreen dengan data user
+      
+      // KODE BARU (Ganti dengan ini):
+      // Ubah menjadi ini:
       Navigator.of(context).pushReplacement(
         MaterialPageRoute(
-          builder: (_) => HomeScreen(user: user)),
+          builder: (context) => const PedagangDashboard(), // Langsung ke Dashboard
+        ),
       );
+
     } on ApiException catch (e) {
       setState(() => _error = e.message);
     } catch (e) {
