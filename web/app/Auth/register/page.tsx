@@ -274,7 +274,7 @@ export default function RegisterPage() {
           <p className="mt-6 text-center text-sm text-slate-500">
             Sudah punya akun?{" "}
             <Link
-              href="/login"
+              href="/auth/login"
               className="font-medium text-[#1c3f7c] hover:underline"
             >
               Login di sini

@@ -30,7 +30,11 @@ type menuRow struct {
 // tertentu (lewat tabel menu_roles), lalu disusun jadi tree
 // berdasarkan parent_id -- jadi menu yang punya submenu otomatis
 // ke-nest, gak perlu disusun manual di frontend.
-func (r *MenuRepository) GetMenusByRoleSlug(ctx context.Context, roleSlug string) ([]*models.MenuItem, error) {
+//
+// pedagangStage cuma relevan buat role "pedagang" (nilai "unverified"
+// atau "verified"); untuk role lain kirim nil aja -- query bakal tetap
+// ambil semua menu yang pedagang_stage-nya NULL (menu non-pedagang).
+func (r *MenuRepository) GetMenusByRoleSlug(ctx context.Context, roleSlug string, pedagangStage *string) ([]*models.MenuItem, error) {
 	rows, err := r.db.Query(ctx, `
 		SELECT m.id, m.parent_id, m.name, m.slug, m.icon, m.route, m.sort_order
 		FROM menus m
@@ -39,8 +43,9 @@ func (r *MenuRepository) GetMenusByRoleSlug(ctx context.Context, roleSlug string
 		WHERE r.slug = $1
 		  AND m.is_active = true
 		  AND m.deleted_at IS NULL
+		  AND (m.pedagang_stage IS NULL OR m.pedagang_stage = $2)
 		ORDER BY m.sort_order ASC
-	`, roleSlug)
+	`, roleSlug, pedagangStage)
 	if err != nil {
 		return nil, err
 	}

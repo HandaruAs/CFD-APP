@@ -3,6 +3,8 @@ package handlers
 import (
 	"errors"
 	"net/http"
+	"net/mail"
+	"strings"
 
 	"cfd-backend/internal/auth"
 	"cfd-backend/internal/models"
@@ -22,9 +24,28 @@ func NewAuthHandler(userRepo *repository.UserRepository, jwtSecret string) *Auth
 	return &AuthHandler{userRepo: userRepo, jwtSecret: jwtSecret}
 }
 
+// normalizeAndValidateEmail membersihkan whitespace di ujung string dan
+// menyamakan huruf jadi lowercase, lalu memvalidasi formatnya pakai
+// net/mail (standard library, RFC 5322). Dipakai di Login & Register
+// biar satu aturan berlaku ke semua endpoint & semua client (web,
+// mobile, dst) -- bukan tanggung jawab masing-masing frontend lagi.
+func normalizeAndValidateEmail(raw string) (string, error) {
+	email := strings.ToLower(strings.TrimSpace(raw))
+	if _, err := mail.ParseAddress(email); err != nil {
+		return "", errors.New("format email tidak valid")
+	}
+	return email, nil
+}
+
 func (h *AuthHandler) RegisterPedagang(c *gin.Context) {
 	var req models.RegisterPedagangRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	email, err := normalizeAndValidateEmail(req.Email)
+	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
@@ -35,12 +56,9 @@ func (h *AuthHandler) RegisterPedagang(c *gin.Context) {
 		return
 	}
 
-	// Register cuma bikin AKUN (role pedagang otomatis). Data usaha (NIK,
-	// nama usaha, dll) diisi belakangan lewat /api/pedagang/pengajuan
-	// setelah user ini login.
 	userID, err := h.userRepo.RegisterPedagang(
 		c.Request.Context(),
-		req.Email, string(hashed), req.Name, req.Phone,
+		email, string(hashed), req.Name, req.Phone,
 	)
 	if err != nil {
 		var pgErr *pgconn.PgError
@@ -65,7 +83,13 @@ func (h *AuthHandler) Login(c *gin.Context) {
 		return
 	}
 
-	user, err := h.userRepo.GetUserForLogin(c.Request.Context(), req.Email)
+	email, err := normalizeAndValidateEmail(req.Email)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	user, err := h.userRepo.GetUserForLogin(c.Request.Context(), email)
 	if err != nil {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "email atau password salah"})
 		return
@@ -83,9 +107,6 @@ func (h *AuthHandler) Login(c *gin.Context) {
 
 	role, err := h.userRepo.GetUserRole(c.Request.Context(), user.ID)
 	if err != nil {
-		// Harusnya tidak pernah terjadi (register & seeder selalu assign
-		// role), tapi kalau sampai kejadian, jangan lolosin token tanpa
-		// role — frontend butuh ini buat nentuin dashboard mana.
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "akun tidak memiliki role, hubungi superadmin"})
 		return
 	}
@@ -117,9 +138,6 @@ func (h *AuthHandler) Me(c *gin.Context) {
 		return
 	}
 
-	// Disertakan juga di sini (bukan cuma pas login) supaya kalau user
-	// refresh halaman dashboard, frontend tetap bisa tahu harus nampilin
-	// dashboard yang mana tanpa perlu login ulang.
 	role, err := h.userRepo.GetUserRole(c.Request.Context(), user.ID)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "gagal mengambil role user"})
