@@ -1,23 +1,30 @@
-"use client";
+import { Clock, Hourglass, History, CircleX, CalendarCheck2 } from "lucide-react";
 
-import { Clock3, Timer } from "lucide-react";
+// Halaman pengaturan jam operasional CFD -- petugas bisa lihat sesi yang
+// sedang berjalan, mengubah jam mulai/selesai, dan melihat riwayat sesi
+// sebelumnya. Data sesi & riwayat masih dummy, tinggal disambungkan ke
+// endpoint jadwal operasional begitu backend-nya siap.
 
-// -----------------------------------------------------------------------------
-// Types & data statis (nanti tinggal disambungkan ke API jam operasional)
-// -----------------------------------------------------------------------------
+type StatusRiwayat = "normal" | "diperpanjang" | "diakhiri-awal";
 
-type SesiStatus = "aktif" | "selesai" | "diperpanjang" | "dibatalkan";
+type Riwayat = {
+  tanggal: string;
+  jamMulai: string;
+  jamSelesai: string;
+  durasi: string;
+  status: StatusRiwayat;
+};
 
-const STATUS_STYLES: Record<
-  SesiStatus,
-  { label: string; bg: string; text: string }
-> = {
-  aktif: {
-    label: "Sedang Berlangsung",
-    bg: "bg-secondary-container/40",
-    text: "text-on-secondary-container",
-  },
-  selesai: {
+const RIWAYAT: Riwayat[] = [
+  { tanggal: "Minggu, 24 Okt 2023", jamMulai: "06:05", jamSelesai: "11:00", durasi: "4j 55m", status: "normal" },
+  { tanggal: "Minggu, 17 Okt 2023", jamMulai: "06:00", jamSelesai: "11:15", durasi: "5j 15m", status: "diperpanjang" },
+  { tanggal: "Minggu, 10 Okt 2023", jamMulai: "06:00", jamSelesai: "11:00", durasi: "5j 00m", status: "normal" },
+  { tanggal: "Minggu, 03 Okt 2023", jamMulai: "06:00", jamSelesai: "10:30", durasi: "4j 30m", status: "diakhiri-awal" },
+  { tanggal: "Minggu, 26 Sep 2023", jamMulai: "06:00", jamSelesai: "11:00", durasi: "5j 00m", status: "normal" },
+];
+
+const STATUS_STYLE: Record<StatusRiwayat, { label: string; bg: string; text: string }> = {
+  normal: {
     label: "Selesai Normal",
     bg: "bg-secondary-container/40",
     text: "text-on-secondary-container",
@@ -27,207 +34,166 @@ const STATUS_STYLES: Record<
     bg: "bg-tertiary-container/15",
     text: "text-on-tertiary-container",
   },
-  dibatalkan: {
-    label: "Dibatalkan Awal",
+  "diakhiri-awal": {
+    label: "Diakhiri Awal",
     bg: "bg-error-container/60",
     text: "text-on-error-container",
   },
 };
 
-function SesiStatusBadge({ status }: { status: SesiStatus }) {
-  const s = STATUS_STYLES[status];
-  return (
-    <span
-      className={`inline-flex items-center gap-xs rounded-full px-sm py-1 text-label-sm ${s.bg} ${s.text}`}
-    >
-      <span className="h-1.5 w-1.5 rounded-full bg-current" />
-      {s.label}
-    </span>
-  );
-}
+// Progres lingkaran sisa waktu -- 02:30 dari total sesi 06:00-11:00 (5 jam)
+const SISA_MENIT = 150; // 02:30
+const TOTAL_MENIT = 300; // 05:00
+const RADIUS = 54;
+const CIRC = 2 * Math.PI * RADIUS;
+const PROGRESS = (SISA_MENIT / TOTAL_MENIT) * CIRC;
 
-type RiwayatRow = {
-  tanggal: string;
-  jamMulai: string;
-  jamSelesai: string;
-  durasi: string;
-  status: SesiStatus;
-};
-
-const RIWAYAT: RiwayatRow[] = [
-  {
-    tanggal: "Minggu, 24 Okt 2023",
-    jamMulai: "06:05",
-    jamSelesai: "11:00",
-    durasi: "4j 55m",
-    status: "selesai",
-  },
-  {
-    tanggal: "Minggu, 17 Okt 2023",
-    jamMulai: "06:00",
-    jamSelesai: "11:15",
-    durasi: "5j 15m",
-    status: "diperpanjang",
-  },
-  {
-    tanggal: "Minggu, 10 Okt 2023",
-    jamMulai: "06:00",
-    jamSelesai: "11:00",
-    durasi: "5j 00m",
-    status: "selesai",
-  },
-  {
-    tanggal: "Minggu, 03 Okt 2023",
-    jamMulai: "06:00",
-    jamSelesai: "10:30",
-    durasi: "4j 30m",
-    status: "dibatalkan",
-  },
-  {
-    tanggal: "Minggu, 26 Sep 2023",
-    jamMulai: "06:00",
-    jamSelesai: "11:00",
-    durasi: "5j 00m",
-    status: "selesai",
-  },
-];
-
-const SISA_PERSEN = 65; // porsi lingkaran sisa waktu yang sudah terisi (visual saja)
-
-// -----------------------------------------------------------------------------
-
-export default function JamOperasional() {
+export default function JamOperasionalPage() {
   return (
     <div className="flex flex-col gap-lg">
       <div>
-        <h1 className="text-title-lg text-on-surface">Jam Operasional</h1>
-        <p className="text-label-md text-on-surface-variant">
+        <h2 className="text-headline-lg text-on-surface">Jam Operasional</h2>
+        <p className="mt-xs max-w-2xl text-body-md text-on-surface-variant">
           Atur jadwal aktif dan durasi kegiatan Car Free Day.
         </p>
       </div>
 
-      {/* Kartu status sesi */}
-      <section className="rounded-lg border border-outline-variant bg-surface-container-lowest p-lg">
-        <div className="mb-lg flex items-center justify-between">
-          <h2 className="text-label-md font-semibold text-on-surface">
-            Status Sesi CFD
-          </h2>
-          <SesiStatusBadge status="aktif" />
-        </div>
+      <div className="grid grid-cols-1 gap-md lg:grid-cols-[1fr_280px]">
+        <div className="rounded-lg border border-outline-variant bg-surface-container-lowest p-lg">
+          <div className="flex items-center justify-between">
+            <h3 className="text-title-lg text-on-surface">Status Sesi CFD</h3>
+            <span className="flex items-center gap-xs rounded-full bg-secondary-container/40 px-sm py-1 text-label-sm text-on-secondary-container">
+              <span className="h-1.5 w-1.5 rounded-full bg-secondary" />
+              Sedang Berlangsung
+            </span>
+          </div>
 
-        <div className="flex flex-col items-stretch gap-lg lg:flex-row lg:items-center lg:justify-between">
-          <div className="flex flex-1 flex-col gap-md sm:flex-row">
-            <div className="flex flex-1 items-center gap-sm rounded-md border border-outline-variant px-md py-sm">
-              <span className="flex h-9 w-9 items-center justify-center rounded-md bg-primary text-on-primary">
-                <Clock3 className="h-[18px] w-[18px]" strokeWidth={2} />
+          <div className="mt-md grid grid-cols-1 gap-sm sm:grid-cols-2">
+            <div className="flex items-center gap-sm rounded-md bg-surface-container-low p-md">
+              <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-primary text-on-primary">
+                <Clock className="h-[18px] w-[18px]" strokeWidth={2} />
               </span>
               <div>
-                <p className="text-label-sm text-on-surface-variant">
-                  JAM MULAI
+                <p className="text-label-sm uppercase tracking-wide text-on-surface-variant">
+                  Jam Mulai
                 </p>
-                <p className="text-label-md font-semibold text-on-surface">
-                  06:00
-                </p>
+                <p className="text-title-lg text-on-surface">06.00</p>
               </div>
             </div>
-
-            <div className="flex flex-1 items-center gap-sm rounded-md border border-outline-variant px-md py-sm">
-              <span className="flex h-9 w-9 items-center justify-center rounded-md bg-tertiary-container text-on-tertiary-container">
-                <Timer className="h-[18px] w-[18px]" strokeWidth={2} />
+            <div className="flex items-center gap-sm rounded-md bg-error-container/30 p-md">
+              <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-error-container text-on-error-container">
+                <Hourglass className="h-[18px] w-[18px]" strokeWidth={2} />
               </span>
               <div>
-                <p className="text-label-sm text-on-surface-variant">
-                  JAM SELESAI
+                <p className="text-label-sm uppercase tracking-wide text-on-surface-variant">
+                  Jam Selesai
                 </p>
-                <p className="text-label-md font-semibold text-on-surface">
-                  11:00
-                </p>
+                <p className="text-title-lg text-on-surface">11.00</p>
               </div>
             </div>
           </div>
 
-          <div className="flex flex-col items-center gap-xs">
-            <div
-              className="relative flex h-[100px] w-[100px] items-center justify-center rounded-full"
-              style={{
-                background: `conic-gradient(var(--color-primary) 0% ${SISA_PERSEN}%, var(--color-surface-container-high) ${SISA_PERSEN}% 100%)`,
-              }}
+          <div className="mt-lg flex flex-wrap gap-sm border-t border-outline-variant pt-md">
+            <button
+              type="button"
+              className="flex items-center gap-sm rounded-md bg-error-container/60 px-lg py-sm text-label-md text-on-error-container transition-colors hover:bg-error-container"
             >
-              <div className="flex h-[80px] w-[80px] flex-col items-center justify-center rounded-full bg-surface-container-lowest text-center">
-                <span className="text-label-md font-semibold text-on-surface">
-                  02:30
-                </span>
-                <span className="text-label-sm text-on-surface-variant">
-                  Sisa Waktu
-                </span>
-              </div>
-            </div>
-            <p className="text-label-sm text-on-surface-variant">
-              Sesi akan berakhir pada 11:00 WIB.
-            </p>
+              <CircleX className="h-[18px] w-[18px]" strokeWidth={2} />
+              Akhiri Sesi Lebih Awal
+            </button>
+            <button
+              type="button"
+              className="flex items-center gap-sm rounded-md bg-primary px-lg py-sm text-label-md text-on-primary transition-colors hover:bg-primary-container"
+            >
+              <CalendarCheck2 className="h-[18px] w-[18px]" strokeWidth={2} />
+              Terapkan Perubahan
+            </button>
           </div>
         </div>
 
-        <div className="mt-lg flex flex-col gap-sm border-t border-outline-variant pt-lg sm:flex-row sm:justify-end">
-          <button
-            type="button"
-            className="rounded-md border border-error/40 bg-error-container/20 px-md py-sm text-label-md text-error transition-colors hover:bg-error-container/40"
-          >
-            Akhiri Sesi Lebih Awal
-          </button>
-          <button
-            type="button"
-            className="rounded-md bg-primary px-md py-sm text-label-md text-on-primary transition-colors hover:opacity-90"
-          >
-            Terapkan Perubahan
-          </button>
+        <div className="flex flex-col items-center justify-center gap-sm rounded-lg border border-outline-variant bg-surface-container-lowest p-lg text-center">
+          <div className="relative flex h-32 w-32 items-center justify-center">
+            <svg className="h-32 w-32 -rotate-90" viewBox="0 0 120 120">
+              <circle
+                cx="60"
+                cy="60"
+                r={RADIUS}
+                fill="none"
+                stroke="var(--color-surface-container-high)"
+                strokeWidth="10"
+              />
+              <circle
+                cx="60"
+                cy="60"
+                r={RADIUS}
+                fill="none"
+                stroke="var(--color-primary)"
+                strokeWidth="10"
+                strokeLinecap="round"
+                strokeDasharray={CIRC}
+                strokeDashoffset={CIRC - PROGRESS}
+              />
+            </svg>
+            <div className="absolute flex flex-col items-center">
+              <span className="text-title-lg font-semibold text-on-surface">02:30</span>
+              <span className="text-label-sm text-on-surface-variant">Sisa Waktu</span>
+            </div>
+          </div>
+          <p className="text-label-sm text-on-surface-variant">
+            Sesi saat ini akan berakhir pada 11.00 WIB.
+          </p>
         </div>
-      </section>
+      </div>
 
-      {/* Riwayat operasional */}
-      <section className="rounded-lg border border-outline-variant bg-surface-container-lowest p-lg">
-        <h2 className="mb-md text-label-md font-semibold text-on-surface">
-          Riwayat Operasional
-        </h2>
+      <div className="rounded-lg border border-outline-variant bg-surface-container-lowest p-lg">
+        <div className="mb-md flex items-center gap-sm">
+          <History className="h-[18px] w-[18px] text-on-surface-variant" strokeWidth={2} />
+          <h3 className="text-title-lg text-on-surface">Riwayat Operasional</h3>
+        </div>
 
         <div className="overflow-x-auto">
-          <table className="w-full border-collapse text-left">
+          <table className="w-full text-left">
             <thead>
               <tr className="border-b border-outline-variant text-label-sm text-on-surface-variant">
-                <th className="py-sm pr-md font-normal">Tanggal</th>
-                <th className="py-sm pr-md font-normal">Jam Mulai</th>
-                <th className="py-sm pr-md font-normal">Jam Selesai</th>
-                <th className="py-sm pr-md font-normal">Durasi</th>
-                <th className="py-sm pr-md font-normal">Status</th>
+                <th className="px-sm py-sm font-medium">Tanggal</th>
+                <th className="px-sm py-sm font-medium">Jam Mulai</th>
+                <th className="px-sm py-sm font-medium">Jam Selesai</th>
+                <th className="px-sm py-sm font-medium">Durasi</th>
+                <th className="px-sm py-sm font-medium">Status</th>
               </tr>
             </thead>
             <tbody>
-              {RIWAYAT.map((row) => (
-                <tr
-                  key={row.tanggal}
-                  className="border-b border-outline-variant last:border-0"
-                >
-                  <td className="py-sm pr-md text-label-md text-on-surface">
-                    {row.tanggal}
-                  </td>
-                  <td className="py-sm pr-md text-label-md text-on-surface-variant">
-                    {row.jamMulai}
-                  </td>
-                  <td className="py-sm pr-md text-label-md text-on-surface-variant">
-                    {row.jamSelesai}
-                  </td>
-                  <td className="py-sm pr-md text-label-md text-on-surface-variant">
-                    {row.durasi}
-                  </td>
-                  <td className="py-sm pr-md">
-                    <SesiStatusBadge status={row.status} />
-                  </td>
-                </tr>
-              ))}
+              {RIWAYAT.map((row) => {
+                const style = STATUS_STYLE[row.status];
+                return (
+                  <tr
+                    key={row.tanggal}
+                    className="border-b border-outline-variant last:border-0"
+                  >
+                    <td className="px-sm py-sm text-body-md text-on-surface">{row.tanggal}</td>
+                    <td className="px-sm py-sm text-body-md text-on-surface-variant">
+                      {row.jamMulai}
+                    </td>
+                    <td className="px-sm py-sm text-body-md text-on-surface-variant">
+                      {row.jamSelesai}
+                    </td>
+                    <td className="px-sm py-sm text-body-md text-on-surface-variant">
+                      {row.durasi}
+                    </td>
+                    <td className="px-sm py-sm">
+                      <span
+                        className={`inline-flex items-center rounded-full px-sm py-1 text-label-sm ${style.bg} ${style.text}`}
+                      >
+                        {style.label}
+                      </span>
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>
-      </section>
+      </div>
     </div>
   );
 }
