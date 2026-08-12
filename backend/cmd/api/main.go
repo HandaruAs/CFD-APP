@@ -26,7 +26,7 @@ func main() {
 
 	authHandler := handlers.NewAuthHandler(userRepo, cfg.JWTSecret)
 	pedagangHandler := handlers.NewPedagangHandler(pedagangRepo)
-	menuHandler := handlers.NewMenuHandler(menuRepo, userRepo)
+	menuHandler := handlers.NewMenuHandler(menuRepo, userRepo, pedagangRepo)
 
 	router := gin.Default()
 	router.Use(middleware.CORSMiddleware(cfg.CORSAllowedOrigins))

@@ -13,7 +13,10 @@ export function FormField({
 }) {
   return (
     <div className="flex flex-col gap-xs">
-      <label htmlFor={htmlFor} className="text-label-md text-on-surface">
+      <label
+        htmlFor={htmlFor}
+        className="text-label-md font-semibold text-on-surface"
+      >
         {label}
       </label>
       {children}
@@ -27,7 +30,7 @@ export function FormField({
 }
 
 export const inputClass =
-  "h-11 w-full rounded-md border border-outline bg-surface-container-lowest px-md text-body-md text-on-surface outline-none transition-colors placeholder:text-on-surface-variant focus:border-primary focus:ring-1 focus:ring-primary";
+  "h-11 w-full rounded-lg border border-outline bg-surface-container-lowest px-md text-body-md text-on-surface outline-none transition-colors placeholder:text-on-surface-variant/70 focus:border-primary focus:ring-2 focus:ring-primary/20";
 
 export const textareaClass =
-  "w-full rounded-md border border-outline bg-surface-container-lowest px-md py-sm text-body-md text-on-surface outline-none transition-colors placeholder:text-on-surface-variant focus:border-primary focus:ring-1 focus:ring-primary";
+  "w-full rounded-lg border border-outline bg-surface-container-lowest px-md py-sm text-body-md text-on-surface outline-none transition-colors placeholder:text-on-surface-variant/70 focus:border-primary focus:ring-2 focus:ring-primary/20";
