@@ -1,11 +1,9 @@
 "use client";
 
 import { useState } from "react";
-import { useRouter } from "next/navigation";
 import Link from "next/link";
 
 export default function LoginPage() {
-  const router = useRouter();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
@@ -28,6 +26,7 @@ export default function LoginPage() {
 
       if (!res.ok) {
         setError(data.error || "Login gagal, coba lagi.");
+        setLoading(false);
         return;
       }
 
@@ -40,10 +39,15 @@ export default function LoginPage() {
 
       const role = data.user?.role;
 
+      // Pakai window.location (hard navigation) di sini, BUKAN router.push.
+      // Next.js App Router nyimpen halaman yang pernah dikunjungi di
+      // client-side router cache berdasarkan URL doang -- dia gak tau kalau
+      // localStorage baru saja berubah. Kalau kita router.push() ke URL yang
+      // sebelumnya pernah dibuka pas belum login, Next bisa nyuguhin versi
+      // cache lama itu lagi (Sidebar gak remount, token baru "kelewat").
+      // Hard navigation jamin komponennya mount dari nol dengan token yang
+      // udah bener.
       if (role === "pedagang") {
-        // Pedagang: cek dulu ke database apakah dia udah pernah isi
-        // data usaha. Kalau belum, arahkan ke form pendaftaran usaha
-        // dulu sebelum ke halaman status verifikasi.
         try {
           const pengajuanRes = await fetch(
             `${process.env.NEXT_PUBLIC_API_URL}/api/pedagang/pengajuan`,
@@ -52,15 +56,12 @@ export default function LoginPage() {
           const pengajuanData = await pengajuanRes.json();
 
           if (pengajuanRes.ok && pengajuanData.has_pengajuan === false) {
-            router.push("/pedagang/pendaftaran");
+            window.location.href = "/pedagang/pendaftaran";
           } else {
-            router.push("/pedagang/status-verifikasi");
+            window.location.href = "/pedagang/status-verifikasi";
           }
         } catch {
-          // Gagal cek status (server sempat gak respon) -> jangan
-          // block proses login, arahkan ke status-verifikasi dulu
-          // sebagai default yang aman.
-          router.push("/pedagang/status-verifikasi");
+          window.location.href = "/pedagang/status-verifikasi";
         }
         return;
       }
@@ -69,10 +70,9 @@ export default function LoginPage() {
         petugas: "/petugas",
         superadmin: "/admin",
       };
-      router.push(dashboardByRole[role] ?? "/pedagang/status-verifikasi");
+      window.location.href = dashboardByRole[role] ?? "/pedagang/status-verifikasi";
     } catch {
       setError("Tidak bisa terhubung ke server. Periksa koneksi kamu.");
-    } finally {
       setLoading(false);
     }
   };
@@ -92,18 +92,15 @@ export default function LoginPage() {
 
         {/* Card */}
         <div className="relative bg-white rounded-2xl shadow-[0_10px_40px_-12px_rgba(11,27,58,0.15)] overflow-hidden">
-          {/* Aksen garis warna di atas */}
           <div className="h-1.5 w-full bg-gradient-to-r from-[#2563EB] via-[#3B82F6] to-[#22C55E]" />
 
           <form onSubmit={handleSubmit} className="p-7 space-y-5">
-            {/* Error message */}
             {error && (
               <div className="rounded-lg bg-red-50 border border-red-200 px-3.5 py-2.5 text-sm text-red-600">
                 {error}
               </div>
             )}
 
-            {/* Email */}
             <div>
               <label
                 htmlFor="email"
@@ -113,13 +110,7 @@ export default function LoginPage() {
               </label>
               <div className="relative">
                 <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400">
-                  <svg
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    className="w-4.5 h-4.5"
-                    width="18"
-                    height="18"
-                  >
+                  <svg viewBox="0 0 24 24" fill="none" className="w-4.5 h-4.5" width="18" height="18">
                     <path
                       d="M12 12C14.2091 12 16 10.2091 16 8C16 5.79086 14.2091 4 12 4C9.79086 4 8 5.79086 8 8C8 10.2091 9.79086 12 12 12Z"
                       stroke="currentColor"
@@ -145,7 +136,6 @@ export default function LoginPage() {
               </div>
             </div>
 
-            {/* Password */}
             <div>
               <label
                 htmlFor="password"
@@ -155,21 +145,8 @@ export default function LoginPage() {
               </label>
               <div className="relative">
                 <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400">
-                  <svg
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    width="18"
-                    height="18"
-                  >
-                    <rect
-                      x="5"
-                      y="10"
-                      width="14"
-                      height="10"
-                      rx="2"
-                      stroke="currentColor"
-                      strokeWidth="1.6"
-                    />
+                  <svg viewBox="0 0 24 24" fill="none" width="18" height="18">
+                    <rect x="5" y="10" width="14" height="10" rx="2" stroke="currentColor" strokeWidth="1.6" />
                     <path
                       d="M8 10V7C8 4.79086 9.79086 3 12 3C14.2091 3 16 4.79086 16 7V10"
                       stroke="currentColor"
@@ -198,27 +175,15 @@ export default function LoginPage() {
                       stroke="currentColor"
                       strokeWidth="1.6"
                     />
-                    <circle
-                      cx="12"
-                      cy="12"
-                      r="3"
-                      stroke="currentColor"
-                      strokeWidth="1.6"
-                    />
+                    <circle cx="12" cy="12" r="3" stroke="currentColor" strokeWidth="1.6" />
                     {showPassword && (
-                      <path
-                        d="M4 20L20 4"
-                        stroke="currentColor"
-                        strokeWidth="1.6"
-                        strokeLinecap="round"
-                      />
+                      <path d="M4 20L20 4" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
                     )}
                   </svg>
                 </button>
               </div>
             </div>
 
-            {/* Remember + Forgot */}
             <div className="flex items-center justify-between pt-1">
               <label className="flex items-center gap-2 text-sm text-slate-600 cursor-pointer">
                 <input
@@ -238,7 +203,6 @@ export default function LoginPage() {
               </Link>
             </div>
 
-            {/* Submit */}
             <button
               type="submit"
               disabled={loading}
@@ -264,7 +228,6 @@ export default function LoginPage() {
           </form>
         </div>
 
-        {/* Link daftar */}
         <p className="text-center text-sm text-slate-500 mt-6">
           Belum punya akun?{" "}
           <Link

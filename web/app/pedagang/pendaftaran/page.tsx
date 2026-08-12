@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { ArrowLeft, ArrowRight, ShieldCheck, UploadCloud } from "lucide-react";
+import { ArrowLeft, ArrowRight, ShieldCheck, UploadCloud, Quote } from "lucide-react";
 import { StepIndicator, type Step } from "@/components/step-indicator";
 import { FormField, inputClass, textareaClass } from "@/components/form-field";
 
@@ -16,10 +16,10 @@ export default function PendaftaranPage() {
   const isLastStep = step === STEPS.length - 1;
 
   return (
-    <div className="grid grid-cols-1 gap-lg xl:grid-cols-[360px_1fr]">
+    <div className="grid grid-cols-1 gap-lg xl:grid-cols-[340px_1fr]">
       {/* Left column: intro + steps + testimonial */}
       <div className="flex flex-col gap-lg">
-        <section className="rounded-lg border border-outline-variant bg-surface-container-lowest p-lg">
+        <section className="rounded-xl border border-outline-variant bg-surface-container-lowest p-lg shadow-md">
           <h2 className="text-title-lg text-on-surface">
             Pendaftaran Pedagang
           </h2>
@@ -30,28 +30,33 @@ export default function PendaftaranPage() {
           <StepIndicator steps={STEPS} activeIndex={step} />
         </section>
 
-        <section
-          className="rounded-lg p-lg text-inverse-on-surface"
-          style={{
-            backgroundImage:
-              "linear-gradient(160deg, var(--color-primary) 0%, var(--color-inverse-surface) 100%)",
-          }}
-        >
-          <p className="mb-sm text-headline-md text-tertiary-fixed">
-            &ldquo;
+        <section className="relative overflow-hidden rounded-xl border border-outline-variant bg-surface-container p-lg">
+          <Quote
+            className="absolute -right-2 -top-2 h-16 w-16 text-primary/10"
+            strokeWidth={1.5}
+          />
+          <p className="relative text-body-md text-on-surface">
+            &ldquo;Bergabung dengan CFD Hub memudahkan saya mengelola lapak
+            dan menjangkau lebih banyak pelanggan setiap minggunya.&rdquo;
           </p>
-          <p className="text-body-md text-inverse-on-surface/90">
-            Bergabung dengan CFD Hub memudahkan saya mengelola lapak dan
-            menjangkau lebih banyak pelanggan setiap minggunya.
-          </p>
-          <p className="mt-md text-label-md font-semibold text-inverse-on-surface">
-            Siti Aminah, Pedagang Makanan Ringan
-          </p>
+          <div className="relative mt-md flex items-center gap-sm">
+            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-primary-fixed text-[12px] font-semibold text-on-primary-fixed">
+              SA
+            </span>
+            <div>
+              <p className="text-label-md font-semibold text-on-surface">
+                Siti Aminah
+              </p>
+              <p className="text-label-sm font-normal tracking-normal text-on-surface-variant">
+                Pedagang Makanan Ringan
+              </p>
+            </div>
+          </div>
         </section>
       </div>
 
       {/* Right column: active step form */}
-      <section className="flex flex-col rounded-lg border border-outline-variant bg-surface-container-lowest">
+      <section className="flex flex-col rounded-xl border border-outline-variant bg-surface-container-lowest shadow-md">
         <div className="flex items-start justify-between border-b border-outline-variant p-lg">
           <div>
             <h2 className="text-title-lg text-on-surface">
@@ -61,7 +66,7 @@ export default function PendaftaranPage() {
               Langkah {step + 1} dari {STEPS.length}
             </p>
           </div>
-          <span className="hidden items-center gap-xs rounded-full bg-secondary-container px-sm py-1 text-label-sm text-on-secondary-container sm:flex">
+          <span className="hidden items-center gap-xs rounded-full bg-secondary-container px-sm py-1.5 text-label-sm text-on-secondary-container sm:flex">
             <ShieldCheck className="h-3.5 w-3.5" strokeWidth={2.5} />
             Aman &amp; Terenkripsi
           </span>
@@ -78,7 +83,7 @@ export default function PendaftaranPage() {
             type="button"
             disabled={step === 0}
             onClick={() => setStep((s) => Math.max(0, s - 1))}
-            className="flex items-center gap-xs rounded-md border border-outline-variant px-md py-sm text-label-md text-on-surface transition-colors hover:bg-surface-container-low disabled:cursor-not-allowed disabled:opacity-40"
+            className="flex items-center gap-xs rounded-lg border border-outline-variant px-md py-sm text-label-md text-on-surface transition-colors hover:bg-surface-container-low disabled:cursor-not-allowed disabled:opacity-40"
           >
             <ArrowLeft className="h-4 w-4" strokeWidth={2} />
             Kembali
@@ -89,7 +94,7 @@ export default function PendaftaranPage() {
             onClick={() =>
               setStep((s) => (isLastStep ? s : Math.min(STEPS.length - 1, s + 1)))
             }
-            className="flex items-center gap-xs rounded-md bg-primary px-lg py-sm text-label-md text-on-primary transition-colors hover:bg-primary-container"
+            className="flex items-center gap-xs rounded-lg bg-primary px-lg py-sm text-label-md text-on-primary shadow-sm transition-colors hover:bg-primary-container"
           >
             {isLastStep ? "Kirim Pendaftaran" : "Selanjutnya"}
             <ArrowRight className="h-4 w-4" strokeWidth={2} />
@@ -220,10 +225,10 @@ function StepDokumen() {
 function UploadTile({ label, hint }: { label: string; hint: string }) {
   return (
     <div>
-      <p className="mb-xs text-label-md text-on-surface">{label}</p>
+      <p className="mb-xs text-label-md font-semibold text-on-surface">{label}</p>
       <button
         type="button"
-        className="flex w-full flex-col items-center justify-center gap-sm rounded-md border-2 border-dashed border-outline-variant bg-surface-container-low px-md py-xl text-center transition-colors hover:border-primary hover:bg-surface-container"
+        className="flex w-full flex-col items-center justify-center gap-sm rounded-lg border-2 border-dashed border-outline-variant bg-surface-container-low px-md py-xl text-center transition-colors hover:border-primary hover:bg-primary-fixed/30"
       >
         <UploadCloud className="h-6 w-6 text-primary" strokeWidth={1.75} />
         <span className="text-label-md text-primary">Pilih berkas</span>
