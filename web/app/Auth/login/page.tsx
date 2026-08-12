@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import Link from "next/link"; // PERBAIKAN 1: Import Link
+import Link from "next/link";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -52,15 +52,15 @@ export default function LoginPage() {
           const pengajuanData = await pengajuanRes.json();
 
           if (pengajuanRes.ok && pengajuanData.has_pengajuan === false) {
-            router.push("/pendaftaran");
+            router.push("/pedagang/pendaftaran");
           } else {
-            router.push("/status-verifikasi");
+            router.push("/pedagang/status-verifikasi");
           }
         } catch {
           // Gagal cek status (server sempat gak respon) -> jangan
           // block proses login, arahkan ke status-verifikasi dulu
           // sebagai default yang aman.
-          router.push("/status-verifikasi");
+          router.push("/pedagang/status-verifikasi");
         }
         return;
       }
@@ -69,7 +69,7 @@ export default function LoginPage() {
         petugas: "/petugas",
         superadmin: "/admin",
       };
-      router.push(dashboardByRole[role] ?? "/status-verifikasi");
+      router.push(dashboardByRole[role] ?? "/pedagang/status-verifikasi");
     } catch {
       setError("Tidak bisa terhubung ke server. Periksa koneksi kamu.");
     } finally {
@@ -230,9 +230,8 @@ export default function LoginPage() {
                 Ingat Saya
               </label>
 
-              {/* PERBAIKAN 2: Gunakan <Link>, bukan <a> */}
               <Link
-                href="/forgot-password"
+                href="/auth/forgot-password"
                 className="text-sm font-medium text-[#2563EB] hover:text-[#1D4ED8]"
               >
                 Lupa Kata Sandi?
@@ -268,10 +267,8 @@ export default function LoginPage() {
         {/* Link daftar */}
         <p className="text-center text-sm text-slate-500 mt-6">
           Belum punya akun?{" "}
-
-          {/* PERBAIKAN 3: Gunakan <Link>, bukan <a> */}
           <Link
-            href="/register"
+            href="/auth/register"
             className="font-medium text-[#2563EB] hover:text-[#1D4ED8]"
           >
             Daftar di sini

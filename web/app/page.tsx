@@ -365,9 +365,9 @@ export default function Home() {
             <a href="#alur" className="focus-ring text-sm text-white/70 transition-colors hover:text-white">Cara Kerja</a>
           </div>
           <div className="hidden items-center gap-3 md:flex">
-            <a href="/login" className="focus-ring text-sm font-medium text-white/80 hover:text-white">Masuk</a>
+            <a href="/Auth/login" className="focus-ring text-sm font-medium text-white/80 hover:text-white">Masuk</a>
             <a
-              href="/register"
+              href="/Auth/register"
               className="focus-ring rounded-full bg-white px-4 py-2 text-sm font-semibold text-ink transition-transform hover:-translate-y-0.5"
             >
               Daftar Pedagang
