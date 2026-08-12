@@ -1,85 +1,110 @@
+"use client";
+
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import {
   ArrowRight,
   CalendarClock,
   CheckCircle2,
-  CircleDot,
-  FilePenLine,
   Info,
   Lock,
   MessageCircleQuestion,
   ShieldCheck,
+  FilePenLine,
   XCircle,
 } from "lucide-react";
 
 type Status = "approved" | "pending" | "rejected";
 
-const HISTORY = [
-  { label: "Ditolak", time: "Hari ini, 14:30 WIB", status: "rejected" as Status },
-  {
-    label: "Dalam Proses Verifikasi",
-    time: "Kemarin, 09:15 WIB",
-    status: "pending" as Status,
-  },
-  { label: "Dokumen Dikirim", time: "Kemarin, 09:10 WIB", status: "pending" as Status },
-];
-
-const HISTORY_DOT: Record<Status, string> = {
-  approved: "bg-secondary",
-  pending: "bg-outline",
-  rejected: "bg-error",
+type Pengajuan = {
+  has_pengajuan: boolean;
+  id?: string;
+  nik?: string;
+  nama_usaha?: string;
+  jenis_dagangan?: string;
+  alamat?: string;
+  status?: Status;
+  catatan?: string | null;
 };
 
-const HISTORY_TEXT: Record<Status, string> = {
-  approved: "text-secondary",
-  pending: "text-on-surface-variant",
-  rejected: "text-error",
-};
+export default function StatusVerifikasiPage() {
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [data, setData] = useState<Pengajuan | null>(null);
 
-export default async function StatusVerifikasiPage({
-  searchParams,
-}: {
-  searchParams: Promise<Record<string, string | string[] | undefined>>;
-}) {
-  const params = await searchParams;
-  const raw = Array.isArray(params.status) ? params.status[0] : params.status;
-  const status: Status =
-    raw === "rejected" ? "rejected" : raw === "pending" ? "pending" : "approved";
+  useEffect(() => {
+    async function load() {
+      const token = localStorage.getItem("cfd_token");
+      if (!token) {
+        setError("Sesi login tidak ditemukan, silakan login ulang.");
+        setLoading(false);
+        return;
+      }
+
+      try {
+        const res = await fetch(
+          `${process.env.NEXT_PUBLIC_API_URL}/api/pedagang/pengajuan`,
+          { headers: { Authorization: `Bearer ${token}` } }
+        );
+        const json = await res.json();
+
+        if (!res.ok) {
+          setError(json.error || "Gagal mengambil status pengajuan.");
+          return;
+        }
+        setData(json);
+      } catch {
+        setError("Tidak bisa terhubung ke server. Coba lagi nanti.");
+      } finally {
+        setLoading(false);
+      }
+    }
+    load();
+  }, []);
+
+  if (loading) {
+    return (
+      <div className="flex justify-center py-3xl text-body-md text-on-surface-variant">
+        Memuat status pengajuan...
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="mx-auto max-w-2xl rounded-lg border border-error/30 bg-error-container/20 p-lg text-center text-body-md text-error">
+        {error}
+      </div>
+    );
+  }
+
+  if (!data?.has_pengajuan) {
+    return (
+      <div className="mx-auto max-w-2xl rounded-lg border border-outline-variant bg-surface-container-lowest p-3xl text-center">
+        <p className="mb-md text-body-lg text-on-surface-variant">
+          Kamu belum mengajukan pendaftaran usaha.
+        </p>
+        <Link
+          href="/pedagang/pendaftaran"
+          className="inline-flex items-center gap-xs rounded-md bg-primary px-md py-sm text-label-md text-on-primary hover:bg-primary-container"
+        >
+          Ajukan Sekarang
+          <ArrowRight className="h-4 w-4" strokeWidth={2} />
+        </Link>
+      </div>
+    );
+  }
+
+  const status = data.status ?? "pending";
 
   return (
     <div className="flex flex-col gap-lg">
       {status === "approved" && <ApprovedCard />}
       {status === "pending" && <PendingCard />}
-      {status === "rejected" && <RejectedCard />}
-
-      {/* Demo switcher — hanya untuk kebutuhan preview tampilan */}
-      <div className="mt-md flex items-center gap-sm rounded-md border border-dashed border-outline-variant px-md py-sm text-label-sm font-normal tracking-normal text-on-surface-variant">
-        Pratinjau status:
-        <StatusLink status="approved" active={status === "approved"} />
-        <StatusLink status="pending" active={status === "pending"} />
-        <StatusLink status="rejected" active={status === "rejected"} />
-      </div>
+      {status === "rejected" && (
+        <RejectedCard catatan={data.catatan ?? "Tidak ada catatan dari petugas."} />
+      )}
     </div>
-  );
-}
-
-function StatusLink({ status, active }: { status: Status; active: boolean }) {
-  const labels: Record<Status, string> = {
-    approved: "Diterima",
-    pending: "Menunggu",
-    rejected: "Ditolak",
-  };
-  return (
-    <Link
-      href={`/user/status-verifikasi?status=${status}`}
-      className={`rounded-full px-sm py-1 transition-colors ${
-        active
-          ? "bg-primary text-on-primary"
-          : "border border-outline-variant hover:bg-surface-container-low"
-      }`}
-    >
-      {labels[status]}
-    </Link>
   );
 }
 
@@ -175,7 +200,7 @@ function PendingCard() {
   );
 }
 
-function RejectedCard() {
+function RejectedCard({ catatan }: { catatan: string }) {
   return (
     <>
       <div>
@@ -188,7 +213,7 @@ function RejectedCard() {
         </p>
       </div>
 
-      <section className="grid grid-cols-1 gap-lg rounded-lg border-l-4 border-l-error bg-surface-container-lowest p-lg lg:grid-cols-[1fr_320px]">
+      <section className="grid grid-cols-1 gap-lg rounded-lg border-l-4 border-l-error bg-surface-container-lowest p-lg">
         <div>
           <span className="mb-md inline-flex items-center gap-xs rounded-full bg-error-container px-md py-1 text-label-md text-on-error-container">
             <XCircle className="h-4 w-4" strokeWidth={2.5} />
@@ -200,21 +225,17 @@ function RejectedCard() {
           </h3>
           <div className="mb-lg flex items-start gap-sm rounded-md bg-surface-container-low p-md">
             <Info className="h-5 w-5 shrink-0 text-primary" strokeWidth={2} />
-            <p className="text-body-md text-on-surface-variant">
-              Dokumen Izin Usaha tidak terbaca atau tidak valid. Resolusi
-              gambar terlalu rendah dan nomor seri tidak dapat diverifikasi
-              oleh sistem.
-            </p>
+            <p className="text-body-md text-on-surface-variant">{catatan}</p>
           </div>
 
           <div className="flex flex-wrap gap-sm">
-            <button
-              type="button"
+            <Link
+              href="/pedagang/pendaftaran"
               className="flex items-center gap-xs rounded-md bg-primary px-md py-sm text-label-md text-on-primary transition-colors hover:bg-primary-container"
             >
               <FilePenLine className="h-4 w-4" strokeWidth={2} />
               Perbaiki Data
-            </button>
+            </Link>
             <button
               type="button"
               className="flex items-center gap-xs rounded-md border border-outline-variant px-md py-sm text-label-md text-primary transition-colors hover:bg-surface-container-low"
@@ -224,58 +245,7 @@ function RejectedCard() {
             </button>
           </div>
         </div>
-
-        <div className="rounded-md bg-surface-container-low p-md">
-          <p className="mb-md text-label-sm text-on-surface-variant">
-            HISTORI STATUS
-          </p>
-          <ol className="flex flex-col gap-md border-l-2 border-outline-variant pl-md">
-            {HISTORY.map((h) => (
-              <li key={h.label} className="relative">
-                <span
-                  className={`absolute -left-[21px] top-1 h-2.5 w-2.5 rounded-full ${HISTORY_DOT[h.status]}`}
-                />
-                <p className={`text-label-md font-semibold ${HISTORY_TEXT[h.status]}`}>
-                  {h.label}
-                </p>
-                <p className="text-label-sm font-normal tracking-normal text-on-surface-variant">
-                  {h.time}
-                </p>
-              </li>
-            ))}
-          </ol>
-        </div>
       </section>
-
-      <div className="grid grid-cols-1 gap-lg sm:grid-cols-2">
-        <DocumentPreview title="KTP Pedagang" valid />
-        <DocumentPreview title="Izin Usaha (NIB)" valid={false} />
-      </div>
     </>
-  );
-}
-
-function DocumentPreview({ title, valid }: { title: string; valid: boolean }) {
-  return (
-    <div className="overflow-hidden rounded-lg border border-outline-variant bg-surface-container-lowest">
-      <div className="flex items-center justify-between p-md">
-        <p className="text-label-md text-on-surface">{title}</p>
-        <span
-          className={`inline-flex items-center gap-xs rounded-full px-sm py-1 text-label-sm ${
-            valid
-              ? "bg-secondary-container/40 text-on-secondary-container"
-              : "bg-error-container/60 text-on-error-container"
-          }`}
-        >
-          <CircleDot className="h-3 w-3" strokeWidth={3} />
-          {valid ? "Valid" : "Invalid"}
-        </span>
-      </div>
-      <div className="flex h-40 items-center justify-center bg-surface-container-low text-on-surface-variant">
-        <span className="text-label-sm font-normal tracking-normal">
-          Pratinjau dokumen
-        </span>
-      </div>
-    </div>
   );
 }
