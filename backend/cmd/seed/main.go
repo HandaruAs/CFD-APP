@@ -5,8 +5,7 @@ import (
 	"log"
 	"os"
 
-	"cfd-backend/internal/config"
-	"cfd-backend/internal/database"
+	"cfd-backend/config"    
 
 	"golang.org/x/crypto/bcrypt"
 )
