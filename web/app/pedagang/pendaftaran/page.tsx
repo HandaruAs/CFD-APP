@@ -16,7 +16,7 @@ export default function PendaftaranPage() {
   const isLastStep = step === STEPS.length - 1;
 
   return (
-    <div className="grid grid-cols-1 gap-lg xl:grid-cols-[340px_1fr]">
+    <div className="grid grid-cols-1 gap-lg xl:h-full xl:grid-cols-[340px_1fr]">
       {/* Left column: intro + steps + testimonial */}
       <div className="flex flex-col gap-lg">
         <section className="rounded-xl border border-outline-variant bg-surface-container-lowest p-lg shadow-md">
@@ -56,7 +56,7 @@ export default function PendaftaranPage() {
       </div>
 
       {/* Right column: active step form */}
-      <section className="flex flex-col rounded-xl border border-outline-variant bg-surface-container-lowest shadow-md">
+      <section className="flex h-full flex-col rounded-xl border border-outline-variant bg-surface-container-lowest shadow-md">
         <div className="flex items-start justify-between border-b border-outline-variant p-lg">
           <div>
             <h2 className="text-title-lg text-on-surface">
@@ -107,38 +107,41 @@ export default function PendaftaranPage() {
 
 function StepUsaha() {
   return (
-    <div className="grid grid-cols-1 gap-lg sm:grid-cols-2">
-      <FormField label="Nama Usaha" htmlFor="nama_usaha">
-        <input
-          id="nama_usaha"
-          className={inputClass}
-          placeholder="Contoh: Kedai Kopi Senja"
-        />
-      </FormField>
-      <FormField label="Kategori Usaha" htmlFor="kategori">
-        <select id="kategori" className={inputClass}>
-          <option>Minuman &amp; Kopi</option>
-          <option>Makanan Berat</option>
-          <option>Makanan Ringan &amp; Camilan</option>
-          <option>Fashion &amp; Aksesoris</option>
-          <option>Kerajinan Tangan</option>
-        </select>
-      </FormField>
-      <FormField label="Jenis Dagangan" htmlFor="jenis_dagangan">
-        <input
-          id="jenis_dagangan"
-          className={inputClass}
-          placeholder="Contoh: Kopi susu, teh, camilan ringan"
-        />
-      </FormField>
-      <FormField label="Perkiraan Harga Produk" htmlFor="harga">
-        <input
-          id="harga"
-          className={inputClass}
-          placeholder="Contoh: Rp10.000 - Rp25.000"
-        />
-      </FormField>
-      <div className="sm:col-span-2">
+    <div className="flex h-full flex-col gap-lg">
+      <div className="grid grid-cols-1 gap-lg sm:grid-cols-2">
+        <FormField label="Nama Usaha" htmlFor="nama_usaha">
+          <input
+            id="nama_usaha"
+            className={inputClass}
+            placeholder="Contoh: Kedai Kopi Senja"
+          />
+        </FormField>
+        <FormField label="Kategori Usaha" htmlFor="kategori">
+          <select id="kategori" className={inputClass}>
+            <option>Minuman &amp; Kopi</option>
+            <option>Makanan Berat</option>
+            <option>Makanan Ringan &amp; Camilan</option>
+            <option>Fashion &amp; Aksesoris</option>
+            <option>Kerajinan Tangan</option>
+          </select>
+        </FormField>
+        <FormField label="Jenis Dagangan" htmlFor="jenis_dagangan">
+          <input
+            id="jenis_dagangan"
+            className={inputClass}
+            placeholder="Contoh: Kopi susu, teh, camilan ringan"
+          />
+        </FormField>
+        <FormField label="Perkiraan Harga Produk" htmlFor="harga">
+          <input
+            id="harga"
+            className={inputClass}
+            placeholder="Contoh: Rp10.000 - Rp25.000"
+          />
+        </FormField>
+      </div>
+
+      <div className="flex flex-1 flex-col">
         <FormField
           label="Deskripsi Usaha"
           htmlFor="deskripsi"
@@ -146,8 +149,7 @@ function StepUsaha() {
         >
           <textarea
             id="deskripsi"
-            rows={4}
-            className={textareaClass}
+            className={`${textareaClass} flex-1 resize-none`}
             placeholder="Tuliskan deskripsi usaha Anda di sini..."
           />
         </FormField>
