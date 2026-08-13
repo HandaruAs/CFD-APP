@@ -1,0 +1,301 @@
+"use client";
+
+import { useEffect, useState } from "react";
+import {
+  UserPlus,
+  Search,
+  SlidersHorizontal,
+  Download,
+  ChevronLeft,
+  ChevronRight,
+  Inbox,
+  type LucideIcon,
+} from "lucide-react";
+
+export type User = {
+  id: string;
+  name: string;
+  email: string;
+  phone: string;
+  joinedAt: string;
+  active: boolean;
+  initial: string;
+};
+
+export type StatCard = {
+  label: string;
+  value: number | null;
+  icon: LucideIcon;
+  iconBg: string;
+  iconColor: string;
+  sublabel?: string;
+  danger?: boolean;
+};
+
+const avatarPalette = [
+  "bg-blue-100 text-blue-700",
+  "bg-emerald-100 text-emerald-700",
+  "bg-amber-100 text-amber-700",
+  "bg-purple-100 text-purple-700",
+  "bg-rose-100 text-rose-700",
+];
+
+export function UserManagementTable({
+  title,
+  subtitle,
+  addButtonLabel,
+  searchPlaceholder,
+  statCards,
+  apiEndpoint,
+}: {
+  title: string;
+  subtitle: string;
+  addButtonLabel: string;
+  searchPlaceholder: string;
+  statCards: StatCard[];
+  // Belum dipakai buat fetch beneran -- disimpan di sini biar pas nanti
+  // endpoint asli dipasang, tinggal ambil dari props ini, gak perlu ubah
+  // struktur komponen lagi.
+  apiEndpoint: string;
+}) {
+  const [users, setUsers] = useState<User[]>([]);
+  const [search, setSearch] = useState("");
+  const [loading, setLoading] = useState(true);
+  const [totalData, setTotalData] = useState(0);
+
+  useEffect(() => {
+    // TODO: ganti dengan fetch ke `apiEndpoint` (lihat komentar di props)
+    // async function fetchData() {
+    //   const token = localStorage.getItem("cfd_token");
+    //   const res = await fetch(
+    //     `${process.env.NEXT_PUBLIC_API_URL}${apiEndpoint}?search=${search}`,
+    //     { headers: { Authorization: `Bearer ${token}` } }
+    //   );
+    //   const data = await res.json();
+    //   setUsers(data.users);
+    //   setTotalData(data.total);
+    //   setLoading(false);
+    // }
+    // fetchData();
+
+    // Placeholder sementara -- begitu fetchData() di atas beneran
+    // dipasang, setLoading(false) ini PINDAH ke dalam .finally() fetch-nya
+    // (jadi otomatis gak kena rule ini lagi, karena async). Baris di bawah
+    // cuma buat nyalain UI selagi belum ada data asli.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setLoading(false); // hapus baris ini setelah fetch asli dipasang
+  }, [search, apiEndpoint]);
+
+  const toggleActive = (id: string) => {
+    setUsers((prev) =>
+      prev.map((u) => (u.id === id ? { ...u, active: !u.active } : u))
+    );
+    // TODO: panggil endpoint API buat update status aktif/nonaktif user ini
+  };
+
+  return (
+    <div>
+      {/* Heading */}
+      <div className="flex items-start justify-between flex-wrap gap-4 mb-8">
+        <div>
+          <h1 className="text-4xl font-bold text-slate-900 tracking-tight">
+            {title}
+          </h1>
+          <p className="text-base text-slate-500 mt-2">{subtitle}</p>
+        </div>
+        <button className="flex items-center gap-2 text-sm font-semibold text-white bg-blue-900 hover:bg-blue-950 rounded-lg px-5 py-3 shadow-sm transition">
+          <UserPlus className="w-4 h-4" strokeWidth={2.2} />
+          {addButtonLabel}
+        </button>
+      </div>
+
+      {/* Stat cards */}
+      <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
+        {statCards.map((card) => (
+          <div
+            key={card.label}
+            className={`rounded-xl border p-5 relative shadow-sm ${
+              card.danger
+                ? "border-red-200 bg-red-50"
+                : "border-slate-200 bg-white"
+            }`}
+          >
+            <div
+              className={`absolute top-4 right-4 w-10 h-10 rounded-lg flex items-center justify-center ${
+                card.danger ? "bg-white" : card.iconBg
+              }`}
+            >
+              <card.icon
+                className={`w-5 h-5 ${card.iconColor}`}
+                strokeWidth={2.2}
+              />
+            </div>
+            <p
+              className={`text-xs font-semibold tracking-wide uppercase ${
+                card.danger ? "text-red-600" : "text-slate-500"
+              }`}
+            >
+              {card.label}
+            </p>
+            <p
+              className={`text-4xl font-bold mt-2 ${
+                card.danger ? "text-red-600" : "text-slate-900"
+              }`}
+            >
+              {card.value ?? "-"}
+            </p>
+            {card.sublabel && (
+              <p
+                className={`text-sm font-medium mt-1.5 ${
+                  card.danger ? "text-red-600" : "text-emerald-600"
+                }`}
+              >
+                {card.sublabel}
+              </p>
+            )}
+          </div>
+        ))}
+      </div>
+
+      {/* Search + filter */}
+      <div className="bg-white border border-slate-200 rounded-xl p-4 flex flex-wrap items-center gap-3 mb-4 shadow-sm">
+        <div className="relative flex-1 min-w-[220px]">
+          <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
+          <input
+            type="text"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder={searchPlaceholder}
+            className="w-full rounded-lg border border-slate-200 bg-slate-50 pl-10 pr-3 py-3 text-sm text-slate-900 placeholder:text-slate-400 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/15"
+          />
+        </div>
+
+        <button className="flex items-center gap-2 text-sm font-semibold text-slate-600 border border-slate-200 rounded-lg px-4 py-3 hover:bg-slate-50">
+          <SlidersHorizontal className="w-4 h-4" />
+          Filter
+        </button>
+
+        <button className="flex items-center gap-2 text-sm font-semibold text-blue-700 bg-blue-50 rounded-lg px-4 py-3 hover:bg-blue-100">
+          <Download className="w-4 h-4" />
+          Ekspor
+        </button>
+      </div>
+
+      {/* Table */}
+      <div className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm">
+        <table className="w-full text-sm">
+          <thead>
+            <tr className="border-b border-slate-200 bg-slate-50/60 text-left">
+              <th className="px-5 py-3.5 text-xs font-bold text-slate-500 tracking-wide">
+                PENGGUNA
+              </th>
+              <th className="px-5 py-3.5 text-xs font-bold text-slate-500 tracking-wide">
+                KONTAK
+              </th>
+              <th className="px-5 py-3.5 text-xs font-bold text-slate-500 tracking-wide">
+                TANGGAL BERGABUNG
+              </th>
+              <th className="px-5 py-3.5 text-xs font-bold text-slate-500 tracking-wide">
+                STATUS
+              </th>
+            </tr>
+          </thead>
+          <tbody>
+            {loading ? (
+              <tr>
+                <td
+                  colSpan={4}
+                  className="px-5 py-12 text-center text-sm text-slate-400"
+                >
+                  Memuat data...
+                </td>
+              </tr>
+            ) : users.length === 0 ? (
+              <tr>
+                <td colSpan={4} className="px-5 py-16">
+                  <div className="flex flex-col items-center gap-2 text-center">
+                    <Inbox
+                      className="w-9 h-9 text-slate-300"
+                      strokeWidth={1.6}
+                    />
+                    <p className="text-base font-semibold text-slate-600">
+                      Belum ada pengguna
+                    </p>
+                    <p className="text-sm text-slate-400">
+                      Data pengguna akan muncul di sini setelah tersedia.
+                    </p>
+                  </div>
+                </td>
+              </tr>
+            ) : (
+              users.map((u, idx) => (
+                <tr
+                  key={u.id}
+                  className="border-b border-slate-100 last:border-0 hover:bg-slate-50/60 transition"
+                >
+                  <td className="px-5 py-4">
+                    <div className="flex items-center gap-3">
+                      <div
+                        className={`w-10 h-10 rounded-full flex items-center justify-center text-sm font-bold ${
+                          avatarPalette[idx % avatarPalette.length]
+                        }`}
+                      >
+                        {u.initial}
+                      </div>
+                      <div>
+                        <p className="font-semibold text-slate-900 text-[15px]">
+                          {u.name}
+                        </p>
+                        <p className="text-sm text-slate-400">{u.email}</p>
+                      </div>
+                    </div>
+                  </td>
+                  <td className="px-5 py-4 text-slate-600 font-medium">
+                    {u.phone}
+                  </td>
+                  <td className="px-5 py-4 text-slate-600 font-medium">
+                    {u.joinedAt}
+                  </td>
+                  <td className="px-5 py-4">
+                    <button
+                      type="button"
+                      onClick={() => toggleActive(u.id)}
+                      className={`w-12 h-6.5 rounded-full flex items-center px-0.5 transition ${
+                        u.active
+                          ? "bg-emerald-500 justify-end"
+                          : "bg-red-400 justify-start"
+                      }`}
+                      aria-pressed={u.active}
+                    >
+                      <span className="w-5.5 h-5.5 rounded-full bg-white shadow" />
+                    </button>
+                  </td>
+                </tr>
+              ))
+            )}
+          </tbody>
+        </table>
+
+        {/* Pagination */}
+        <div className="flex items-center justify-between px-5 py-4 border-t border-slate-200">
+          <p className="text-sm font-medium text-slate-500">
+            {totalData > 0
+              ? `Menampilkan ${users.length} dari ${totalData}`
+              : "Tidak ada data"}
+          </p>
+          <div className="flex items-center gap-1.5 text-sm">
+            <button className="w-8 h-8 flex items-center justify-center rounded-md text-slate-400 hover:bg-slate-100">
+              <ChevronLeft className="w-4 h-4" />
+            </button>
+            <button className="w-8 h-8 flex items-center justify-center rounded-md bg-blue-900 text-white font-semibold">
+              1
+            </button>
+            <button className="w-8 h-8 flex items-center justify-center rounded-md text-slate-400 hover:bg-slate-100">
+              <ChevronRight className="w-4 h-4" />
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
