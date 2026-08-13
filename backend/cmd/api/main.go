@@ -4,11 +4,27 @@ import (
 	"log"
 	"net/http"
 
-	"cfd-backend/internal/config"
-	"cfd-backend/internal/database"
-	"cfd-backend/internal/handlers"
-	"cfd-backend/internal/middleware"
-	"cfd-backend/internal/repository"
+	"cfd-backend/config"
+	"cfd-backend/database"
+	"cfd-backend/middleware"
+
+	// Modul Repository
+	userRepo "cfd-backend/modules/user/repository"
+	pedagangRepo "cfd-backend/modules/pedagang/repository"
+	menuRepo "cfd-backend/modules/menu/repository"
+	permRepo "cfd-backend/modules/user/repository" // Permission tetap di user repo (karena melekat ke user)
+
+	// Modul Usecase
+	authUsecase "cfd-backend/modules/auth/usecase"
+	userUsecase "cfd-backend/modules/user/usecase"
+	pedagangUsecase "cfd-backend/modules/pedagang/usecase"
+	menuUsecase "cfd-backend/modules/menu/usecase"
+
+	// Modul Controller
+	authController "cfd-backend/modules/auth/controller"
+	userController "cfd-backend/modules/user/controller"
+	pedagangController "cfd-backend/modules/pedagang/controller"
+	menuController "cfd-backend/modules/menu/controller"
 
 	"github.com/gin-gonic/gin"
 )
@@ -19,14 +35,23 @@ func main() {
 	db := database.Connect(cfg.DatabaseURL)
 	defer db.Close()
 
-	userRepo := repository.NewUserRepository(db)
-	permRepo := repository.NewPermissionRepository(db)
-	pedagangRepo := repository.NewPedagangRepository(db)
-	menuRepo := repository.NewMenuRepository(db)
+	// 1. Init All Repositories
+	userRepository := userRepo.NewUserRepository(db)
+	pedagangRepository := pedagangRepo.NewPedagangRepository(db)
+	menuRepository := menuRepo.NewMenuRepository(db)
+	permissionRepository := permRepo.NewPermissionRepository(db)
 
-	authHandler := handlers.NewAuthHandler(userRepo, cfg.JWTSecret)
-	pedagangHandler := handlers.NewPedagangHandler(pedagangRepo)
-	menuHandler := handlers.NewMenuHandler(menuRepo, userRepo, pedagangRepo)
+	// 2. Init All Usecases
+	authUsecase := authUsecase.NewAuthUsecase(userRepository, cfg.JWTSecret)
+	userUsecase := userUsecase.NewUserUsecase(userRepository)
+	pedagangUsecase := pedagangUsecase.NewPedagangUsecase(pedagangRepository)
+	menuUsecase := menuUsecase.NewMenuUsecase(menuRepository, userRepository, pedagangRepository)
+
+	// 3. Init All Controllers
+	authController := authController.NewAuthController(authUsecase)
+	userController := userController.NewUserController(userUsecase)
+	pedagangController := pedagangController.NewPedagangController(pedagangUsecase)
+	menuController := menuController.NewMenuController(menuUsecase)
 
 	router := gin.Default()
 	router.Use(middleware.CORSMiddleware(cfg.CORSAllowedOrigins))
@@ -37,24 +62,22 @@ func main() {
 	})
 
 	// ============ ENDPOINT PUBLIK (TIDAK PERLU LOGIN) ============
-	router.POST("/api/register", authHandler.RegisterPedagang)
-	router.POST("/api/login", authHandler.Login)
+	router.POST("/api/register", authController.RegisterPedagang)
+	router.POST("/api/login", authController.Login)
 
 	// ============ ENDPOINT PROTECTED (BUTUH LOGIN) ============
 	// Endpoint ini bisa diakses oleh semua user yang sudah login (tanpa cek role)
-	router.GET("/api/me", middleware.AuthMiddleware(cfg.JWTSecret), authHandler.Me)
+	router.GET("/api/me", middleware.AuthMiddleware(cfg.JWTSecret), userController.Me)
 
-	// Menu dinamis -- otomatis nyesuain isinya sama role user yang lagi
-	// login (dibaca dari DB, bukan dari token), dipanggil frontend abis
-	// login buat render sidebar.
-	router.GET("/api/menus", middleware.AuthMiddleware(cfg.JWTSecret), menuHandler.GetMyMenus)
+	// Menu dinamis
+	router.GET("/api/menus", middleware.AuthMiddleware(cfg.JWTSecret), menuController.GetMyMenus)
 
 	// ============ ENDPOINT KHUSUS ROLE ============
 
 	// 1. Endpoint untuk PEDAGANG saja
 	router.GET("/api/pedagang/dashboard",
 		middleware.AuthMiddleware(cfg.JWTSecret),
-		middleware.RoleMiddleware(userRepo, "pedagang"),
+		middleware.RoleMiddleware(userRepository, "pedagang"),
 		func(c *gin.Context) {
 			userID, _ := c.Get("user_id")
 			c.JSON(http.StatusOK, gin.H{
@@ -67,7 +90,7 @@ func main() {
 	// 2. Endpoint untuk PETUGAS_CFD saja
 	router.GET("/api/petugas/dashboard",
 		middleware.AuthMiddleware(cfg.JWTSecret),
-		middleware.RoleMiddleware(userRepo, "petugas"),
+		middleware.RoleMiddleware(userRepository, "petugas"),
 		func(c *gin.Context) {
 			userID, _ := c.Get("user_id")
 			c.JSON(http.StatusOK, gin.H{
@@ -80,7 +103,7 @@ func main() {
 	// 3. Endpoint untuk SUPERADMIN saja
 	router.GET("/api/admin/dashboard",
 		middleware.AuthMiddleware(cfg.JWTSecret),
-		middleware.RoleMiddleware(userRepo, "superadmin"),
+		middleware.RoleMiddleware(userRepository, "superadmin"),
 		func(c *gin.Context) {
 			userID, _ := c.Get("user_id")
 			c.JSON(http.StatusOK, gin.H{
@@ -93,7 +116,7 @@ func main() {
 	// 4. Endpoint untuk SUPERADMIN DAN PETUGAS_CFD (multi-role)
 	router.GET("/api/verifikasi/pengajuan",
 		middleware.AuthMiddleware(cfg.JWTSecret),
-		middleware.RoleMiddleware(userRepo, "superadmin", "petugas"),
+		middleware.RoleMiddleware(userRepository, "superadmin", "petugas"),
 		func(c *gin.Context) {
 			c.JSON(http.StatusOK, gin.H{
 				"message": "Halaman verifikasi pengajuan (Superadmin & Petugas CFD)",
@@ -101,10 +124,10 @@ func main() {
 		},
 	)
 
-	// 5. Contoh endpoint yang butuh login DAN permission spesifik (sudah ada)
+	// 5. Contoh endpoint yang butuh login DAN permission spesifik
 	router.GET("/api/admin/check",
 		middleware.AuthMiddleware(cfg.JWTSecret),
-		middleware.PermissionMiddleware(permRepo, "users.read"),
+		middleware.PermissionMiddleware(permissionRepository, "users.read"),
 		func(c *gin.Context) {
 			c.JSON(http.StatusOK, gin.H{"message": "kamu punya akses users.read"})
 		},
@@ -113,14 +136,14 @@ func main() {
 	// ============ ENDPOINT PEDAGANG (Handler terpisah) ============
 	router.POST("/api/pedagang/pengajuan",
 		middleware.AuthMiddleware(cfg.JWTSecret),
-		middleware.RoleMiddleware(userRepo, "pedagang"),
-		pedagangHandler.AjukanUsaha,
+		middleware.RoleMiddleware(userRepository, "pedagang"),
+		pedagangController.AjukanUsaha,
 	)
 
 	router.GET("/api/pedagang/pengajuan",
 		middleware.AuthMiddleware(cfg.JWTSecret),
-		middleware.RoleMiddleware(userRepo, "pedagang"),
-		pedagangHandler.StatusPengajuan,
+		middleware.RoleMiddleware(userRepository, "pedagang"),
+		pedagangController.StatusPengajuan,
 	)
 
 	log.Printf("server jalan di port %s", cfg.Port)
