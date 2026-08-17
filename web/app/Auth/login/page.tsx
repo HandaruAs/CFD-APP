@@ -2,8 +2,15 @@
 
 import { useState } from "react";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
+import { Suspense } from "react";
 
-export default function LoginPage() {
+// Komponen utama Login
+function LoginForm() {
+  const searchParams = useSearchParams();
+  const registered = searchParams.get("registered");
+  const showSuccess = registered === "1";
+
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
@@ -39,14 +46,6 @@ export default function LoginPage() {
 
       const role = data.user?.role;
 
-      // Pakai window.location (hard navigation) di sini, BUKAN router.push.
-      // Next.js App Router nyimpen halaman yang pernah dikunjungi di
-      // client-side router cache berdasarkan URL doang -- dia gak tau kalau
-      // localStorage baru saja berubah. Kalau kita router.push() ke URL yang
-      // sebelumnya pernah dibuka pas belum login, Next bisa nyuguhin versi
-      // cache lama itu lagi (Sidebar gak remount, token baru "kelewat").
-      // Hard navigation jamin komponennya mount dari nol dengan token yang
-      // udah bener.
       if (role === "pedagang") {
         try {
           const pengajuanRes = await fetch(
@@ -95,6 +94,14 @@ export default function LoginPage() {
           <div className="h-1.5 w-full bg-gradient-to-r from-[#2563EB] via-[#3B82F6] to-[#22C55E]" />
 
           <form onSubmit={handleSubmit} className="p-7 space-y-5">
+            
+            {/* --- PESAN SUKSES DARI REGISTER --- */}
+            {showSuccess && (
+              <div className="rounded-lg bg-emerald-50 border border-emerald-200 px-3.5 py-2.5 text-sm text-emerald-700">
+                Pendaftaran berhasil! Silakan login dengan akun baru Anda.
+              </div>
+            )}
+
             {error && (
               <div className="rounded-lg bg-red-50 border border-red-200 px-3.5 py-2.5 text-sm text-red-600">
                 {error}
@@ -239,5 +246,14 @@ export default function LoginPage() {
         </p>
       </div>
     </div>
+  );
+}
+
+// --- WRAPPER DENGAN SUSPENSE ---
+export default function LoginPage() {
+  return (
+    <Suspense fallback={<div className="min-h-screen flex items-center justify-center">Memuat halaman login...</div>}>
+      <LoginForm />
+    </Suspense>
   );
 }

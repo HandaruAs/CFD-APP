@@ -20,8 +20,8 @@ function MenuLink({ item, pathname }: { item: MenuNode; pathname: string }) {
           href={item.route}
           className={`group relative flex items-center gap-3 rounded-xl px-3 py-2.5 text-label-md transition-all duration-200 ${
             isActive
-              ? "bg-primary/10 text-white shadow-sm" // <-- Saat Aktif: Biru, Tulisan Putih Tegas
-              : "text-gray-700 hover:bg-gray-100 hover:text-gray-900" // <-- Saat Tidak Aktif: Abu Gelap, Background bersih
+              ? "bg-primary/10 text-white shadow-sm"
+              : "text-gray-700 hover:bg-gray-100 hover:text-gray-900"
           }`}
         >
           {isActive && (
@@ -32,7 +32,6 @@ function MenuLink({ item, pathname }: { item: MenuNode; pathname: string }) {
             />
           )}
           
-          {/* Wrapper Ikon */}
           <span
             className={`relative z-10 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg transition-colors ${
               isActive
@@ -44,7 +43,6 @@ function MenuLink({ item, pathname }: { item: MenuNode; pathname: string }) {
             <Icon className="h-[18px] w-[18px]" strokeWidth={2} />
           </span>
 
-          {/* Teks Menu */}
           <span
             className={`relative z-10 truncate transition-all duration-200 ${
               isActive 
@@ -90,11 +88,17 @@ export function Sidebar() {
       .finally(() => setLoading(false));
   }, []);
 
+  // --- PERBAIKAN SATU BARIS DI SINI ---
   function handleLogout() {
     localStorage.removeItem("cfd_token");
+    localStorage.removeItem("cfd_user");
+    localStorage.removeItem("cfd_remember");
     document.cookie = "cfd_token=; path=/; max-age=0";
-    router.push("/auth/login");
+    
+    // Ganti router.push dengan window.location.href (Hard Redirect)
+    window.location.href = "/auth/login";
   }
+  // --------------------------------------
 
   return (
     <aside className="hidden lg:flex lg:w-[260px] shrink-0 flex-col border-r border-outline-variant bg-surface-container-lowest h-screen sticky top-0">
