@@ -111,3 +111,42 @@ func (r *UserRepository) GetUserRole(ctx context.Context, userID string) (string
 	}
 	return slug, nil
 }
+
+func (r *UserRepository) RegisterPedagangByAdmin(ctx context.Context, email, passwordHash, name, phone string) (string, error) {
+	tx, err := r.db.Begin(ctx)
+	if err != nil {
+		return "", err
+	}
+	defer tx.Rollback(ctx)
+
+	var userID string
+	err = tx.QueryRow(ctx,
+		`INSERT INTO users (email, password, name, phone, status) VALUES ($1, $2, $3, $4, 'active') RETURNING id`,
+		email, passwordHash, name, phone,
+	).Scan(&userID)
+	if err != nil {
+		return "", err
+	}
+
+	var roleID string
+	err = tx.QueryRow(ctx,
+		`SELECT id FROM roles WHERE slug = 'pedagang' AND deleted_at IS NULL`,
+	).Scan(&roleID)
+	if err != nil {
+		return "", err
+	}
+
+	_, err = tx.Exec(ctx,
+		`INSERT INTO user_roles (user_id, role_id) VALUES ($1, $2)`,
+		userID, roleID,
+	)
+	if err != nil {
+		return "", err
+	}
+
+	if err := tx.Commit(ctx); err != nil {
+		return "", err
+	}
+
+	return userID, nil
+}
