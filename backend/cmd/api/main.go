@@ -12,7 +12,7 @@ import (
 	userRepo "cfd-backend/modules/user/repository"
 	pedagangRepo "cfd-backend/modules/pedagang/repository"
 	menuRepo "cfd-backend/modules/menu/repository"
-	permRepo "cfd-backend/modules/user/repository" // Permission tetap di user repo (karena melekat ke user)
+	permRepo "cfd-backend/modules/user/repository"
 
 	// Modul Usecase
 	authUsecase "cfd-backend/modules/auth/usecase"
@@ -50,7 +50,8 @@ func main() {
 	// 3. Init All Controllers
 	authController := authController.NewAuthController(authUsecase)
 	userController := userController.NewUserController(userUsecase)
-	pedagangController := pedagangController.NewPedagangController(pedagangUsecase)
+	// PedagangController butuh userUsecase untuk membuat user baru saat ditambahkan oleh Superadmin
+	pedagangController := pedagangController.NewPedagangController(pedagangUsecase, userUsecase)
 	menuController := menuController.NewMenuController(menuUsecase)
 
 	router := gin.Default()
@@ -145,6 +146,38 @@ func main() {
 		middleware.RoleMiddleware(userRepository, "pedagang"),
 		pedagangController.StatusPengajuan,
 	)
+
+	// ============ ENDPOINT SUPERADMIN (Manajemen Pedagang) ============
+	router.POST("/api/admin/users/pedagang",
+		middleware.AuthMiddleware(cfg.JWTSecret),
+		middleware.RoleMiddleware(userRepository, "superadmin"),
+		pedagangController.CreatePedagangByAdmin,
+	)
+
+	router.GET("/api/admin/users/pedagang", 
+		middleware.AuthMiddleware(cfg.JWTSecret),
+		middleware.RoleMiddleware(userRepository, "superadmin"),
+		pedagangController.ListPedagangByAdmin,
+	)
+
+	router.GET("/api/admin/users/pedagang/stats",
+	middleware.AuthMiddleware(cfg.JWTSecret),
+	middleware.RoleMiddleware(userRepository, "superadmin"),
+	pedagangController.GetPedagangStats,
+	)
+
+	router.GET("/api/admin/users/pedagang/:id",
+	middleware.AuthMiddleware(cfg.JWTSecret),
+	middleware.RoleMiddleware(userRepository, "superadmin"),
+	pedagangController.GetPedagangByID,
+	)
+
+	router.DELETE("/api/admin/users/pedagang/:id",
+	middleware.AuthMiddleware(cfg.JWTSecret),
+	middleware.RoleMiddleware(userRepository, "superadmin"),
+	pedagangController.DeletePedagangByAdmin,
+	)
+
 
 	log.Printf("server jalan di port %s", cfg.Port)
 	if err := router.Run(":" + cfg.Port); err != nil {

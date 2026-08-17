@@ -9,6 +9,8 @@ import {
   ChevronLeft,
   ChevronRight,
   Inbox,
+  Pencil,
+  Trash2,
   type LucideIcon,
 } from "lucide-react";
 
@@ -20,6 +22,14 @@ export type User = {
   joinedAt: string;
   active: boolean;
   initial: string;
+  // Field tambahan opsional -- cuma keisi buat role yang punya data ini
+  // (pedagang). Dibiarin optional biar komponen ini tetep generic, bisa
+  // dipakai juga buat Manajemen User Petugas yang gak punya field ini.
+  nik?: string;
+  namaUsaha?: string;
+  jenisDagangan?: string;
+  alamat?: string;
+  statusVerifikasi?: "pending" | "approved" | "rejected";
 };
 
 export type StatCard = {
@@ -47,16 +57,26 @@ export function UserManagementTable({
   searchPlaceholder,
   statCards,
   apiEndpoint,
+  reloadSignal = 0,
+  onAddClick,
+  onEditUser,
+  onDeleteUser,
+  onToggleActive,
 }: {
   title: string;
   subtitle: string;
   addButtonLabel: string;
   searchPlaceholder: string;
   statCards: StatCard[];
-  // Belum dipakai buat fetch beneran -- disimpan di sini biar pas nanti
-  // endpoint asli dipasang, tinggal ambil dari props ini, gak perlu ubah
-  // struktur komponen lagi.
   apiEndpoint: string;
+  // Naikkan angka ini dari parent (misal ++reloadSignal) tiap kali ada
+  // create/edit/delete yang sukses, biar tabel fetch ulang datanya.
+  reloadSignal?: number;
+  onAddClick?: () => void;
+  onEditUser?: (user: User) => void;
+  onDeleteUser?: (user: User) => void;
+  // Kalau gak dikasih, toggle cuma ubah state lokal (gak ke-simpen ke server).
+  onToggleActive?: (user: User) => Promise<void>;
 }) {
   const [users, setUsers] = useState<User[]>([]);
   const [search, setSearch] = useState("");
@@ -64,34 +84,57 @@ export function UserManagementTable({
   const [totalData, setTotalData] = useState(0);
 
   useEffect(() => {
-    // TODO: ganti dengan fetch ke `apiEndpoint` (lihat komentar di props)
-    // async function fetchData() {
-    //   const token = localStorage.getItem("cfd_token");
-    //   const res = await fetch(
-    //     `${process.env.NEXT_PUBLIC_API_URL}${apiEndpoint}?search=${search}`,
-    //     { headers: { Authorization: `Bearer ${token}` } }
-    //   );
-    //   const data = await res.json();
-    //   setUsers(data.users);
-    //   setTotalData(data.total);
-    //   setLoading(false);
-    // }
-    // fetchData();
+    let cancelled = false;
 
-    // Placeholder sementara -- begitu fetchData() di atas beneran
-    // dipasang, setLoading(false) ini PINDAH ke dalam .finally() fetch-nya
-    // (jadi otomatis gak kena rule ini lagi, karena async). Baris di bawah
-    // cuma buat nyalain UI selagi belum ada data asli.
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    setLoading(false); // hapus baris ini setelah fetch asli dipasang
-  }, [search, apiEndpoint]);
+    async function fetchData() {
+      setLoading(true);
+      try {
+        const token = localStorage.getItem("cfd_token");
+        const res = await fetch(
+          `${process.env.NEXT_PUBLIC_API_URL}${apiEndpoint}?search=${encodeURIComponent(search)}`,
+          { headers: { Authorization: `Bearer ${token}` } }
+        );
+        if (!res.ok) throw new Error("gagal mengambil data pengguna");
+        const data = await res.json();
+        if (!cancelled) {
+          setUsers(data.users ?? []);
+          setTotalData(data.total ?? 0);
+        }
+      } catch {
+        if (!cancelled) {
+          setUsers([]);
+          setTotalData(0);
+        }
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    }
 
-  const toggleActive = (id: string) => {
+    fetchData();
+    return () => {
+      cancelled = true;
+    };
+  }, [search, apiEndpoint, reloadSignal]);
+
+  const toggleActive = async (u: User) => {
+    // Update optimis dulu di UI, biar kerasa instan
     setUsers((prev) =>
-      prev.map((u) => (u.id === id ? { ...u, active: !u.active } : u))
+      prev.map((x) => (x.id === u.id ? { ...x, active: !x.active } : x))
     );
-    // TODO: panggil endpoint API buat update status aktif/nonaktif user ini
+
+    if (!onToggleActive) return;
+
+    try {
+      await onToggleActive(u);
+    } catch {
+      // Gagal simpen ke server -> balikin lagi state lokalnya
+      setUsers((prev) =>
+        prev.map((x) => (x.id === u.id ? { ...x, active: u.active } : x))
+      );
+    }
   };
+
+  const hasRowActions = Boolean(onEditUser || onDeleteUser);
 
   return (
     <div>
@@ -103,7 +146,10 @@ export function UserManagementTable({
           </h1>
           <p className="text-base text-slate-500 mt-2">{subtitle}</p>
         </div>
-        <button className="flex items-center gap-2 text-sm font-semibold text-white bg-blue-900 hover:bg-blue-950 rounded-lg px-5 py-3 shadow-sm transition">
+        <button
+          onClick={onAddClick}
+          className="flex items-center gap-2 text-sm font-semibold text-white bg-blue-900 hover:bg-blue-950 rounded-lg px-5 py-3 shadow-sm transition"
+        >
           <UserPlus className="w-4 h-4" strokeWidth={2.2} />
           {addButtonLabel}
         </button>
@@ -174,11 +220,6 @@ export function UserManagementTable({
           <SlidersHorizontal className="w-4 h-4" />
           Filter
         </button>
-
-        <button className="flex items-center gap-2 text-sm font-semibold text-blue-700 bg-blue-50 rounded-lg px-4 py-3 hover:bg-blue-100">
-          <Download className="w-4 h-4" />
-          Ekspor
-        </button>
       </div>
 
       {/* Table */}
@@ -196,15 +237,20 @@ export function UserManagementTable({
                 TANGGAL BERGABUNG
               </th>
               <th className="px-5 py-3.5 text-xs font-bold text-slate-500 tracking-wide">
-                STATUS
+                STATUS VERIFIKASI
               </th>
+              {hasRowActions && (
+                <th className="px-5 py-3.5 text-xs font-bold text-slate-500 tracking-wide text-right">
+                  AKSI
+                </th>
+              )}
             </tr>
           </thead>
           <tbody>
             {loading ? (
               <tr>
                 <td
-                  colSpan={4}
+                  colSpan={hasRowActions ? 5 : 4}
                   className="px-5 py-12 text-center text-sm text-slate-400"
                 >
                   Memuat data...
@@ -212,7 +258,7 @@ export function UserManagementTable({
               </tr>
             ) : users.length === 0 ? (
               <tr>
-                <td colSpan={4} className="px-5 py-16">
+                <td colSpan={hasRowActions ? 5 : 4} className="px-5 py-16">
                   <div className="flex flex-col items-center gap-2 text-center">
                     <Inbox
                       className="w-9 h-9 text-slate-300"
@@ -257,19 +303,45 @@ export function UserManagementTable({
                     {u.joinedAt}
                   </td>
                   <td className="px-5 py-4">
-                    <button
-                      type="button"
-                      onClick={() => toggleActive(u.id)}
-                      className={`w-12 h-6.5 rounded-full flex items-center px-0.5 transition ${
-                        u.active
-                          ? "bg-emerald-500 justify-end"
-                          : "bg-red-400 justify-start"
-                      }`}
-                      aria-pressed={u.active}
-                    >
-                      <span className="w-5.5 h-5.5 rounded-full bg-white shadow" />
-                    </button>
+                    {/* PERBAIKAN: Tampilkan Badge Status Verifikasi */}
+                    <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${
+                      u.statusVerifikasi === 'approved' 
+                        ? 'bg-emerald-100 text-emerald-700' 
+                        : u.statusVerifikasi === 'rejected'
+                        ? 'bg-red-100 text-red-700'
+                        : 'bg-amber-100 text-amber-700'
+                    }`}>
+                      {u.statusVerifikasi === 'pending' ? 'Menunggu Verifikasi' : 
+                       u.statusVerifikasi === 'approved' ? 'Terverifikasi' : 
+                       u.statusVerifikasi === 'rejected' ? 'Ditolak' : '-'}
+                    </span>
                   </td>
+                  {hasRowActions && (
+                    <td className="px-5 py-4">
+                      <div className="flex items-center justify-end gap-1.5">
+                        {onEditUser && (
+                          <button
+                            type="button"
+                            onClick={() => onEditUser(u)}
+                            className="rounded-lg p-2 text-slate-400 hover:bg-slate-100 hover:text-blue-700"
+                            aria-label={`Edit ${u.name}`}
+                          >
+                            <Pencil className="h-4 w-4" />
+                          </button>
+                        )}
+                        {onDeleteUser && (
+                          <button
+                            type="button"
+                            onClick={() => onDeleteUser(u)}
+                            className="rounded-lg p-2 text-slate-400 hover:bg-red-50 hover:text-red-600"
+                            aria-label={`Hapus ${u.name}`}
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </button>
+                        )}
+                      </div>
+                    </td>
+                  )}
                 </tr>
               ))
             )}
