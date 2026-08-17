@@ -81,7 +81,7 @@ export default function RegisterPage() {
       // Register cuma bikin akun (role pedagang), belum ada pengajuan
       // usaha & belum login (belum ada token). Arahkan ke halaman login
       // dengan flag biar bisa ditampilkan pesan sukses di sana.
-      router.push("/login?registered=1");
+      router.push("/auth/login?registered=1");
     } catch (err) {
       console.error("Gagal menghubungi server:", err);
       setError("Tidak bisa terhubung ke server. Coba lagi nanti.");
