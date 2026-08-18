@@ -1,9 +1,20 @@
-import { Clock, Hourglass, History, CircleX, CalendarCheck2 } from "lucide-react";
+import {
+  Clock,
+  Hourglass,
+  History,
+  CircleX,
+  CalendarCheck2,
+  Link2,
+  Copy,
+  Lock,
+  LockOpen,
+} from "lucide-react";
 
 // Halaman pengaturan jam operasional CFD -- petugas bisa lihat sesi yang
-// sedang berjalan, mengubah jam mulai/selesai, dan melihat riwayat sesi
-// sebelumnya. Data sesi & riwayat masih dummy, tinggal disambungkan ke
-// endpoint jadwal operasional begitu backend-nya siap.
+// sedang berjalan, mengubah jam mulai/selesai, membuka/menutup pendaftaran
+// pedagang, dan melihat riwayat sesi sebelumnya. Data sesi, pendaftaran &
+// riwayat masih dummy, tinggal disambungkan ke endpoint jadwal operasional
+// begitu backend-nya siap.
 
 type StatusRiwayat = "normal" | "diperpanjang" | "diakhiri-awal";
 
@@ -56,6 +67,56 @@ export default function JamOperasionalPage() {
         <p className="mt-xs max-w-2xl text-body-md text-on-surface-variant">
           Atur jadwal aktif dan durasi kegiatan Car Free Day.
         </p>
+      </div>
+
+      {/* Pendaftaran pedagang -- buka/tutup akses ke website pendaftaran umkm.
+          Status & link masih dummy, tinggal disambungkan ke endpoint
+          pengaturan pendaftaran begitu backend-nya siap. */}
+      <div className="rounded-lg border border-outline-variant bg-surface-container-lowest p-lg">
+        <div className="flex flex-wrap items-center justify-between gap-sm">
+          <h3 className="text-title-lg text-on-surface">Pendaftaran Pedagang</h3>
+          <span className="flex items-center gap-xs rounded-full bg-secondary-container/40 px-sm py-1 text-label-sm text-on-secondary-container">
+            <span className="h-1.5 w-1.5 rounded-full bg-secondary" />
+            Pendaftaran Dibuka
+          </span>
+        </div>
+        <p className="mt-xs text-body-md text-on-surface-variant">
+          Buka pendaftaran supaya pedagang baru bisa mendaftar lewat website pendaftaran UMKM sebelum
+          hari CFD berlangsung.
+        </p>
+
+        <div className="mt-md flex flex-col gap-sm sm:flex-row sm:items-center">
+          <div className="flex flex-1 items-center gap-sm rounded-md bg-surface-container-low px-md py-sm">
+            <Link2 className="h-4 w-4 shrink-0 text-on-surface-variant" strokeWidth={2} />
+            <span className="truncate text-body-md text-on-surface-variant">
+              cfdsurabaya.id/pendaftaran
+            </span>
+          </div>
+          <button
+            type="button"
+            className="flex shrink-0 items-center justify-center gap-sm rounded-md border border-outline-variant px-md py-sm text-label-md text-on-surface transition-colors hover:bg-surface-container-low"
+          >
+            <Copy className="h-[18px] w-[18px]" strokeWidth={2} />
+            Salin Link
+          </button>
+        </div>
+
+        <div className="mt-md flex flex-wrap gap-sm border-t border-outline-variant pt-md">
+          <button
+            type="button"
+            className="flex items-center gap-sm rounded-md bg-error-container/60 px-lg py-sm text-label-md text-on-error-container transition-colors hover:bg-error-container"
+          >
+            <Lock className="h-[18px] w-[18px]" strokeWidth={2} />
+            Tutup Pendaftaran
+          </button>
+          <button
+            type="button"
+            className="flex items-center gap-sm rounded-md border border-outline-variant px-lg py-sm text-label-md text-on-surface-variant transition-colors hover:bg-surface-container-low"
+          >
+            <LockOpen className="h-[18px] w-[18px]" strokeWidth={2} />
+            Buka Pendaftaran
+          </button>
+        </div>
       </div>
 
       <div className="grid grid-cols-1 gap-md lg:grid-cols-[1fr_280px]">
