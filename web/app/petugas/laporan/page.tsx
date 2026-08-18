@@ -1,24 +1,32 @@
-import { Search, ListFilter, ChevronRight, ChevronLeft } from "lucide-react";
+import {
+  Search,
+  ListFilter,
+  Download,
+  ChevronRight,
+  ChevronLeft,
+  UserCheck,
+  Store,
+  Clock,
+} from "lucide-react";
 
-// Halaman daftar pedagang yang terdaftar & aktif di area CFD. Petugas bisa
-// mencari, memfilter per kategori/zona, dan membuka detail tiap pedagang.
-// Data pedagang masih dummy, tinggal disambungkan ke GET /api/pedagang
-// begitu endpoint listing-nya siap di backend.
+// Halaman laporan kehadiran -- daftar pedagang yang sudah check-in (scan QR)
+// ke area CFD hari ini, lengkap dengan waktu check-in-nya. Data masih dummy,
+// tinggal disambungkan ke GET /api/checkin begitu endpoint-nya siap.
 
 type KategoriUsaha = "kuliner" | "kerajinan" | "ritel";
-type StatusKehadiran = "hadir" | "absen";
 
-type Pedagang = {
+type Kehadiran = {
   id: string;
   namaUsaha: string;
   pemilik: string;
   inisial: string;
   kategori: KategoriUsaha;
   lokasiLapak: string;
-  status: StatusKehadiran;
+  waktuCheckin: string;
+  metode: string;
 };
 
-const PEDAGANG: Pedagang[] = [
+const KEHADIRAN: Kehadiran[] = [
   {
     id: "APDC-001",
     namaUsaha: "Sate Madura Cak Budi",
@@ -26,7 +34,8 @@ const PEDAGANG: Pedagang[] = [
     inisial: "SB",
     kategori: "kuliner",
     lokasiLapak: "Blok A1 - Zona Timur",
-    status: "hadir",
+    waktuCheckin: "06:15",
+    metode: "Scan QR",
   },
   {
     id: "APDC-042",
@@ -35,25 +44,38 @@ const PEDAGANG: Pedagang[] = [
     inisial: "SA",
     kategori: "kerajinan",
     lokasiLapak: "Blok C3 - Zona Tengah",
-    status: "hadir",
+    waktuCheckin: "06:30",
+    metode: "Scan QR",
   },
   {
-    id: "APDC-115",
-    namaUsaha: "Mainan Anak Wira",
-    pemilik: "Agus Wibowo",
-    inisial: "AW",
-    kategori: "ritel",
-    lokasiLapak: "Blok D1 - Zona Barat",
-    status: "absen",
+    id: "APDC-077",
+    namaUsaha: "Dimsum Rakyat 99",
+    pemilik: "Hendra Wijaya",
+    inisial: "HW",
+    kategori: "kuliner",
+    lokasiLapak: "Blok C4 - Zona Tengah",
+    waktuCheckin: "06:42",
+    metode: "Scan QR",
+  },
+  {
+    id: "APDC-023",
+    namaUsaha: "Sate Padang Mak Etek",
+    pemilik: "Yulia Etek",
+    inisial: "YE",
+    kategori: "kuliner",
+    lokasiLapak: "Blok A8 - Zona Timur",
+    waktuCheckin: "07:05",
+    metode: "Scan QR",
   },
   {
     id: "APDC-088",
-    namaUsaha: "Es Jeruk Peras Segar",
+    namaUsaha: "Kopi Keliling Nusantara",
     pemilik: "Joko Riyadi",
     inisial: "JR",
     kategori: "kuliner",
-    lokasiLapak: "Blok A5 - Zona Timur",
-    status: "hadir",
+    lokasiLapak: "Blok D2 - Zona Barat",
+    waktuCheckin: "07:12",
+    metode: "Scan QR",
   },
 ];
 
@@ -63,21 +85,60 @@ const KATEGORI_STYLE: Record<KategoriUsaha, { label: string; bg: string; text: s
   ritel: { label: "Ritel", bg: "bg-surface-container-high", text: "text-on-surface-variant" },
 };
 
-const STATUS_STYLE: Record<StatusKehadiran, { label: string; bg: string; text: string }> = {
-  hadir: { label: "Hadir", bg: "bg-secondary-container/40", text: "text-on-secondary-container" },
-  absen: { label: "Absen", bg: "bg-error-container/60", text: "text-on-error-container" },
-};
-
-export default function DataPedagangPage() {
-  const totalPedagang = 150;
+export default function LaporanPage() {
+  const totalTerdaftar = 150;
+  const totalCheckin = KEHADIRAN.length;
+  const persenHadir = Math.round((totalCheckin / totalTerdaftar) * 1000) / 10;
 
   return (
     <div className="flex flex-col gap-lg">
-      <div>
-        <h2 className="text-headline-lg text-on-surface">Data Pedagang</h2>
-        <p className="mt-xs max-w-2xl text-body-md text-on-surface-variant">
-          Daftar seluruh pedagang yang terdaftar dan aktif di area CFD.
-        </p>
+      <div className="flex flex-wrap items-start justify-between gap-md">
+        <div>
+          <h2 className="text-headline-lg text-on-surface">Laporan Kehadiran Pedagang</h2>
+          <p className="mt-xs max-w-2xl text-body-md text-on-surface-variant">
+            Daftar pedagang yang sudah check-in via scan QR ke area CFD hari ini.
+          </p>
+        </div>
+        <button
+          type="button"
+          className="flex items-center gap-sm rounded-md bg-primary px-md py-sm text-label-md text-on-primary transition-colors hover:bg-primary-container"
+        >
+          <Download className="h-[18px] w-[18px]" strokeWidth={2} />
+          Unduh Laporan
+        </button>
+      </div>
+
+      {/* Kartu ringkasan */}
+      <div className="grid grid-cols-1 gap-md sm:grid-cols-3">
+        <div className="rounded-lg border border-outline-variant bg-surface-container-lowest p-lg">
+          <span className="flex h-9 w-9 items-center justify-center rounded-md bg-primary text-on-primary">
+            <UserCheck className="h-[18px] w-[18px]" strokeWidth={2} />
+          </span>
+          <p className="mt-md text-label-sm uppercase tracking-wide text-on-surface-variant">
+            Sudah Check-in
+          </p>
+          <p className="text-headline-md text-on-surface">{totalCheckin}</p>
+        </div>
+
+        <div className="rounded-lg border border-outline-variant bg-surface-container-lowest p-lg">
+          <span className="flex h-9 w-9 items-center justify-center rounded-md bg-secondary-container text-on-secondary-container">
+            <Store className="h-[18px] w-[18px]" strokeWidth={2} />
+          </span>
+          <p className="mt-md text-label-sm uppercase tracking-wide text-on-surface-variant">
+            Total Terdaftar
+          </p>
+          <p className="text-headline-md text-on-surface">{totalTerdaftar}</p>
+        </div>
+
+        <div className="rounded-lg border border-outline-variant bg-surface-container-lowest p-lg">
+          <span className="flex h-9 w-9 items-center justify-center rounded-md bg-tertiary-container text-on-tertiary-container">
+            <Clock className="h-[18px] w-[18px]" strokeWidth={2} />
+          </span>
+          <p className="mt-md text-label-sm uppercase tracking-wide text-on-surface-variant">
+            Persentase Kehadiran
+          </p>
+          <p className="text-headline-md text-on-surface">{persenHadir}%</p>
+        </div>
       </div>
 
       {/* Search & filter */}
@@ -106,41 +167,42 @@ export default function DataPedagangPage() {
           type="button"
           className="flex items-center justify-center gap-xs rounded-md bg-surface-container-low px-md py-sm text-label-md text-on-surface transition-colors hover:bg-surface-container"
         >
-          Semua Zona
+          Hari Ini
         </button>
       </div>
 
-      {/* Tabel pedagang */}
+      {/* Tabel kehadiran */}
       <div className="overflow-hidden rounded-lg border border-outline-variant bg-surface-container-lowest">
         <div className="overflow-x-auto">
           <table className="w-full text-left">
             <thead>
               <tr className="border-b border-outline-variant bg-surface-container-low text-label-sm text-on-surface-variant">
+                <th className="px-lg py-sm font-medium">Waktu Check-in</th>
                 <th className="px-lg py-sm font-medium">ID Pedagang</th>
                 <th className="px-lg py-sm font-medium">Profil Usaha</th>
                 <th className="px-lg py-sm font-medium">Kategori</th>
                 <th className="px-lg py-sm font-medium">Lokasi Lapak</th>
-                <th className="px-lg py-sm font-medium">Status Kehadiran</th>
+                <th className="px-lg py-sm font-medium">Metode</th>
                 <th className="px-lg py-sm text-right font-medium">Aksi</th>
               </tr>
             </thead>
             <tbody>
-              {PEDAGANG.map((p) => {
-                const kategori = KATEGORI_STYLE[p.kategori];
-                const status = STATUS_STYLE[p.status];
+              {KEHADIRAN.map((k) => {
+                const kategori = KATEGORI_STYLE[k.kategori];
                 return (
-                  <tr key={p.id} className="border-b border-outline-variant last:border-0">
-                    <td className="px-lg py-md text-body-md text-on-surface-variant">{p.id}</td>
+                  <tr key={k.id} className="border-b border-outline-variant last:border-0">
+                    <td className="px-lg py-md text-body-md text-on-surface">{k.waktuCheckin}</td>
+                    <td className="px-lg py-md text-body-md text-on-surface-variant">{k.id}</td>
                     <td className="px-lg py-md">
                       <div className="flex items-center gap-sm">
                         <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-primary-fixed text-label-sm font-semibold text-on-primary-fixed">
-                          {p.inisial}
+                          {k.inisial}
                         </span>
                         <div>
                           <p className="text-label-md font-semibold text-on-surface">
-                            {p.namaUsaha}
+                            {k.namaUsaha}
                           </p>
-                          <p className="text-label-sm text-on-surface-variant">{p.pemilik}</p>
+                          <p className="text-label-sm text-on-surface-variant">{k.pemilik}</p>
                         </div>
                       </div>
                     </td>
@@ -152,19 +214,17 @@ export default function DataPedagangPage() {
                       </span>
                     </td>
                     <td className="px-lg py-md text-body-md text-on-surface-variant">
-                      {p.lokasiLapak}
+                      {k.lokasiLapak}
                     </td>
                     <td className="px-lg py-md">
-                      <span
-                        className={`inline-flex rounded-full px-sm py-1 text-label-sm ${status.bg} ${status.text}`}
-                      >
-                        {status.label}
+                      <span className="inline-flex rounded-full bg-secondary-container/40 px-sm py-1 text-label-sm text-on-secondary-container">
+                        {k.metode}
                       </span>
                     </td>
                     <td className="px-lg py-md text-right">
                       <button
                         type="button"
-                        aria-label={`Lihat detail ${p.namaUsaha}`}
+                        aria-label={`Lihat detail ${k.namaUsaha}`}
                         className="inline-flex h-7 w-7 items-center justify-center rounded-full text-on-surface-variant hover:bg-surface-container-low"
                       >
                         <ChevronRight className="h-4 w-4" strokeWidth={2} />
@@ -179,7 +239,7 @@ export default function DataPedagangPage() {
 
         <div className="flex flex-wrap items-center justify-between gap-sm border-t border-outline-variant px-lg py-sm">
           <p className="text-label-sm text-on-surface-variant">
-            Menampilkan 1-{PEDAGANG.length} dari {totalPedagang} pedagang
+            Menampilkan 1-{KEHADIRAN.length} dari {totalCheckin} pedagang yang sudah check-in
           </p>
           <div className="flex items-center gap-xs">
             <button
@@ -195,19 +255,6 @@ export default function DataPedagangPage() {
             >
               1
             </button>
-            <button
-              type="button"
-              className="flex h-7 w-7 items-center justify-center rounded-md text-label-sm text-on-surface-variant hover:bg-surface-container-low"
-            >
-              2
-            </button>
-            <button
-              type="button"
-              className="flex h-7 w-7 items-center justify-center rounded-md text-label-sm text-on-surface-variant hover:bg-surface-container-low"
-            >
-              3
-            </button>
-            <span className="px-xs text-label-sm text-on-surface-variant">...</span>
             <button
               type="button"
               aria-label="Halaman berikutnya"
