@@ -12,6 +12,7 @@ import {
   ShieldCheck,
   FilePenLine,
   XCircle,
+  ClipboardList,
 } from "lucide-react";
 
 type Status = "approved" | "pending" | "rejected";
@@ -64,7 +65,7 @@ export default function StatusVerifikasiPage() {
 
   if (loading) {
     return (
-      <div className="flex justify-center py-3xl text-body-md text-on-surface-variant">
+      <div className="w-full py-md text-center text-body-md text-on-surface-variant">
         Memuat status pengajuan...
       </div>
     );
@@ -72,92 +73,115 @@ export default function StatusVerifikasiPage() {
 
   if (error) {
     return (
-      <div className="mx-auto max-w-2xl rounded-lg border border-error/30 bg-error-container/20 p-lg text-center text-body-md text-error">
+      <div className="mx-auto w-full max-w-2xl rounded-lg border border-error/30 bg-error-container/20 p-md text-center text-body-md text-error">
         {error}
       </div>
     );
   }
 
   if (!data?.has_pengajuan) {
-    return (
-      <div className="mx-auto max-w-2xl rounded-lg border border-outline-variant bg-surface-container-lowest p-3xl text-center">
-        <p className="mb-md text-body-lg text-on-surface-variant">
-          Kamu belum mengajukan pendaftaran usaha.
-        </p>
-        <Link
-          href="/pedagang/pendaftaran"
-          className="inline-flex items-center gap-xs rounded-md bg-primary px-md py-sm text-label-md text-on-primary hover:bg-primary-container"
-        >
-          Ajukan Sekarang
-          <ArrowRight className="h-4 w-4" strokeWidth={2} />
-        </Link>
-      </div>
-    );
+    return <NotRegisteredCard />;
   }
 
   const status = data.status ?? "pending";
 
   return (
-    <div className="flex flex-col gap-lg">
-      {status === "approved" && <ApprovedCard />}
-      {status === "pending" && <PendingCard />}
-      {status === "rejected" && (
-        <RejectedCard catatan={data.catatan ?? "Tidak ada catatan dari petugas."} />
-      )}
+    // --- PERBAIKAN: flex-1 justify-center items-center ---
+    <div className="flex w-full flex-1 flex-col justify-center items-center py-lg">
+      <div className="mx-auto w-full max-w-3xl flex flex-col gap-md">
+        {status === "approved" && <ApprovedCard />}
+        {status === "pending" && <PendingCard />}
+        {status === "rejected" && (
+          <RejectedCard catatan={data.catatan ?? "Tidak ada catatan dari petugas."} />
+        )}
+      </div>
     </div>
+  );
+}
+
+function NotRegisteredCard() {
+  return (
+    <section className="mx-auto w-full max-w-[36rem] py-md text-center">
+      <ClipboardList
+        className="mx-auto mb-md h-10 w-10 text-primary"
+        strokeWidth={1.75}
+      />
+
+      <h2 className="mb-sm text-headline-md text-on-surface">
+        Anda Belum Terdaftar
+      </h2>
+
+      <p className="mb-lg text-body-lg text-on-surface-variant">
+        Daftarkan usaha Anda untuk mendapatkan slot berjualan di acara Car
+        Free Day. Pengajuan akan ditinjau oleh tim petugas dan Anda bisa
+        memantau statusnya langsung dari halaman ini.
+      </p>
+
+      <Link
+        href="/pedagang/pendaftaran"
+        className="inline-flex items-center gap-xs rounded-md bg-primary px-lg py-sm text-label-lg text-on-primary transition-colors hover:bg-primary-container"
+      >
+        Ajukan Sekarang
+        <ArrowRight className="h-4 w-4" strokeWidth={2} />
+      </Link>
+    </section>
+  );
+}
+
+function PendingCard() {
+  return (
+    <section className="mx-auto w-full max-w-[36rem] py-md text-center">
+      <CalendarClock
+        className="mx-auto mb-md h-10 w-10 text-tertiary"
+        strokeWidth={1.75}
+      />
+
+      <span className="mb-sm inline-block text-label-md uppercase tracking-wide text-tertiary">
+        Dalam Proses Verifikasi
+      </span>
+
+      <h2 className="mb-sm text-headline-md text-on-surface">
+        Dokumen Sedang Ditinjau
+      </h2>
+
+      <p className="mb-lg text-body-lg text-on-surface-variant">
+        Tim petugas CFD sedang memeriksa data dan dokumen usaha Anda. Proses
+        ini biasanya memakan waktu 1–3 hari kerja dan Anda akan
+        menerima notifikasi begitu statusnya diperbarui.
+      </p>
+    </section>
   );
 }
 
 function ApprovedCard() {
   return (
-    <>
-      <section
-        className="mx-auto w-full max-w-2xl rounded-lg p-3xl text-center"
-        style={{
-          backgroundImage:
-            "linear-gradient(135deg, var(--color-secondary-container) 0%, var(--color-surface-container-low) 100%)",
-        }}
+    <section className="mx-auto w-full max-w-[36rem] py-md text-center">
+      <CheckCircle2
+        className="mx-auto mb-md h-10 w-10 text-secondary"
+        strokeWidth={1.75}
+      />
+
+      <span className="mb-sm inline-block text-label-md uppercase tracking-wide text-secondary">
+        Terverifikasi
+      </span>
+
+      <h2 className="mb-sm text-headline-md text-on-surface">Selamat!</h2>
+
+      <p className="mb-lg text-body-lg text-on-surface-variant">
+        Akun usaha Anda telah berhasil disetujui. Anda sekarang resmi menjadi
+        bagian dari jaringan mitra pedagang kami dan dapat melihat jadwal
+        serta lokasi berjualan yang telah dialokasikan.
+      </p>
+
+      <Link
+        href="/jadwal-lokasi"
+        className="inline-flex items-center gap-xs rounded-md bg-primary px-lg py-sm text-label-lg text-on-primary transition-colors hover:bg-primary-container"
       >
-        <span className="mx-auto mb-lg flex h-20 w-20 items-center justify-center rounded-lg bg-secondary text-on-secondary shadow-sm">
-          <CheckCircle2 className="h-9 w-9" strokeWidth={2} />
-        </span>
+        Lihat Jadwal &amp; Lokasi
+        <ArrowRight className="h-4 w-4" strokeWidth={2} />
+      </Link>
 
-        <span className="mb-md inline-block rounded-full bg-secondary-container px-md py-1 text-label-sm text-on-secondary-container">
-          STATUS: TERVERIFIKASI
-        </span>
-
-        <h2 className="mb-sm text-headline-lg text-on-surface">Selamat!</h2>
-        <p className="mx-auto mb-lg max-w-md text-body-lg text-on-surface-variant">
-          Akun usaha Anda telah berhasil disetujui. Anda sekarang resmi
-          menjadi bagian dari jaringan mitra pedagang kami.
-        </p>
-
-        <div className="rounded-lg bg-surface-container-lowest p-lg text-left">
-          <div className="flex items-start gap-md">
-            <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-md bg-surface-container-low text-primary">
-              <CalendarClock className="h-5 w-5" strokeWidth={2} />
-            </span>
-            <div className="flex-1">
-              <h3 className="text-title-lg text-on-surface">
-                Langkah Selanjutnya
-              </h3>
-              <p className="mt-xs text-body-md text-on-surface-variant">
-                Anda sekarang dapat melihat jadwal dan lokasi berjualan yang
-                telah dialokasikan untuk usaha Anda.
-              </p>
-              <Link
-                href="/jadwal-lokasi"
-                className="mt-md inline-flex items-center gap-xs rounded-md bg-primary px-md py-sm text-label-md text-on-primary transition-colors hover:bg-primary-container"
-              >
-                Lihat Jadwal &amp; Lokasi
-                <ArrowRight className="h-4 w-4" strokeWidth={2} />
-              </Link>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      <div className="flex items-center justify-center gap-lg text-label-md text-on-surface-variant">
+      <div className="mt-xl flex items-center justify-center gap-lg text-label-md text-on-surface-variant">
         <span className="flex items-center gap-xs">
           <ShieldCheck className="h-4 w-4" strokeWidth={2} />
           Data Tervalidasi
@@ -167,35 +191,6 @@ function ApprovedCard() {
           Aman &amp; Terenkripsi
         </span>
       </div>
-    </>
-  );
-}
-
-function PendingCard() {
-  return (
-    <section className="mx-auto w-full max-w-2xl rounded-lg border border-outline-variant bg-surface-container-lowest p-3xl text-center">
-      <span className="mx-auto mb-lg flex h-20 w-20 items-center justify-center rounded-lg bg-tertiary-fixed text-on-tertiary-fixed-variant">
-        <CalendarClock className="h-9 w-9" strokeWidth={2} />
-      </span>
-
-      <span className="mb-md inline-block rounded-full bg-tertiary-container/15 px-md py-1 text-label-sm text-on-tertiary-container">
-        STATUS: DALAM PROSES VERIFIKASI
-      </span>
-
-      <h2 className="mb-sm text-headline-lg text-on-surface">
-        Dokumen Sedang Ditinjau
-      </h2>
-      <p className="mx-auto mb-lg max-w-md text-body-lg text-on-surface-variant">
-        Tim petugas CFD sedang memeriksa data dan dokumen usaha Anda. Proses
-        ini biasanya memakan waktu 1&ndash;3 hari kerja.
-      </p>
-
-      <div className="flex items-center justify-center gap-sm rounded-md bg-surface-container-low p-md text-left">
-        <Info className="h-5 w-5 shrink-0 text-primary" strokeWidth={2} />
-        <p className="text-body-md text-on-surface-variant">
-          Anda akan menerima notifikasi begitu status verifikasi diperbarui.
-        </p>
-      </div>
     </section>
   );
 }
@@ -203,7 +198,7 @@ function PendingCard() {
 function RejectedCard({ catatan }: { catatan: string }) {
   return (
     <>
-      <div>
+      <div className="w-full">
         <h2 className="text-headline-lg text-on-surface">
           Status Verifikasi
         </h2>
@@ -213,7 +208,7 @@ function RejectedCard({ catatan }: { catatan: string }) {
         </p>
       </div>
 
-      <section className="grid grid-cols-1 gap-lg rounded-lg border-l-4 border-l-error bg-surface-container-lowest p-lg">
+      <section className="grid w-full grid-cols-1 gap-lg rounded-lg border-l-4 border-l-error bg-surface-container-lowest p-lg">
         <div>
           <span className="mb-md inline-flex items-center gap-xs rounded-full bg-error-container px-md py-1 text-label-md text-on-error-container">
             <XCircle className="h-4 w-4" strokeWidth={2.5} />
@@ -225,7 +220,9 @@ function RejectedCard({ catatan }: { catatan: string }) {
           </h3>
           <div className="mb-lg flex items-start gap-sm rounded-md bg-surface-container-low p-md">
             <Info className="h-5 w-5 shrink-0 text-primary" strokeWidth={2} />
-            <p className="text-body-md text-on-surface-variant">{catatan}</p>
+            <p className="text-body-md text-on-surface-variant">
+              {catatan}
+            </p>
           </div>
 
           <div className="flex flex-wrap gap-sm">

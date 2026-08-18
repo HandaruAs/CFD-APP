@@ -144,9 +144,6 @@ export function Sidebar() {
 
       {/* Footer & Logout */}
       <div className="border-t border-outline-variant/50 px-6 py-6">
-        <p className="mb-4 text-xs font-medium tracking-normal text-on-surface-variant/50">
-          CFD Kita &middot; Portal Internal
-        </p>
         <button
           type="button"
           onClick={handleLogout}
