@@ -7,7 +7,6 @@ import {
   Users,
   ClipboardCheck,
   Store,
-  Activity,
   ArrowUpRight,
   ChevronRight,
 } from "lucide-react";
@@ -29,13 +28,6 @@ type DashboardStats = {
   verifikasiPending?: number;
   lapakTerisiPercent?: number;
   lapakTerisiDetail?: string;
-  systemHealthPercent?: number;
-};
-
-type ConfigRow = {
-  label: string;
-  value: string;
-  tone?: "success" | "muted" | "default";
 };
 
 // Bentuk response yang diharapkan dari GET /api/admin/dashboard.
@@ -45,7 +37,6 @@ type DashboardResponse = {
   message?: string;
   stats?: DashboardStats;
   recentVerifications?: VerificationRequest[];
-  systemConfig?: ConfigRow[];
 };
 
 const BRAND = "#1c3f7c";
@@ -59,7 +50,6 @@ export default function AdminDashboardPage() {
   const [message, setMessage] = useState("");
   const [stats, setStats] = useState<DashboardStats | null>(null);
   const [requests, setRequests] = useState<VerificationRequest[] | null>(null);
-  const [config, setConfig] = useState<ConfigRow[] | null>(null);
 
   useEffect(() => {
     const token = localStorage.getItem("cfd_token");
@@ -87,7 +77,6 @@ export default function AdminDashboardPage() {
         setMessage(data.message || "");
         setStats(data.stats ?? null);
         setRequests(data.recentVerifications ?? null);
-        setConfig(data.systemConfig ?? null);
       })
       .catch(() => {
         setState("error");
@@ -149,7 +138,7 @@ export default function AdminDashboardPage() {
       </div>
 
       {/* Stat cards */}
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
         <StatCard
           icon={<Users className="h-4 w-4" />}
           label="Total Pedagang"
@@ -192,120 +181,68 @@ export default function AdminDashboardPage() {
             ) : undefined
           }
         />
-        <StatCard
-          icon={<Activity className="h-4 w-4" />}
-          label="System Health"
-          value={
-            stats?.systemHealthPercent !== undefined
-              ? `${stats.systemHealthPercent}%`
-              : undefined
-          }
-          footer={
-            stats?.systemHealthPercent !== undefined ? (
-              <span className="text-xs text-emerald-600">
-                All systems operational
-              </span>
-            ) : undefined
-          }
-        />
       </div>
 
-      {/* Main content: table + sidebar */}
-      <div className="grid grid-cols-1 gap-4 xl:grid-cols-3">
-        {/* Recent Verification Requests */}
-        <section className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm xl:col-span-2">
-          <div className="flex items-center justify-between">
-            <h3 className="text-base font-semibold text-slate-900">
-              Recent Verification Requests
-            </h3>
-            <button
-              type="button"
-              className="inline-flex items-center gap-0.5 text-sm font-medium hover:underline"
-              style={{ color: BRAND }}
-            >
-              View All
-              <ChevronRight className="h-4 w-4" />
-            </button>
-          </div>
-
-          <div className="mt-4 overflow-x-auto">
-            {requests && requests.length > 0 ? (
-              <table className="w-full min-w-[480px] border-collapse text-left">
-                <thead>
-                  <tr className="border-b border-slate-200">
-                    <th className="py-2 pr-4 text-xs font-medium uppercase tracking-wide text-slate-500">
-                      Trader Name
-                    </th>
-                    <th className="py-2 pr-4 text-xs font-medium uppercase tracking-wide text-slate-500">
-                      Stall Type
-                    </th>
-                    <th className="py-2 pr-4 text-xs font-medium uppercase tracking-wide text-slate-500">
-                      Status
-                    </th>
-                    <th className="py-2 text-xs font-medium uppercase tracking-wide text-slate-500">
-                      Date
-                    </th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {requests.map((req, i) => (
-                    <tr
-                      key={`${req.name}-${i}`}
-                      className="border-b border-slate-100 last:border-0"
-                    >
-                      <td className="py-3 pr-4 text-sm font-medium text-slate-800">
-                        {req.name}
-                      </td>
-                      <td className="py-3 pr-4 text-sm text-slate-500">
-                        {req.stallType}
-                      </td>
-                      <td className="py-3 pr-4">
-                        <StatusBadge status={req.status} />
-                      </td>
-                      <td className="py-3 text-sm text-slate-400">{req.date}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            ) : (
-              <EmptyState text="Belum ada pengajuan verifikasi." />
-            )}
-          </div>
-        </section>
-
-        {/* Right column: System Configuration */}
-        <section className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
+      {/* Main content: Recent Verification Requests */}
+      <section className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
+        <div className="flex items-center justify-between">
           <h3 className="text-base font-semibold text-slate-900">
-            System Configuration
+            Recent Verification Requests
           </h3>
-          <div className="mt-4 flex flex-col gap-1">
-            {config && config.length > 0 ? (
-              config.map((row) => (
-                <div
-                  key={row.label}
-                  className="flex items-center justify-between border-b border-slate-100 py-2 last:border-0"
-                >
-                  <span className="text-sm text-slate-500">{row.label}</span>
-                  <span
-                    className={
-                      "text-sm font-medium " +
-                      (row.tone === "success"
-                        ? "text-emerald-600"
-                        : row.tone === "muted"
-                          ? "text-slate-400"
-                          : "text-slate-800")
-                    }
+          <button
+            type="button"
+            className="inline-flex items-center gap-0.5 text-sm font-medium hover:underline"
+            style={{ color: BRAND }}
+          >
+            View All
+            <ChevronRight className="h-4 w-4" />
+          </button>
+        </div>
+
+        <div className="mt-4 overflow-x-auto">
+          {requests && requests.length > 0 ? (
+            <table className="w-full min-w-[480px] border-collapse text-left">
+              <thead>
+                <tr className="border-b border-slate-200">
+                  <th className="py-2 pr-4 text-xs font-medium uppercase tracking-wide text-slate-500">
+                    Trader Name
+                  </th>
+                  <th className="py-2 pr-4 text-xs font-medium uppercase tracking-wide text-slate-500">
+                    Stall Type
+                  </th>
+                  <th className="py-2 pr-4 text-xs font-medium uppercase tracking-wide text-slate-500">
+                    Status
+                  </th>
+                  <th className="py-2 text-xs font-medium uppercase tracking-wide text-slate-500">
+                    Date
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                {requests.map((req, i) => (
+                  <tr
+                    key={`${req.name}-${i}`}
+                    className="border-b border-slate-100 last:border-0"
                   >
-                    {row.value}
-                  </span>
-                </div>
-              ))
-            ) : (
-              <EmptyState text="Konfigurasi belum tersedia." />
-            )}
-          </div>
-        </section>
-      </div>
+                    <td className="py-3 pr-4 text-sm font-medium text-slate-800">
+                      {req.name}
+                    </td>
+                    <td className="py-3 pr-4 text-sm text-slate-500">
+                      {req.stallType}
+                    </td>
+                    <td className="py-3 pr-4">
+                      <StatusBadge status={req.status} />
+                    </td>
+                    <td className="py-3 text-sm text-slate-400">{req.date}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          ) : (
+            <EmptyState text="Belum ada pengajuan verifikasi." />
+          )}
+        </div>
+      </section>
     </div>
   );
 }
