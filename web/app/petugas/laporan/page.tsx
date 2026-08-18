@@ -1,19 +1,26 @@
+// app/petugas/laporan/page.tsx
+"use client";
+
+import { useState } from "react";
 import {
   Search,
-  ListFilter,
-  Download,
   ChevronRight,
   ChevronLeft,
   UserCheck,
   Store,
   Clock,
+  Filter,
+  FileSpreadsheet,
+  LogOut,
+  DollarSign,
+  Users,
+  TrendingUp,
+  CheckCircle2,
+  XCircle,
 } from "lucide-react";
 
-// Halaman laporan kehadiran -- daftar pedagang yang sudah check-in (scan QR)
-// ke area CFD hari ini, lengkap dengan waktu check-in-nya. Data masih dummy,
-// tinggal disambungkan ke GET /api/checkin begitu endpoint-nya siap.
-
 type KategoriUsaha = "kuliner" | "kerajinan" | "ritel";
+type StatusKehadiran = "check-in" | "check-out" | "belum-hadir";
 
 type Kehadiran = {
   id: string;
@@ -23,9 +30,13 @@ type Kehadiran = {
   kategori: KategoriUsaha;
   lokasiLapak: string;
   waktuCheckin: string;
+  waktuCheckout?: string;
+  omset?: number;
   metode: string;
+  status: StatusKehadiran;
 };
 
+// Data dummy dengan status check-in dan check-out
 const KEHADIRAN: Kehadiran[] = [
   {
     id: "APDC-001",
@@ -35,7 +46,10 @@ const KEHADIRAN: Kehadiran[] = [
     kategori: "kuliner",
     lokasiLapak: "Blok A1 - Zona Timur",
     waktuCheckin: "06:15",
+    waktuCheckout: "10:30",
+    omset: 2500000,
     metode: "Scan QR",
+    status: "check-out",
   },
   {
     id: "APDC-042",
@@ -45,7 +59,10 @@ const KEHADIRAN: Kehadiran[] = [
     kategori: "kerajinan",
     lokasiLapak: "Blok C3 - Zona Tengah",
     waktuCheckin: "06:30",
+    waktuCheckout: "10:45",
+    omset: 1200000,
     metode: "Scan QR",
+    status: "check-out",
   },
   {
     id: "APDC-077",
@@ -56,6 +73,7 @@ const KEHADIRAN: Kehadiran[] = [
     lokasiLapak: "Blok C4 - Zona Tengah",
     waktuCheckin: "06:42",
     metode: "Scan QR",
+    status: "check-in",
   },
   {
     id: "APDC-023",
@@ -66,6 +84,7 @@ const KEHADIRAN: Kehadiran[] = [
     lokasiLapak: "Blok A8 - Zona Timur",
     waktuCheckin: "07:05",
     metode: "Scan QR",
+    status: "check-in",
   },
   {
     id: "APDC-088",
@@ -76,6 +95,31 @@ const KEHADIRAN: Kehadiran[] = [
     lokasiLapak: "Blok D2 - Zona Barat",
     waktuCheckin: "07:12",
     metode: "Scan QR",
+    status: "check-in",
+  },
+  {
+    id: "APDC-056",
+    namaUsaha: "Kerajinan Bambu Jaya",
+    pemilik: "Made Sutrisno",
+    inisial: "MS",
+    kategori: "kerajinan",
+    lokasiLapak: "Blok B5 - Zona Selatan",
+    waktuCheckin: "06:50",
+    waktuCheckout: "10:15",
+    omset: 850000,
+    metode: "Scan QR",
+    status: "check-out",
+  },
+  {
+    id: "APDC-112",
+    namaUsaha: "Es Doger Pak Haji",
+    pemilik: "Haji Ahmad",
+    inisial: "HA",
+    kategori: "kuliner",
+    lokasiLapak: "Blok E2 - Zona Barat",
+    waktuCheckin: "07:30",
+    metode: "Scan QR",
+    status: "check-in",
   },
 ];
 
@@ -85,59 +129,135 @@ const KATEGORI_STYLE: Record<KategoriUsaha, { label: string; bg: string; text: s
   ritel: { label: "Ritel", bg: "bg-surface-container-high", text: "text-on-surface-variant" },
 };
 
+const STATUS_STYLE: Record<StatusKehadiran, { label: string; bg: string; text: string; icon: typeof CheckCircle2 }> = {
+  "check-in": {
+    label: "Check-in",
+    bg: "bg-secondary-container/40",
+    text: "text-on-secondary-container",
+    icon: UserCheck,
+  },
+  "check-out": {
+    label: "Check-out ✓",
+    bg: "bg-primary-container/20",
+    text: "text-on-primary-container",
+    icon: LogOut,
+  },
+  "belum-hadir": {
+    label: "Belum Hadir",
+    bg: "bg-error-container/60",
+    text: "text-on-error-container",
+    icon: XCircle,
+  },
+};
+
 export default function LaporanPage() {
+  const [searchTerm, setSearchTerm] = useState("");
+  const [toast, setToast] = useState<{ message: string } | null>(null);
+
   const totalTerdaftar = 150;
-  const totalCheckin = KEHADIRAN.length;
+  const totalCheckin = KEHADIRAN.filter((k) => k.status === "check-in" || k.status === "check-out").length;
+  const totalCheckout = KEHADIRAN.filter((k) => k.status === "check-out").length;
+  const totalOmset = KEHADIRAN.reduce((sum, k) => sum + (k.omset || 0), 0);
   const persenHadir = Math.round((totalCheckin / totalTerdaftar) * 1000) / 10;
+  const rataOmset = totalCheckout > 0 ? Math.round(totalOmset / totalCheckout) : 0;
+
+  const filteredData = KEHADIRAN.filter(
+    (k) =>
+      k.namaUsaha.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      k.id.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      k.pemilik.toLowerCase().includes(searchTerm.toLowerCase())
+  );
+
+  const handleExport = () => {
+    setToast({ message: "📊 Laporan sedang diunduh..." });
+    setTimeout(() => setToast(null), 3000);
+  };
 
   return (
     <div className="flex flex-col gap-lg">
+      {/* Toast */}
+      {toast && (
+        <div className="fixed bottom-6 right-6 z-50 rounded-lg bg-secondary-container/90 px-md py-sm shadow-lg animate-in slide-in-from-bottom-5">
+          <p className="text-label-md text-on-secondary-container">{toast.message}</p>
+        </div>
+      )}
+
       <div className="flex flex-wrap items-start justify-between gap-md">
         <div>
           <h2 className="text-headline-lg text-on-surface">Laporan Kehadiran Pedagang</h2>
           <p className="mt-xs max-w-2xl text-body-md text-on-surface-variant">
-            Daftar pedagang yang sudah check-in via scan QR ke area CFD hari ini.
+            Daftar pedagang yang sudah check-in, check-out, dan omset CFD hari ini.
           </p>
         </div>
         <button
           type="button"
-          className="flex items-center gap-sm rounded-md bg-primary px-md py-sm text-label-md text-on-primary transition-colors hover:bg-primary-container"
+          onClick={handleExport}
+          className="flex items-center gap-sm rounded-md bg-primary px-md py-sm text-label-md text-on-primary transition-all hover:bg-primary-container hover:shadow-md"
         >
-          <Download className="h-[18px] w-[18px]" strokeWidth={2} />
+          <FileSpreadsheet className="h-[18px] w-[18px]" strokeWidth={2} />
           Unduh Laporan
         </button>
       </div>
 
       {/* Kartu ringkasan */}
-      <div className="grid grid-cols-1 gap-md sm:grid-cols-3">
-        <div className="rounded-lg border border-outline-variant bg-surface-container-lowest p-lg">
+      <div className="grid grid-cols-1 gap-md sm:grid-cols-2 lg:grid-cols-4">
+        <div className="rounded-lg border border-outline-variant bg-surface-container-lowest p-lg hover:shadow-md transition-shadow">
           <span className="flex h-9 w-9 items-center justify-center rounded-md bg-primary text-on-primary">
             <UserCheck className="h-[18px] w-[18px]" strokeWidth={2} />
           </span>
           <p className="mt-md text-label-sm uppercase tracking-wide text-on-surface-variant">
-            Sudah Check-in
+            Total Check-in
           </p>
           <p className="text-headline-md text-on-surface">{totalCheckin}</p>
         </div>
 
-        <div className="rounded-lg border border-outline-variant bg-surface-container-lowest p-lg">
+        <div className="rounded-lg border border-outline-variant bg-surface-container-lowest p-lg hover:shadow-md transition-shadow">
           <span className="flex h-9 w-9 items-center justify-center rounded-md bg-secondary-container text-on-secondary-container">
-            <Store className="h-[18px] w-[18px]" strokeWidth={2} />
+            <LogOut className="h-[18px] w-[18px]" strokeWidth={2} />
           </span>
           <p className="mt-md text-label-sm uppercase tracking-wide text-on-surface-variant">
-            Total Terdaftar
+            Sudah Check-out
           </p>
-          <p className="text-headline-md text-on-surface">{totalTerdaftar}</p>
+          <p className="text-headline-md text-on-surface">
+            {totalCheckout}
+            <span className="text-body-md text-on-surface-variant"> / {totalCheckin}</span>
+          </p>
+          <div className="mt-sm h-1.5 w-full overflow-hidden rounded-full bg-surface-container-high">
+            <div
+              className="h-full rounded-full bg-secondary transition-all duration-500"
+              style={{ width: `${totalCheckin > 0 ? (totalCheckout / totalCheckin) * 100 : 0}%` }}
+            />
+          </div>
+          <p className="mt-xs text-label-sm text-on-surface-variant">
+            {totalCheckin > 0 ? Math.round((totalCheckout / totalCheckin) * 100) : 0}% sudah checkout
+          </p>
         </div>
 
-        <div className="rounded-lg border border-outline-variant bg-surface-container-lowest p-lg">
-          <span className="flex h-9 w-9 items-center justify-center rounded-md bg-tertiary-container text-on-tertiary-container">
-            <Clock className="h-[18px] w-[18px]" strokeWidth={2} />
+        <div className="rounded-lg border border-outline-variant bg-surface-container-lowest p-lg hover:shadow-md transition-shadow">
+          <span className="flex h-9 w-9 items-center justify-center rounded-md bg-primary-container/20 text-primary">
+            <TrendingUp className="h-[18px] w-[18px]" strokeWidth={2} />
           </span>
           <p className="mt-md text-label-sm uppercase tracking-wide text-on-surface-variant">
-            Persentase Kehadiran
+            Total Omset
           </p>
-          <p className="text-headline-md text-on-surface">{persenHadir}%</p>
+          <p className="text-headline-md text-on-surface">
+            Rp {(totalOmset / 1000000).toFixed(1)} Juta
+          </p>
+        </div>
+
+        <div className="rounded-lg border border-outline-variant bg-surface-container-lowest p-lg hover:shadow-md transition-shadow">
+          <span className="flex h-9 w-9 items-center justify-center rounded-md bg-secondary-container/20 text-secondary">
+            <DollarSign className="h-[18px] w-[18px]" strokeWidth={2} />
+          </span>
+          <p className="mt-md text-label-sm uppercase tracking-wide text-on-surface-variant">
+            Rata-rata Omset
+          </p>
+          <p className="text-headline-md text-on-surface">
+            Rp {(rataOmset / 1000).toFixed(0)}K
+          </p>
+          <p className="mt-xs text-label-sm text-on-surface-variant">
+            Dari {totalCheckout} pedagang
+          </p>
         </div>
       </div>
 
@@ -147,28 +267,36 @@ export default function LaporanPage() {
           <Search className="h-4 w-4 text-on-surface-variant" strokeWidth={2} />
           <input
             type="text"
-            placeholder="Cari ID atau Nama Usaha..."
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            placeholder="Cari ID, Nama Usaha, atau Pemilik..."
             className="w-full bg-transparent text-body-md text-on-surface placeholder:text-on-surface-variant focus:outline-none"
           />
+          {searchTerm && (
+            <button
+              type="button"
+              onClick={() => setSearchTerm("")}
+              className="text-on-surface-variant hover:text-on-surface"
+            >
+              ✕
+            </button>
+          )}
         </div>
-        <button
-          type="button"
-          className="flex items-center gap-sm rounded-md border border-outline-variant px-md py-sm text-label-md text-on-surface-variant transition-colors hover:bg-surface-container-low"
-        >
-          <ListFilter className="h-[18px] w-[18px]" strokeWidth={2} />
-        </button>
-        <button
-          type="button"
-          className="flex items-center justify-center gap-xs rounded-md bg-surface-container-low px-md py-sm text-label-md text-on-surface transition-colors hover:bg-surface-container"
-        >
-          Semua Kategori
-        </button>
-        <button
-          type="button"
-          className="flex items-center justify-center gap-xs rounded-md bg-surface-container-low px-md py-sm text-label-md text-on-surface transition-colors hover:bg-surface-container"
-        >
-          Hari Ini
-        </button>
+        <div className="flex items-center gap-sm">
+          <button
+            type="button"
+            className="flex items-center gap-sm rounded-md border border-outline-variant px-md py-sm text-label-md text-on-surface-variant transition-all hover:bg-surface-container-low"
+          >
+            <Filter className="h-[18px] w-[18px]" strokeWidth={2} />
+            Filter
+          </button>
+          <button
+            type="button"
+            className="flex items-center justify-center gap-xs rounded-md bg-surface-container-low px-md py-sm text-label-md text-on-surface transition-all hover:bg-surface-container"
+          >
+            Hari Ini
+          </button>
+        </div>
       </div>
 
       {/* Tabel kehadiran */}
@@ -177,75 +305,102 @@ export default function LaporanPage() {
           <table className="w-full text-left">
             <thead>
               <tr className="border-b border-outline-variant bg-surface-container-low text-label-sm text-on-surface-variant">
-                <th className="px-lg py-sm font-medium">Waktu Check-in</th>
-                <th className="px-lg py-sm font-medium">ID Pedagang</th>
+                <th className="px-lg py-sm font-medium">Waktu In</th>
+                <th className="px-lg py-sm font-medium">ID</th>
                 <th className="px-lg py-sm font-medium">Profil Usaha</th>
                 <th className="px-lg py-sm font-medium">Kategori</th>
-                <th className="px-lg py-sm font-medium">Lokasi Lapak</th>
-                <th className="px-lg py-sm font-medium">Metode</th>
-                <th className="px-lg py-sm text-right font-medium">Aksi</th>
+                <th className="px-lg py-sm font-medium">Lokasi</th>
+                <th className="px-lg py-sm font-medium">Status</th>
+                <th className="px-lg py-sm font-medium">Waktu Out</th>
+                <th className="px-lg py-sm font-medium text-right">Omset</th>
               </tr>
             </thead>
             <tbody>
-              {KEHADIRAN.map((k) => {
-                const kategori = KATEGORI_STYLE[k.kategori];
-                return (
-                  <tr key={k.id} className="border-b border-outline-variant last:border-0">
-                    <td className="px-lg py-md text-body-md text-on-surface">{k.waktuCheckin}</td>
-                    <td className="px-lg py-md text-body-md text-on-surface-variant">{k.id}</td>
-                    <td className="px-lg py-md">
-                      <div className="flex items-center gap-sm">
-                        <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-primary-fixed text-label-sm font-semibold text-on-primary-fixed">
-                          {k.inisial}
-                        </span>
-                        <div>
-                          <p className="text-label-md font-semibold text-on-surface">
-                            {k.namaUsaha}
-                          </p>
-                          <p className="text-label-sm text-on-surface-variant">{k.pemilik}</p>
+              {filteredData.length === 0 ? (
+                <tr>
+                  <td colSpan={8} className="px-lg py-xl text-center">
+                    <div className="flex flex-col items-center gap-xs">
+                      <Search className="h-8 w-8 text-on-surface-variant/40" strokeWidth={1.5} />
+                      <p className="text-body-md text-on-surface-variant">Tidak ada data yang cocok</p>
+                      <p className="text-label-sm text-on-surface-variant/60">Coba ubah kata kunci pencarian</p>
+                    </div>
+                  </td>
+                </tr>
+              ) : (
+                filteredData.map((k) => {
+                  const kategori = KATEGORI_STYLE[k.kategori];
+                  const status = STATUS_STYLE[k.status];
+                  const StatusIcon = status.icon;
+                  return (
+                    <tr
+                      key={k.id}
+                      className={`border-b border-outline-variant last:border-0 hover:bg-surface-container-low/50 transition-colors ${
+                        k.status === "check-out" ? "bg-primary-container/5" : ""
+                      }`}
+                    >
+                      <td className="px-lg py-md text-body-md text-on-surface font-semibold">{k.waktuCheckin}</td>
+                      <td className="px-lg py-md text-body-md text-on-surface-variant">{k.id}</td>
+                      <td className="px-lg py-md">
+                        <div className="flex items-center gap-sm">
+                          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-primary-fixed text-label-sm font-semibold text-on-primary-fixed">
+                            {k.inisial}
+                          </span>
+                          <div>
+                            <p className="text-label-md font-semibold text-on-surface">
+                              {k.namaUsaha}
+                            </p>
+                            <p className="text-label-sm text-on-surface-variant">{k.pemilik}</p>
+                          </div>
                         </div>
-                      </div>
-                    </td>
-                    <td className="px-lg py-md">
-                      <span
-                        className={`inline-flex rounded-full px-sm py-1 text-label-sm ${kategori.bg} ${kategori.text}`}
-                      >
-                        {kategori.label}
-                      </span>
-                    </td>
-                    <td className="px-lg py-md text-body-md text-on-surface-variant">
-                      {k.lokasiLapak}
-                    </td>
-                    <td className="px-lg py-md">
-                      <span className="inline-flex rounded-full bg-secondary-container/40 px-sm py-1 text-label-sm text-on-secondary-container">
-                        {k.metode}
-                      </span>
-                    </td>
-                    <td className="px-lg py-md text-right">
-                      <button
-                        type="button"
-                        aria-label={`Lihat detail ${k.namaUsaha}`}
-                        className="inline-flex h-7 w-7 items-center justify-center rounded-full text-on-surface-variant hover:bg-surface-container-low"
-                      >
-                        <ChevronRight className="h-4 w-4" strokeWidth={2} />
-                      </button>
-                    </td>
-                  </tr>
-                );
-              })}
+                      </td>
+                      <td className="px-lg py-md">
+                        <span
+                          className={`inline-flex rounded-full px-sm py-1 text-label-sm ${kategori.bg} ${kategori.text}`}
+                        >
+                          {kategori.label}
+                        </span>
+                      </td>
+                      <td className="px-lg py-md text-body-md text-on-surface-variant">
+                        {k.lokasiLapak}
+                      </td>
+                      <td className="px-lg py-md">
+                        <span
+                          className={`inline-flex items-center gap-xs rounded-full px-sm py-1 text-label-sm ${status.bg} ${status.text}`}
+                        >
+                          <StatusIcon className="h-3 w-3" strokeWidth={2.5} />
+                          {status.label}
+                        </span>
+                      </td>
+                      <td className="px-lg py-md text-body-md text-on-surface-variant">
+                        {k.waktuCheckout || "-"}
+                      </td>
+                      <td className="px-lg py-md text-right">
+                        {k.omset ? (
+                          <span className="font-semibold text-primary">
+                            Rp {k.omset.toLocaleString('id-ID')}
+                          </span>
+                        ) : (
+                          <span className="text-on-surface-variant/60">-</span>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })
+              )}
             </tbody>
           </table>
         </div>
 
         <div className="flex flex-wrap items-center justify-between gap-sm border-t border-outline-variant px-lg py-sm">
           <p className="text-label-sm text-on-surface-variant">
-            Menampilkan 1-{KEHADIRAN.length} dari {totalCheckin} pedagang yang sudah check-in
+            Menampilkan {filteredData.length} dari {KEHADIRAN.length} pedagang
+            {searchTerm && ` (hasil filter: "${searchTerm}")`}
           </p>
           <div className="flex items-center gap-xs">
             <button
               type="button"
               aria-label="Halaman sebelumnya"
-              className="flex h-7 w-7 items-center justify-center rounded-md text-on-surface-variant hover:bg-surface-container-low"
+              className="flex h-7 w-7 items-center justify-center rounded-md text-on-surface-variant hover:bg-surface-container-low transition-colors"
             >
               <ChevronLeft className="h-4 w-4" strokeWidth={2} />
             </button>
@@ -258,7 +413,7 @@ export default function LaporanPage() {
             <button
               type="button"
               aria-label="Halaman berikutnya"
-              className="flex h-7 w-7 items-center justify-center rounded-md text-on-surface-variant hover:bg-surface-container-low"
+              className="flex h-7 w-7 items-center justify-center rounded-md text-on-surface-variant hover:bg-surface-container-low transition-colors"
             >
               <ChevronRight className="h-4 w-4" strokeWidth={2} />
             </button>
