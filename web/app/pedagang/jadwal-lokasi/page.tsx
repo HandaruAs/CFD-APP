@@ -115,7 +115,7 @@ function BelumTersedia() {
       <h2 className="mb-sm text-headline-lg text-on-surface">
         Jadwal Belum Tersedia
       </h2>
-      <p className="mb-lg max-w-md text-body-lg text-on-surface-variant">
+      <p className="mb-lg max-w-[28rem] text-body-lg text-on-surface-variant">
         Selesaikan pendaftaran dan tunggu verifikasi akun Anda disetujui
         untuk dapat melihat lokasi dan jadwal berjualan Anda di CFD.
       </p>

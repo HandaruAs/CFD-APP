@@ -86,20 +86,22 @@ export default function StatusVerifikasiPage() {
   const status = data.status ?? "pending";
 
   return (
-    // --- PERBAIKAN UTAMA DI SINI: Tambahkan max-w-3xl & mx-auto ---
-    <div className="mx-auto w-full max-w-3xl flex flex-col gap-md">
-      {status === "approved" && <ApprovedCard />}
-      {status === "pending" && <PendingCard />}
-      {status === "rejected" && (
-        <RejectedCard catatan={data.catatan ?? "Tidak ada catatan dari petugas."} />
-      )}
+    // --- PERBAIKAN: flex-1 justify-center items-center ---
+    <div className="flex w-full flex-1 flex-col justify-center items-center py-lg">
+      <div className="mx-auto w-full max-w-3xl flex flex-col gap-md">
+        {status === "approved" && <ApprovedCard />}
+        {status === "pending" && <PendingCard />}
+        {status === "rejected" && (
+          <RejectedCard catatan={data.catatan ?? "Tidak ada catatan dari petugas."} />
+        )}
+      </div>
     </div>
   );
 }
 
 function NotRegisteredCard() {
   return (
-    <section className="mx-auto w-full max-w-xl py-md text-center">
+    <section className="mx-auto w-full max-w-[36rem] py-md text-center">
       <ClipboardList
         className="mx-auto mb-md h-10 w-10 text-primary"
         strokeWidth={1.75}
@@ -128,7 +130,7 @@ function NotRegisteredCard() {
 
 function PendingCard() {
   return (
-    <section className="mx-auto w-full max-w-xl py-md text-center">
+    <section className="mx-auto w-full max-w-[36rem] py-md text-center">
       <CalendarClock
         className="mx-auto mb-md h-10 w-10 text-tertiary"
         strokeWidth={1.75}
@@ -153,7 +155,7 @@ function PendingCard() {
 
 function ApprovedCard() {
   return (
-    <section className="mx-auto w-full max-w-xl py-md text-center">
+    <section className="mx-auto w-full max-w-[36rem] py-md text-center">
       <CheckCircle2
         className="mx-auto mb-md h-10 w-10 text-secondary"
         strokeWidth={1.75}
