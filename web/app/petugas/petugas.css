@@ -189,6 +189,14 @@
   --text-label-sm--line-height: 16px;
   --text-label-sm--letter-spacing: 0.02em;
   --text-label-sm--font-weight: 600;
+
+  --text-title-md: 18px;
+  --text-title-md--line-height: 24px;
+  --text-title-md--font-weight: 600;
+
+  --text-body-sm: 14px;
+  --text-body-sm--line-height: 20px;
+  --text-body-sm--font-weight: 400;
 }
 
 /* Style dasar khusus dalam lingkup halaman petugas saja */
