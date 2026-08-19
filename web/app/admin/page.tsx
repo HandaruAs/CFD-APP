@@ -5,9 +5,9 @@ import {
   LayoutDashboard,
   ShieldAlert,
   Users,
-  ClipboardCheck,
+  ClipboardList,
   Store,
-  ArrowUpRight,
+  TrendingUp,
   ChevronRight,
 } from "lucide-react";
 
@@ -108,8 +108,11 @@ export default function AdminDashboardPage() {
 
         <section className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
           <div className="flex items-start gap-3">
-            <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-md bg-slate-100 text-slate-500">
-              <LayoutDashboard className="h-5 w-5" strokeWidth={2} />
+            <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-slate-100 text-slate-500">
+              <LayoutDashboard
+                className={"h-5 w-5 " + (state === "loading" ? "animate-pulse" : "")}
+                strokeWidth={2}
+              />
             </span>
             <div>
               <h3 className="text-base font-semibold text-slate-900">
@@ -127,68 +130,86 @@ export default function AdminDashboardPage() {
 
   // state === "ok"
   return (
-    <div className="flex flex-col gap-6">
+    <div className="flex flex-col gap-8">
+      {/* Greeting */}
       <div>
-        <h2 className="text-2xl font-bold text-slate-900">
-          Selamat Datang, Superadmin
-        </h2>
-        <p className="mt-1 max-w-2xl text-sm text-slate-500">
+        <h1 className="text-2xl font-bold text-slate-900">Selamat Datang, Superadmin</h1>
+        <p className="mt-2 text-sm text-slate-500">
           {message || "Here's what's happening with CFD Hub today."}
         </p>
       </div>
 
-      {/* Stat cards */}
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
-        <StatCard
-          icon={<Users className="h-4 w-4" />}
-          label="Total Pedagang"
-          value={stats?.totalPedagang?.toLocaleString("id-ID")}
-          footer={
-            stats?.totalPedagangDelta ? (
-              <span className="inline-flex items-center gap-1 text-xs font-medium text-emerald-600">
-                <ArrowUpRight className="h-3.5 w-3.5" />
-                {stats.totalPedagangDelta}
-              </span>
-            ) : undefined
-          }
-        />
-        <StatCard
-          icon={<ClipboardCheck className="h-4 w-4" />}
-          label="Verifikasi Pending"
-          value={stats?.verifikasiPending?.toString()}
-          footer={
-            stats?.verifikasiPending ? (
-              <span className="text-xs font-medium text-amber-600">
-                Action Required
-              </span>
-            ) : undefined
-          }
-          highlight={!!stats?.verifikasiPending}
-        />
-        <StatCard
-          icon={<Store className="h-4 w-4" />}
-          label="Lapak Terisi"
-          value={
-            stats?.lapakTerisiPercent !== undefined
-              ? `${stats.lapakTerisiPercent}%`
-              : undefined
-          }
-          footer={
-            stats?.lapakTerisiDetail ? (
-              <span className="text-xs text-slate-500">
-                {stats.lapakTerisiDetail}
-              </span>
-            ) : undefined
-          }
-        />
+      {/* Stats Overview Cards */}
+      <div className="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-3">
+        {/* Total Pedagang */}
+        <div className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm transition-shadow hover:shadow-md">
+          <div className="mb-4 flex items-center justify-between">
+            <span className="text-xs font-semibold uppercase tracking-wider text-slate-500">
+              Total Pedagang
+            </span>
+            <div className="rounded-lg bg-blue-50 p-2 text-blue-700">
+              <Users className="h-5 w-5" />
+            </div>
+          </div>
+          <div className="text-2xl font-semibold text-slate-900">
+            {stats?.totalPedagang?.toLocaleString("id-ID") ?? "—"}
+          </div>
+          {stats?.totalPedagangDelta && (
+            <div className="mt-2 flex items-center text-emerald-600">
+              <TrendingUp className="mr-1 h-4 w-4" />
+              <span className="text-xs font-semibold">{stats.totalPedagangDelta}</span>
+            </div>
+          )}
+        </div>
+
+        {/* Verifikasi Pending */}
+        <div className="relative overflow-hidden rounded-xl border border-slate-200 bg-amber-50/60 p-6 shadow-sm transition-shadow hover:shadow-md">
+          <div className="absolute right-0 top-0 h-full w-1.5 bg-amber-400" />
+          <div className="mb-4 flex items-center justify-between">
+            <span className="text-xs font-semibold uppercase tracking-wider text-slate-500">
+              Verifikasi Pending
+            </span>
+            <div className="rounded-lg bg-white p-2 text-amber-600">
+              <ClipboardList className="h-5 w-5" />
+            </div>
+          </div>
+          <div className="text-2xl font-semibold text-slate-900">
+            {stats?.verifikasiPending ?? "—"}
+          </div>
+          {!!stats?.verifikasiPending && (
+            <div className="mt-2 flex items-center text-amber-600">
+              <span className="text-xs font-bold">Action Required</span>
+            </div>
+          )}
+        </div>
+
+        {/* Lapak Terisi */}
+        <div className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm transition-shadow hover:shadow-md">
+          <div className="mb-4 flex items-center justify-between">
+            <span className="text-xs font-semibold uppercase tracking-wider text-slate-500">
+              Lapak Terisi
+            </span>
+            <div className="rounded-lg bg-blue-50 p-2 text-blue-700">
+              <Store className="h-5 w-5" />
+            </div>
+          </div>
+          <div className="text-2xl font-semibold text-slate-900">
+            {stats?.lapakTerisiPercent !== undefined ? `${stats.lapakTerisiPercent}%` : "—"}
+          </div>
+          {stats?.lapakTerisiDetail && (
+            <div className="mt-2 flex items-center text-slate-500">
+              <span className="text-xs">{stats.lapakTerisiDetail}</span>
+            </div>
+          )}
+        </div>
       </div>
 
-      {/* Main content: Recent Verification Requests */}
-      <section className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
-        <div className="flex items-center justify-between">
-          <h3 className="text-base font-semibold text-slate-900">
+      {/* Recent Verification Requests */}
+      <div className="w-full overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+        <div className="flex items-center justify-between border-b border-slate-200 p-6">
+          <h2 className="text-lg font-semibold text-slate-900">
             Recent Verification Requests
-          </h3>
+          </h2>
           <button
             type="button"
             className="inline-flex items-center gap-0.5 text-sm font-medium hover:underline"
@@ -199,41 +220,36 @@ export default function AdminDashboardPage() {
           </button>
         </div>
 
-        <div className="mt-4 overflow-x-auto">
+        <div className="overflow-x-auto">
           {requests && requests.length > 0 ? (
-            <table className="w-full min-w-[480px] border-collapse text-left">
+            <table className="w-full min-w-[520px] border-collapse text-left">
               <thead>
-                <tr className="border-b border-slate-200">
-                  <th className="py-2 pr-4 text-xs font-medium uppercase tracking-wide text-slate-500">
+                <tr className="border-b border-slate-200 bg-slate-50">
+                  <th className="px-6 py-4 text-sm font-medium text-slate-500">
                     Trader Name
                   </th>
-                  <th className="py-2 pr-4 text-xs font-medium uppercase tracking-wide text-slate-500">
+                  <th className="px-6 py-4 text-sm font-medium text-slate-500">
                     Stall Type
                   </th>
-                  <th className="py-2 pr-4 text-xs font-medium uppercase tracking-wide text-slate-500">
-                    Status
-                  </th>
-                  <th className="py-2 text-xs font-medium uppercase tracking-wide text-slate-500">
-                    Date
-                  </th>
+                  <th className="px-6 py-4 text-sm font-medium text-slate-500">Status</th>
+                  <th className="px-6 py-4 text-sm font-medium text-slate-500">Date</th>
                 </tr>
               </thead>
               <tbody>
                 {requests.map((req, i) => (
                   <tr
                     key={`${req.name}-${i}`}
-                    className="border-b border-slate-100 last:border-0"
+                    className={
+                      "border-b border-slate-200 transition-colors last:border-0 hover:bg-slate-50 " +
+                      (i % 2 === 1 ? "bg-slate-50/50" : "")
+                    }
                   >
-                    <td className="py-3 pr-4 text-sm font-medium text-slate-800">
-                      {req.name}
-                    </td>
-                    <td className="py-3 pr-4 text-sm text-slate-500">
-                      {req.stallType}
-                    </td>
-                    <td className="py-3 pr-4">
+                    <td className="px-6 py-4 text-sm text-slate-900">{req.name}</td>
+                    <td className="px-6 py-4 text-sm text-slate-500">{req.stallType}</td>
+                    <td className="px-6 py-4">
                       <StatusBadge status={req.status} />
                     </td>
-                    <td className="py-3 text-sm text-slate-400">{req.date}</td>
+                    <td className="px-6 py-4 text-sm text-slate-500">{req.date}</td>
                   </tr>
                 ))}
               </tbody>
@@ -242,53 +258,23 @@ export default function AdminDashboardPage() {
             <EmptyState text="Belum ada pengajuan verifikasi." />
           )}
         </div>
-      </section>
+      </div>
     </div>
   );
 }
 
-function StatCard({
-  icon,
-  label,
-  value,
-  footer,
-  highlight = false,
-}: {
-  icon: React.ReactNode;
-  label: string;
-  value?: string;
-  footer?: React.ReactNode;
-  highlight?: boolean;
-}) {
-  return (
-    <div
-      className={
-        "rounded-xl border bg-white p-5 shadow-sm " +
-        (highlight ? "border-slate-200 border-l-4 border-l-amber-400" : "border-slate-200")
-      }
-    >
-      <div className="flex items-center justify-between">
-        <span className="text-xs font-medium text-slate-500">{label}</span>
-        <span className="text-slate-400">{icon}</span>
-      </div>
-      <p className="mt-2 text-2xl font-bold text-slate-900">{value ?? "—"}</p>
-      {footer && <div className="mt-1.5">{footer}</div>}
-    </div>
-  );
-}
+const STATUS_STYLES: Record<VerificationStatus, string> = {
+  Pending: "bg-amber-100 text-amber-800",
+  Approved: "bg-emerald-100 text-emerald-800",
+  Rejected: "bg-rose-100 text-rose-800",
+};
 
 function StatusBadge({ status }: { status: VerificationStatus }) {
-  const styles: Record<VerificationStatus, string> = {
-    Pending: "bg-amber-50 text-amber-700",
-    Approved: "bg-emerald-50 text-emerald-700",
-    Rejected: "bg-rose-50 text-rose-700",
-  };
-
   return (
     <span
       className={
-        "inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium " +
-        styles[status]
+        "inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-semibold " +
+        STATUS_STYLES[status]
       }
     >
       {status}
@@ -298,7 +284,7 @@ function StatusBadge({ status }: { status: VerificationStatus }) {
 
 function EmptyState({ text }: { text: string }) {
   return (
-    <div className="flex items-center justify-center rounded-lg border border-dashed border-slate-200 py-8 text-sm text-slate-400">
+    <div className="flex items-center justify-center py-10 text-sm text-slate-400">
       {text}
     </div>
   );
