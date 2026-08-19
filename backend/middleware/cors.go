@@ -1,42 +1,18 @@
 package middleware
 
 import (
-	"log"
-	"net/http"
-	"strings"
-
-	"github.com/gin-gonic/gin"
+	"github.com/gofiber/fiber/v3"
+	"github.com/gofiber/fiber/v3/middleware/cors"
 )
 
-func CORSMiddleware(allowedOrigins []string) gin.HandlerFunc {
-	originSet := make(map[string]bool, len(allowedOrigins))
-	for _, o := range allowedOrigins {
-		trimmed := strings.TrimSpace(o)
-		if trimmed != "" {
-			originSet[trimmed] = true
-		}
-	}
-
-	log.Printf("[CORS] allowed origins: %v", allowedOrigins)
-
-	return func(c *gin.Context) {
-		origin := c.GetHeader("Origin")
-
-		if origin != "" && originSet[origin] {
-			c.Header("Access-Control-Allow-Origin", origin)
-			c.Header("Vary", "Origin")
-			c.Header("Access-Control-Allow-Credentials", "true")
-			c.Header("Access-Control-Allow-Methods", "GET, POST, PUT, PATCH, DELETE, OPTIONS")
-			c.Header("Access-Control-Allow-Headers", "Origin, Content-Type, Authorization")
-		} else if origin != "" {
-			log.Printf("[CORS] blocked origin: %s (not in whitelist)", origin)
-		}
-
-		if c.Request.Method == http.MethodOptions {
-			c.AbortWithStatus(http.StatusNoContent)
-			return
-		}
-
-		c.Next()
-	}
+// CORSMiddleware mengembalikan konfigurasi CORS untuk Fiber
+// Catatan: Di Fiber, CORS di-set sebagai middleware terpisah,
+// bukan custom handler seperti di Gin.
+func CORSMiddleware(allowedOrigins []string) fiber.Handler {
+	return cors.New(cors.Config{
+		AllowOrigins:     allowedOrigins,
+		AllowMethods:     []string{"GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"},
+		AllowHeaders:     []string{"Origin", "Content-Type", "Authorization"},
+		AllowCredentials: true,
+	})
 }

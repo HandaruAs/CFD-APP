@@ -1,47 +1,43 @@
 package middleware
 
 import (
-	"net/http"
 	"strings"
 
-	"cfd-backend/pkg/auth" // <-- PERBAIKAN: Pindah dari internal/auth ke pkg/auth
+	"cfd-backend/pkg/auth"
 
-	"github.com/gin-gonic/gin"
+	"github.com/gofiber/fiber/v3"
 )
 
-func AuthMiddleware(jwtSecret string) gin.HandlerFunc {
-	return func(c *gin.Context) {
+func AuthMiddleware(jwtSecret string) fiber.Handler {
+	return func(c fiber.Ctx) error {
 		// Ambil token dari header Authorization
-		authHeader := c.GetHeader("Authorization")
+		authHeader := c.Get("Authorization")
 		if authHeader == "" {
-			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{
+			return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{
 				"error": "authorization header required",
 			})
-			return
 		}
 
 		// Format: Bearer <token>
 		parts := strings.Split(authHeader, " ")
 		if len(parts) != 2 || parts[0] != "Bearer" {
-			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{
+			return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{
 				"error": "invalid authorization format, use Bearer <token>",
 			})
-			return
 		}
 
 		tokenString := parts[1]
-		
+
 		// Validasi token
 		userID, err := auth.ValidateToken(tokenString, jwtSecret)
 		if err != nil {
-			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{
+			return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{
 				"error": "invalid or expired token",
 			})
-			return
 		}
 
-		// Simpan user_id di context untuk digunakan handler selanjutnya
-		c.Set("user_id", userID)
-		c.Next()
+		// Simpan user_id di locals untuk digunakan handler selanjutnya
+		c.Locals("user_id", userID)
+		return c.Next()
 	}
 }

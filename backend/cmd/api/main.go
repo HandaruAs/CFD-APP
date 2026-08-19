@@ -2,12 +2,10 @@ package main
 
 import (
 	"log"
-	"net/http"
 
 	"cfd-backend/config"
 	"cfd-backend/database"
 	"cfd-backend/middleware"
-	
 
 	// Modul Repository
 	userRepo "cfd-backend/modules/user/repository"
@@ -27,7 +25,9 @@ import (
 	pedagangController "cfd-backend/modules/pedagang/controller"
 	menuController "cfd-backend/modules/menu/controller"
 
-	"github.com/gin-gonic/gin"
+	"github.com/gofiber/fiber/v3"
+	"github.com/gofiber/fiber/v3/middleware/cors"
+	"github.com/gofiber/fiber/v3/middleware/logger"
 )
 
 func main() {
@@ -51,38 +51,52 @@ func main() {
 	// 3. Init All Controllers
 	authController := authController.NewAuthController(authUsecase)
 	userController := userController.NewUserController(userUsecase)
-	// PedagangController butuh userUsecase untuk membuat user baru saat ditambahkan oleh Superadmin
 	pedagangController := pedagangController.NewPedagangController(pedagangUsecase, userUsecase)
 	menuController := menuController.NewMenuController(menuUsecase)
 
-	router := gin.Default()
-	router.Use(middleware.CORSMiddleware(cfg.CORSAllowedOrigins))
+	// 4. Init Fiber App
+	app := fiber.New(fiber.Config{
+		// Biar error handler-nya konsisten
+		ErrorHandler: func(c fiber.Ctx, err error) error {
+			return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+				"error": err.Error(),
+			})
+		},
+	})
+
+	// Middleware
+	app.Use(logger.New())
+	app.Use(cors.New(cors.Config{
+		AllowOrigins:     cfg.CORSAllowedOrigins,
+		AllowMethods:     []string{"GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"},
+		AllowHeaders:     []string{"Origin", "Content-Type", "Authorization"},
+		AllowCredentials: true,
+	}))
 
 	// Health check
-	router.GET("/health", func(c *gin.Context) {
-		c.JSON(200, gin.H{"status": "ok"})
+	app.Get("/health", func(c fiber.Ctx) error {
+		return c.Status(200).JSON(fiber.Map{"status": "ok"})
 	})
 
 	// ============ ENDPOINT PUBLIK (TIDAK PERLU LOGIN) ============
-	router.POST("/api/register", authController.RegisterPedagang)
-	router.POST("/api/login", authController.Login)
+	app.Post("/api/register", authController.RegisterPedagang)
+	app.Post("/api/login", authController.Login)
 
 	// ============ ENDPOINT PROTECTED (BUTUH LOGIN) ============
-	// Endpoint ini bisa diakses oleh semua user yang sudah login (tanpa cek role)
-	router.GET("/api/me", middleware.AuthMiddleware(cfg.JWTSecret), userController.Me)
+	app.Get("/api/me", middleware.AuthMiddleware(cfg.JWTSecret), userController.Me)
 
 	// Menu dinamis
-	router.GET("/api/menus", middleware.AuthMiddleware(cfg.JWTSecret), menuController.GetMyMenus)
+	app.Get("/api/menus", middleware.AuthMiddleware(cfg.JWTSecret), menuController.GetMyMenus)
 
 	// ============ ENDPOINT KHUSUS ROLE ============
 
 	// 1. Endpoint untuk PEDAGANG saja
-	router.GET("/api/pedagang/dashboard",
+	app.Get("/api/pedagang/dashboard",
 		middleware.AuthMiddleware(cfg.JWTSecret),
 		middleware.RoleMiddleware(userRepository, "pedagang"),
-		func(c *gin.Context) {
-			userID, _ := c.Get("user_id")
-			c.JSON(http.StatusOK, gin.H{
+		func(c fiber.Ctx) error {
+			userID := c.Locals("user_id")
+			return c.Status(200).JSON(fiber.Map{
 				"message": "Selamat datang di Dashboard Pedagang!",
 				"user_id": userID,
 			})
@@ -90,12 +104,12 @@ func main() {
 	)
 
 	// 2. Endpoint untuk PETUGAS_CFD saja
-	router.GET("/api/petugas/dashboard",
+	app.Get("/api/petugas/dashboard",
 		middleware.AuthMiddleware(cfg.JWTSecret),
 		middleware.RoleMiddleware(userRepository, "petugas"),
-		func(c *gin.Context) {
-			userID, _ := c.Get("user_id")
-			c.JSON(http.StatusOK, gin.H{
+		func(c fiber.Ctx) error {
+			userID := c.Locals("user_id")
+			return c.Status(200).JSON(fiber.Map{
 				"message": "Selamat datang di Dashboard Petugas CFD!",
 				"user_id": userID,
 			})
@@ -103,12 +117,12 @@ func main() {
 	)
 
 	// 3. Endpoint untuk SUPERADMIN saja
-	router.GET("/api/admin/dashboard",
+	app.Get("/api/admin/dashboard",
 		middleware.AuthMiddleware(cfg.JWTSecret),
 		middleware.RoleMiddleware(userRepository, "superadmin"),
-		func(c *gin.Context) {
-			userID, _ := c.Get("user_id")
-			c.JSON(http.StatusOK, gin.H{
+		func(c fiber.Ctx) error {
+			userID := c.Locals("user_id")
+			return c.Status(200).JSON(fiber.Map{
 				"message": "Selamat datang di Dashboard Super Admin!",
 				"user_id": userID,
 			})
@@ -116,72 +130,88 @@ func main() {
 	)
 
 	// 4. Endpoint untuk SUPERADMIN DAN PETUGAS_CFD (multi-role)
-	router.GET("/api/verifikasi/pengajuan",
+	app.Get("/api/verifikasi/pengajuan",
 		middleware.AuthMiddleware(cfg.JWTSecret),
 		middleware.RoleMiddleware(userRepository, "superadmin", "petugas"),
-		func(c *gin.Context) {
-			c.JSON(http.StatusOK, gin.H{
+		func(c fiber.Ctx) error {
+			return c.Status(200).JSON(fiber.Map{
 				"message": "Halaman verifikasi pengajuan (Superadmin & Petugas CFD)",
 			})
 		},
 	)
 
 	// 5. Contoh endpoint yang butuh login DAN permission spesifik
-	router.GET("/api/admin/check",
+	app.Get("/api/admin/check",
 		middleware.AuthMiddleware(cfg.JWTSecret),
 		middleware.PermissionMiddleware(permissionRepository, "users.read"),
-		func(c *gin.Context) {
-			c.JSON(http.StatusOK, gin.H{"message": "kamu punya akses users.read"})
+		func(c fiber.Ctx) error {
+			return c.Status(200).JSON(fiber.Map{"message": "kamu punya akses users.read"})
 		},
 	)
 
-	// ============ ENDPOINT PEDAGANG (Handler terpisah) ============
-	router.POST("/api/pedagang/pengajuan",
+	// ============ ENDPOINT PEDAGANG ============
+	app.Post("/api/pedagang/pengajuan",
 		middleware.AuthMiddleware(cfg.JWTSecret),
 		middleware.RoleMiddleware(userRepository, "pedagang"),
 		pedagangController.AjukanUsaha,
 	)
 
-	router.GET("/api/pedagang/pengajuan",
+	app.Get("/api/pedagang/pengajuan",
 		middleware.AuthMiddleware(cfg.JWTSecret),
 		middleware.RoleMiddleware(userRepository, "pedagang"),
 		pedagangController.StatusPengajuan,
 	)
 
-	// ============ ENDPOINT SUPERADMIN (Manajemen Pedagang) ============
-	router.POST("/api/admin/users/pedagang",
+	// ============ ENDPOINT SUPERADMIN (Manajemen User) ============
+
+	// Pedagang
+	app.Post("/api/admin/users/pedagang",
 		middleware.AuthMiddleware(cfg.JWTSecret),
 		middleware.RoleMiddleware(userRepository, "superadmin"),
 		pedagangController.CreatePedagangByAdmin,
 	)
 
-	router.GET("/api/admin/users/pedagang", 
+	app.Get("/api/admin/users/pedagang",
 		middleware.AuthMiddleware(cfg.JWTSecret),
 		middleware.RoleMiddleware(userRepository, "superadmin"),
 		pedagangController.ListPedagangByAdmin,
 	)
 
-	router.GET("/api/admin/users/pedagang/stats",
-	middleware.AuthMiddleware(cfg.JWTSecret),
-	middleware.RoleMiddleware(userRepository, "superadmin"),
-	pedagangController.GetPedagangStats,
+	// Petugas
+	app.Get("/api/admin/users/petugas",
+		middleware.AuthMiddleware(cfg.JWTSecret),
+		middleware.RoleMiddleware(userRepository, "superadmin"),
+		userController.ListUsersByRole,
 	)
 
-	router.GET("/api/admin/users/pedagang/:id",
-	middleware.AuthMiddleware(cfg.JWTSecret),
-	middleware.RoleMiddleware(userRepository, "superadmin"),
-	pedagangController.GetPedagangByID,
+	app.Post("/api/admin/users/petugas",
+		middleware.AuthMiddleware(cfg.JWTSecret),
+		middleware.RoleMiddleware(userRepository, "superadmin"),
+		userController.CreateUserByRole,
 	)
 
-	router.DELETE("/api/admin/users/pedagang/:id",
-	middleware.AuthMiddleware(cfg.JWTSecret),
-	middleware.RoleMiddleware(userRepository, "superadmin"),
-	pedagangController.DeletePedagangByAdmin,
+	// Statistik
+	app.Get("/api/admin/users/stats",
+		middleware.AuthMiddleware(cfg.JWTSecret),
+		middleware.RoleMiddleware(userRepository, "superadmin"),
+		userController.GetUserStats,
 	)
 
+	// Pedagang Detail
+	app.Get("/api/admin/users/pedagang/:id",
+		middleware.AuthMiddleware(cfg.JWTSecret),
+		middleware.RoleMiddleware(userRepository, "superadmin"),
+		pedagangController.GetPedagangByID,
+	)
+
+	app.Delete("/api/admin/users/pedagang/:id",
+		middleware.AuthMiddleware(cfg.JWTSecret),
+		middleware.RoleMiddleware(userRepository, "superadmin"),
+		pedagangController.DeletePedagangByAdmin,
+	)
 
 	log.Printf("server jalan di port %s", cfg.Port)
-	if err := router.Run(":" + cfg.Port); err != nil {
+	if err := app.Listen(":" + cfg.Port); err != nil {
 		log.Fatalf("server gagal jalan: %v", err)
 	}
 }

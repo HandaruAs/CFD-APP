@@ -1,44 +1,34 @@
 package middleware
 
 import (
-	"net/http"
+	"cfd-backend/modules/user/repository"
 
-	"cfd-backend/modules/user/repository" 
-
-	"github.com/gin-gonic/gin"
+	"github.com/gofiber/fiber/v3"
 )
 
-
-func RoleMiddleware(userRepo *repository.UserRepository, allowedRoles ...string) gin.HandlerFunc {
-	return func(c *gin.Context) {
-		
-		userID, exists := c.Get("user_id")
-		if !exists {
-			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{
+func RoleMiddleware(userRepo *repository.UserRepository, allowedRoles ...string) fiber.Handler {
+	return func(c fiber.Ctx) error {
+		userID, exists := c.Locals("user_id").(string)
+		if !exists || userID == "" {
+			return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{
 				"error": "unauthorized - tidak ada user_id di context",
 			})
-			return
 		}
 
-		
-		role, err := userRepo.GetUserRole(c.Request.Context(), userID.(string))
+		role, err := userRepo.GetUserRole(c.Context(), userID)
 		if err != nil {
-			c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{
+			return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
 				"error": "gagal mengambil data role user",
 			})
-			return
 		}
 
-		
 		for _, allowed := range allowedRoles {
 			if role == allowed {
-				c.Next()
-				return
+				return c.Next()
 			}
 		}
 
-		
-		c.AbortWithStatusJSON(http.StatusForbidden, gin.H{
+		return c.Status(fiber.StatusForbidden).JSON(fiber.Map{
 			"error":          "anda tidak memiliki akses ke resource ini",
 			"required_roles": allowedRoles,
 			"your_role":      role,

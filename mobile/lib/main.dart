@@ -1,9 +1,10 @@
 import 'package:flutter/material.dart';
-import 'package:mobile/screens/auth/login_screen.dart';
-import 'package:mobile/screens/auth/register_screen.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:mobile/features/auth/presentation/pages/login_screen.dart';
+import 'package:mobile/features/auth/presentation/pages/register_screen.dart';
 
 void main() {
-  runApp(const MyApp());
+  runApp(const ProviderScope(child: MyApp()));
 }
 
 class MyApp extends StatelessWidget {

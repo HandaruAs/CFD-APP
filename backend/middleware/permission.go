@@ -1,32 +1,33 @@
 package middleware
 
 import (
-	"net/http"
+	"cfd-backend/modules/user/repository"
 
-	"cfd-backend/modules/user/repository" 
-	"github.com/gin-gonic/gin"
+	"github.com/gofiber/fiber/v3"
 )
 
-
-func PermissionMiddleware(permRepo *repository.PermissionRepository, requiredPermission string) gin.HandlerFunc {
-	return func(c *gin.Context) {
-		userID, exists := c.Get("user_id")
-		if !exists {
-			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "user tidak terautentikasi"})
-			return
+func PermissionMiddleware(permRepo *repository.PermissionRepository, requiredPermission string) fiber.Handler {
+	return func(c fiber.Ctx) error {
+		userID, exists := c.Locals("user_id").(string)
+		if !exists || userID == "" {
+			return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{
+				"error": "user tidak terautentikasi",
+			})
 		}
 
-		hasPermission, err := permRepo.UserHasPermission(c.Request.Context(), userID.(string), requiredPermission)
+		hasPermission, err := permRepo.UserHasPermission(c.Context(), userID, requiredPermission)
 		if err != nil {
-			c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{"error": "gagal memeriksa permission"})
-			return
+			return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+				"error": "gagal memeriksa permission",
+			})
 		}
 
 		if !hasPermission {
-			c.AbortWithStatusJSON(http.StatusForbidden, gin.H{"error": "tidak punya akses: " + requiredPermission})
-			return
+			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{
+				"error": "tidak punya akses: " + requiredPermission,
+			})
 		}
 
-		c.Next()
+		return c.Next()
 	}
 }

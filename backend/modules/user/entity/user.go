@@ -2,7 +2,6 @@ package entity
 
 import "time"
 
-
 type User struct {
 	ID        string    `db:"id"`
 	Email     string    `db:"email"`
@@ -19,5 +18,15 @@ type UserProfile struct {
 	ID     string
 	Name   string
 	Email  string
+	Phone  string
 	Status string
+}
+
+// UserStats adalah ringkasan jumlah user per status, untuk 1 role tertentu.
+// Field Status mengikuti enum user_status di DB: active, suspended, banned.
+type UserStats struct {
+	Total     int `json:"total"`
+	Active    int `json:"active"`
+	Suspended int `json:"suspended"`
+	Banned    int `json:"banned"`
 }

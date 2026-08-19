@@ -2,11 +2,8 @@ package controller
 
 import (
 	"errors"
-	"net/http"
-
 	"cfd-backend/modules/auth/usecase"
-
-	"github.com/gin-gonic/gin"
+	"github.com/gofiber/fiber/v3"
 	"github.com/jackc/pgx/v5/pgconn"
 )
 
@@ -43,48 +40,49 @@ func NewAuthController(authUsecase usecase.AuthUsecase) *AuthController {
 }
 
 // RegisterPedagang menangani POST /api/register
-func (ctrl *AuthController) RegisterPedagang(c *gin.Context) {
+func (ctrl *AuthController) RegisterPedagang(c fiber.Ctx) error {
 	var req RegisterRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-		return
+	if err := c.Bind().Body(&req); err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"error": err.Error(),
+		})
 	}
 
-	// Panggil Usecase (bukan repository langsung!)
-	userID, err := ctrl.authUsecase.Register(c.Request.Context(), req.Email, req.Password, req.Name, req.Phone)
+	userID, err := ctrl.authUsecase.Register(c.Context(), req.Email, req.Password, req.Name, req.Phone)
 	if err != nil {
-		// Handle duplicate email (PostgreSQL error code 23505)
 		var pgErr *pgconn.PgError
 		if errors.As(err, &pgErr) && pgErr.Code == "23505" {
-			c.JSON(http.StatusConflict, gin.H{"error": "email sudah terdaftar"})
-			return
+			return c.Status(fiber.StatusConflict).JSON(fiber.Map{
+				"error": "email sudah terdaftar",
+			})
 		}
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "gagal mendaftar: " + err.Error()})
-		return
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"error": "gagal mendaftar: " + err.Error(),
+		})
 	}
 
-	c.JSON(http.StatusCreated, gin.H{
+	return c.Status(fiber.StatusCreated).JSON(fiber.Map{
 		"message": "akun berhasil dibuat, silakan login lalu lengkapi pengajuan usaha dari dashboard",
 		"user_id": userID,
 	})
 }
 
 // Login menangani POST /api/login
-func (ctrl *AuthController) Login(c *gin.Context) {
+func (ctrl *AuthController) Login(c fiber.Ctx) error {
 	var req LoginRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-		return
+	if err := c.Bind().Body(&req); err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"error": err.Error(),
+		})
 	}
 
-	// Panggil Usecase Login. Usecase akan return (token, userData, error)
-	token, userData, err := ctrl.authUsecase.Login(c.Request.Context(), req.Email, req.Password)
+	token, userData, err := ctrl.authUsecase.Login(c.Context(), req.Email, req.Password)
 	if err != nil {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": err.Error()})
-		return
+		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{
+			"error": err.Error(),
+		})
 	}
 
-	// Susun Response JSON
 	var resp LoginResponse
 	resp.Token = token
 	resp.User.ID = userData.ID
@@ -92,5 +90,5 @@ func (ctrl *AuthController) Login(c *gin.Context) {
 	resp.User.Email = userData.Email
 	resp.User.Role = userData.Role
 
-	c.JSON(http.StatusOK, resp)
+	return c.Status(fiber.StatusOK).JSON(resp)
 }
