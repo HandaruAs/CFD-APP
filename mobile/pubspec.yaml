@@ -41,6 +41,7 @@ dependencies:
   # Android) -- BUKAN SharedPreferences biasa, karena itu plaintext dan
   # gampang dibaca kalau HP di-root/jailbreak.
   flutter_secure_storage: ^9.2.2
+  flutter_riverpod: ^2.6.1
 
 dev_dependencies:
   flutter_test:
