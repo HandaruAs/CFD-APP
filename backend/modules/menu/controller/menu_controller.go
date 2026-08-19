@@ -1,9 +1,9 @@
 package controller
 
 import (
-	"net/http"
 	"cfd-backend/modules/menu/usecase"
-	"github.com/gin-gonic/gin"
+
+	"github.com/gofiber/fiber/v3"
 )
 
 type MenuController struct {
@@ -16,19 +16,21 @@ func NewMenuController(menuUsecase usecase.MenuUsecase) *MenuController {
 
 // GetMyMenus adalah handler untuk GET /api/menus
 // Mengembalikan menu tree (berelasi parent-child) sesuai role user
-func (ctrl *MenuController) GetMyMenus(c *gin.Context) {
-	userID, exists := c.Get("user_id")
-	if !exists {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "User ID tidak ditemukan di token"})
-		return
+func (ctrl *MenuController) GetMyMenus(c fiber.Ctx) error {
+	userID, exists := c.Locals("user_id").(string)
+	if !exists || userID == "" {
+		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{
+			"error": "User ID tidak ditemukan di token",
+		})
 	}
 
-	menus, err := ctrl.menuUsecase.GetMyMenus(c.Request.Context(), userID.(string))
+	menus, err := ctrl.menuUsecase.GetMyMenus(c.Context(), userID)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Gagal mengambil menu: " + err.Error()})
-		return
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"error": "Gagal mengambil menu: " + err.Error(),
+		})
 	}
 
 	// Response langsung berupa list menu tree (Array JSON)
-	c.JSON(http.StatusOK, menus)
+	return c.Status(fiber.StatusOK).JSON(menus)
 }
