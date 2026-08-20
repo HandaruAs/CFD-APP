@@ -1,243 +1,331 @@
 "use client";
 
-import { useState } from "react";
-import { ArrowLeft, ArrowRight, ShieldCheck, UploadCloud, Quote } from "lucide-react";
-import { StepIndicator, type Step } from "@/components/step-indicator";
-import { FormField, inputClass, textareaClass } from "@/components/form-field";
+import { useState, FormEvent } from "react";
+import { useRouter } from "next/navigation";
 
-const STEPS: Step[] = [
-  { title: "Informasi Dasar Usaha", subtitle: "Kategori & Detail Produk" },
-  { title: "Data Pribadi", subtitle: "Identitas Kependudukan" },
-  { title: "Unggah Dokumen", subtitle: "KTP & Foto Usaha" },
-];
+// Pastikan sudah terpasang di project ini:
+//   npm install bootstrap bootstrap-icons
+// Lalu import CSS-nya sekali di app/layout.tsx (paling atas, sebelum globals.css):
+//   import "bootstrap/dist/css/bootstrap.min.css";
+//   import "bootstrap-icons/font/bootstrap-icons.css";
 
-export default function PendaftaranPage() {
-  const [step, setStep] = useState(0);
-  const isLastStep = step === STEPS.length - 1;
+type StallType = "rombong" | "meja" | "";
+
+export default function PendaftaranPedagangPage() {
+  const router = useRouter();
+  const [nik, setNik] = useState("");
+  const [dob, setDob] = useState("");
+  const [fullName, setFullName] = useState("");
+  const [businessName, setBusinessName] = useState("");
+  const [category, setCategory] = useState("");
+  const [stallType, setStallType] = useState<StallType>("");
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const handleSubmit = async (e: FormEvent) => {
+    e.preventDefault();
+    setError(null);
+
+    if (nik.trim().length !== 16) {
+      setError("NIK harus terdiri dari 16 digit.");
+      return;
+    }
+    if (!dob || !fullName || !businessName || !category || !stallType) {
+      setError("Mohon lengkapi semua data terlebih dahulu.");
+      return;
+    }
+
+    setLoading(true);
+    try {
+      // TODO: sesuaikan endpoint dengan API pendaftaran pedagang yang sebenarnya
+      const res = await fetch("/api/pedagang/daftar", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          nik,
+          dob,
+          fullName,
+          businessName,
+          category,
+          stallType,
+        }),
+      });
+
+      if (!res.ok) {
+        throw new Error("Gagal menyimpan data. Silakan coba lagi.");
+      }
+
+      // Data alokasi lapak (zona, nomor stand, QR) idealnya dikembalikan oleh API.
+      // Sesuaikan field di bawah ini dengan response API pendaftaran yang sebenarnya.
+      const data = await res.json().catch(() => ({}));
+
+      const categoryLabel =
+        category === "makanan_minuman"
+          ? "Makanan dan Minuman"
+          : "Bukan Makanan dan Minuman";
+      const stallLabel = stallType === "rombong" ? "Rombong" : "Meja";
+
+      const query = new URLSearchParams({
+        nik,
+        namaLengkap: fullName,
+        tanggalLahir: dob,
+        namaUsaha: businessName,
+        kategori: categoryLabel,
+        jenisLapak: stallLabel,
+        ...(data.zona ? { zona: data.zona } : {}),
+        ...(data.alamat ? { alamat: data.alamat } : {}),
+        ...(data.nomorStand ? { nomorStand: data.nomorStand } : {}),
+        ...(data.qrUrl ? { qrUrl: data.qrUrl } : {}),
+      });
+
+      router.push(`/pedagang/pendaftaran/detail_pendaftaran?${query.toString()}`);
+    } catch (err) {
+      setError(
+        err instanceof Error ? err.message : "Terjadi kesalahan. Silakan coba lagi."
+      );
+    } finally {
+      setLoading(false);
+    }
+  };
 
   return (
-    <div className="grid grid-cols-1 gap-lg xl:h-full xl:grid-cols-[340px_1fr]">
-      {/* Left column: intro + steps + testimonial */}
-      <div className="flex flex-col gap-lg">
-        <section className="rounded-xl border border-outline-variant bg-surface-container-lowest p-lg shadow-md">
-          <h2 className="text-title-lg text-on-surface">
-            Pendaftaran Pedagang
-          </h2>
-          <p className="mt-xs mb-lg text-body-md text-on-surface-variant">
-            Lengkapi data berikut untuk bergabung dengan CFD Hub. Pastikan
-            data yang dimasukkan valid.
-          </p>
-          <StepIndicator steps={STEPS} activeIndex={step} />
-        </section>
+    <main
+      className="d-flex align-items-center justify-content-center min-vh-100 p-3"
+      style={{
+        background:
+          "radial-gradient(circle at 15% 10%, #eef2ff 0%, #f5f6fa 45%, #f5f6fa 100%)",
+      }}
+    >
+      <style jsx global>{`
+        :root {
+          --brand: #00288e;
+          --brand-dark: #001a5e;
+          --accent: #f0a83c;
+        }
+        .pedagang-card {
+          max-width: 440px;
+          width: 100%;
+          border: none;
+          border-radius: 18px;
+          overflow: hidden;
+          box-shadow: 0 10px 40px rgba(0, 40, 142, 0.14);
+        }
+        .pedagang-header {
+          background: linear-gradient(135deg, var(--brand) 0%, var(--brand-dark) 100%);
+        }
+        .form-control:focus,
+        .form-select:focus {
+          border-color: var(--brand);
+          box-shadow: 0 0 0 0.2rem rgba(0, 40, 142, 0.15);
+        }
+        .stall-option {
+          border: 1.5px solid #e2e5f1;
+          border-radius: 12px;
+          padding: 0.65rem 0.5rem;
+          text-align: center;
+          cursor: pointer;
+          transition: all 0.15s ease;
+          background: #fff;
+        }
+        .stall-option:hover {
+          border-color: #b9c2e8;
+          background: #f8f9ff;
+        }
+        .stall-option.active {
+          border-color: var(--brand);
+          background: #eef2ff;
+          box-shadow: 0 0 0 1px var(--brand);
+        }
+        .stall-option i {
+          font-size: 1.15rem;
+          color: var(--brand);
+        }
+        .btn-brand {
+          background: var(--brand);
+          border-color: var(--brand);
+          color: #fff;
+          font-weight: 600;
+          letter-spacing: 0.2px;
+        }
+        .btn-brand:hover,
+        .btn-brand:focus {
+          background: var(--brand-dark);
+          border-color: var(--brand-dark);
+          color: #fff;
+        }
+        .btn-brand:disabled {
+          background: var(--brand);
+          opacity: 0.6;
+        }
+        .form-label-sm {
+          font-size: 0.72rem;
+          font-weight: 600;
+          color: #5b5d6b;
+          text-transform: uppercase;
+          letter-spacing: 0.4px;
+        }
+      `}</style>
 
-        <section className="relative overflow-hidden rounded-xl border border-outline-variant bg-surface-container p-lg">
-          <Quote
-            className="absolute -right-2 -top-2 h-16 w-16 text-primary/10"
-            strokeWidth={1.5}
-          />
-          <p className="relative text-body-md text-on-surface">
-            &ldquo;Bergabung dengan CFD Hub memudahkan saya mengelola lapak
-            dan menjangkau lebih banyak pelanggan setiap minggunya.&rdquo;
+      <div className="card pedagang-card">
+        {/* Header */}
+        <div className="pedagang-header px-4 py-3">
+          <h2 className="h6 mb-0 text-white fw-semibold">
+            Pendaftaran Pedagang Baru
+          </h2>
+          <p className="mb-0 small" style={{ color: "#c3cdf5", fontSize: "0.75rem" }}>
+            Lengkapi data untuk mendaftar sebagai pedagang di CFD
           </p>
-          <div className="relative mt-md flex items-center gap-sm">
-            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-primary-fixed text-[12px] font-semibold text-on-primary-fixed">
-              SA
-            </span>
-            <div>
-              <p className="text-label-md font-semibold text-on-surface">
-                Siti Aminah
-              </p>
-              <p className="text-label-sm font-normal tracking-normal text-on-surface-variant">
-                Pedagang Makanan Ringan
-              </p>
+        </div>
+
+        {/* Form Body */}
+        <form onSubmit={handleSubmit} className="p-4">
+          {/* NIK */}
+          <div className="mb-3">
+            <label htmlFor="nik" className="form-label-sm mb-1 d-block">
+              NIK (Nomor Induk Kependudukan)
+            </label>
+            <div className="input-group">
+              <span className="input-group-text bg-white text-muted">
+                <i className="bi bi-person-vcard" />
+              </span>
+              <input
+                id="nik"
+                name="nik"
+                type="text"
+                inputMode="numeric"
+                maxLength={16}
+                placeholder="16 digit NIK"
+                value={nik}
+                onChange={(e) => setNik(e.target.value.replace(/\D/g, ""))}
+                className="form-control"
+              />
             </div>
           </div>
-        </section>
-      </div>
 
-      {/* Right column: active step form */}
-      <section className="flex h-full flex-col rounded-xl border border-outline-variant bg-surface-container-lowest shadow-md">
-        <div className="flex items-start justify-between border-b border-outline-variant p-lg">
-          <div>
-            <h2 className="text-title-lg text-on-surface">
-              {STEPS[step].title}
-            </h2>
-            <p className="mt-xs text-label-md text-on-surface-variant">
-              Langkah {step + 1} dari {STEPS.length}
-            </p>
+          {/* Tanggal Lahir */}
+          <div className="mb-3">
+            <label htmlFor="dob" className="form-label-sm mb-1 d-block">
+              Tanggal Lahir
+            </label>
+            <input
+              id="dob"
+              name="dob"
+              type="date"
+              value={dob}
+              onChange={(e) => setDob(e.target.value)}
+              className="form-control"
+            />
           </div>
-          <span className="hidden items-center gap-xs rounded-full bg-secondary-container px-sm py-1.5 text-label-sm text-on-secondary-container sm:flex">
-            <ShieldCheck className="h-3.5 w-3.5" strokeWidth={2.5} />
-            Aman &amp; Terenkripsi
-          </span>
-        </div>
 
-        <div className="flex-1 p-lg">
-          {step === 0 && <StepUsaha />}
-          {step === 1 && <StepPribadi />}
-          {step === 2 && <StepDokumen />}
-        </div>
+          {/* Nama Lengkap */}
+          <div className="mb-3">
+            <label htmlFor="fullName" className="form-label-sm mb-1 d-block">
+              Nama Lengkap
+            </label>
+            <input
+              id="fullName"
+              name="fullName"
+              type="text"
+              placeholder="Sesuai KTP"
+              value={fullName}
+              onChange={(e) => setFullName(e.target.value)}
+              className="form-control"
+            />
+          </div>
 
-        <div className="flex items-center justify-between border-t border-outline-variant p-lg">
-          <button
-            type="button"
-            disabled={step === 0}
-            onClick={() => setStep((s) => Math.max(0, s - 1))}
-            className="flex items-center gap-xs rounded-lg border border-outline-variant px-md py-sm text-label-md text-on-surface transition-colors hover:bg-surface-container-low disabled:cursor-not-allowed disabled:opacity-40"
-          >
-            <ArrowLeft className="h-4 w-4" strokeWidth={2} />
-            Kembali
-          </button>
+          {/* Nama Usaha */}
+          <div className="mb-3">
+            <label htmlFor="businessName" className="form-label-sm mb-1 d-block">
+              Nama Usaha
+            </label>
+            <div className="input-group">
+              <span className="input-group-text bg-white text-muted">
+                <i className="bi bi-tag" />
+              </span>
+              <input
+                id="businessName"
+                name="businessName"
+                type="text"
+                placeholder="Contoh: Kedai Kopi Senja"
+                value={businessName}
+                onChange={(e) => setBusinessName(e.target.value)}
+                className="form-control"
+              />
+            </div>
+          </div>
 
-          <button
-            type="button"
-            onClick={() =>
-              setStep((s) => (isLastStep ? s : Math.min(STEPS.length - 1, s + 1)))
-            }
-            className="flex items-center gap-xs rounded-lg bg-primary px-lg py-sm text-label-md text-on-primary shadow-sm transition-colors hover:bg-primary-container"
-          >
-            {isLastStep ? "Kirim Pendaftaran" : "Selanjutnya"}
-            <ArrowRight className="h-4 w-4" strokeWidth={2} />
-          </button>
-        </div>
-      </section>
-    </div>
-  );
-}
+          {/* Kategori Dagangan */}
+          <div className="mb-3">
+            <label htmlFor="category" className="form-label-sm mb-1 d-block">
+              Kategori Dagangan
+            </label>
+            <select
+              id="category"
+              name="category"
+              value={category}
+              onChange={(e) => setCategory(e.target.value)}
+              className="form-select"
+            >
+              <option value="" disabled>
+                Pilih Kategori
+              </option>
+              <option value="makanan_minuman">Makanan dan Minuman</option>
+              <option value="bukan_makanan_minuman">
+                Bukan Makanan dan Minuman
+              </option>
+            </select>
+          </div>
 
-function StepUsaha() {
-  return (
-    <div className="flex h-full flex-col gap-lg">
-      <div className="grid grid-cols-1 gap-lg sm:grid-cols-2">
-        <FormField label="Nama Usaha" htmlFor="nama_usaha">
-          <input
-            id="nama_usaha"
-            className={inputClass}
-            placeholder="Contoh: Kedai Kopi Senja"
-          />
-        </FormField>
-        <FormField label="Kategori Usaha" htmlFor="kategori">
-          <select id="kategori" className={inputClass}>
-            <option>Minuman &amp; Kopi</option>
-            <option>Makanan Berat</option>
-            <option>Makanan Ringan &amp; Camilan</option>
-            <option>Fashion &amp; Aksesoris</option>
-            <option>Kerajinan Tangan</option>
-          </select>
-        </FormField>
-        <FormField label="Jenis Dagangan" htmlFor="jenis_dagangan">
-          <input
-            id="jenis_dagangan"
-            className={inputClass}
-            placeholder="Contoh: Kopi susu, teh, camilan ringan"
-          />
-        </FormField>
-        <FormField label="Perkiraan Harga Produk" htmlFor="harga">
-          <input
-            id="harga"
-            className={inputClass}
-            placeholder="Contoh: Rp10.000 - Rp25.000"
-          />
-        </FormField>
+          {/* Pilihan Lapak */}
+          <div className="mb-3">
+            <label className="form-label-sm mb-1 d-block">Pilihan Lapak</label>
+            <div className="row g-2">
+              <div className="col-6">
+                <div
+                  className={`stall-option ${stallType === "rombong" ? "active" : ""}`}
+                  onClick={() => setStallType("rombong")}
+                  role="button"
+                >
+                  <i className="bi bi-cart3 d-block mb-1" />
+                  <span className="small fw-medium text-dark">Rombong</span>
+                </div>
+              </div>
+              <div className="col-6">
+                <div
+                  className={`stall-option ${stallType === "meja" ? "active" : ""}`}
+                  onClick={() => setStallType("meja")}
+                  role="button"
+                >
+                  <i className="bi bi-table d-block mb-1" />
+                  <span className="small fw-medium text-dark">Meja</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {error && (
+            <div className="alert alert-danger py-2 px-3 small mb-3" role="alert">
+              <i className="bi bi-exclamation-triangle-fill me-1" />
+              {error}
+            </div>
+          )}
+
+          {/* Form Actions */}
+          <div className="d-flex gap-2 pt-3 border-top mt-3">
+            <button type="button" className="btn btn-outline-secondary flex-fill">
+              Batal
+            </button>
+            <button
+              type="submit"
+              disabled={loading}
+              className="btn btn-brand flex-fill d-flex align-items-center justify-content-center gap-2"
+            >
+              {loading && <span className="spinner-border spinner-border-sm" />}
+              {loading ? "Menyimpan..." : "Simpan"}
+            </button>
+          </div>
+        </form>
       </div>
-
-      <div className="flex flex-1 flex-col">
-        <FormField
-          label="Deskripsi Usaha"
-          htmlFor="deskripsi"
-          hint="Ceritakan singkat produk dan keunikan usaha Anda."
-        >
-          <textarea
-            id="deskripsi"
-            className={`${textareaClass} flex-1 resize-none`}
-            placeholder="Tuliskan deskripsi usaha Anda di sini..."
-          />
-        </FormField>
-      </div>
-    </div>
-  );
-}
-
-function StepPribadi() {
-  return (
-    <div className="grid grid-cols-1 gap-lg sm:grid-cols-2">
-      <FormField label="Nama Lengkap" htmlFor="nama_lengkap">
-        <input
-          id="nama_lengkap"
-          className={inputClass}
-          placeholder="Sesuai KTP"
-        />
-      </FormField>
-      <FormField label="NIK" htmlFor="nik" hint="16 digit sesuai KTP">
-        <input
-          id="nik"
-          inputMode="numeric"
-          maxLength={16}
-          className={inputClass}
-          placeholder="35xxxxxxxxxxxxxx"
-        />
-      </FormField>
-      <FormField label="Nomor HP / WhatsApp" htmlFor="phone">
-        <input
-          id="phone"
-          inputMode="tel"
-          className={inputClass}
-          placeholder="08xxxxxxxxxx"
-        />
-      </FormField>
-      <FormField label="Email" htmlFor="email">
-        <input
-          id="email"
-          type="email"
-          className={inputClass}
-          placeholder="nama@email.com"
-        />
-      </FormField>
-      <div className="sm:col-span-2">
-        <FormField label="Alamat Domisili" htmlFor="alamat">
-          <textarea
-            id="alamat"
-            rows={3}
-            className={textareaClass}
-            placeholder="Alamat lengkap sesuai domisili saat ini"
-          />
-        </FormField>
-      </div>
-    </div>
-  );
-}
-
-function StepDokumen() {
-  return (
-    <div className="grid grid-cols-1 gap-lg sm:grid-cols-2">
-      <UploadTile label="Foto KTP" hint="JPG atau PNG, maks. 5MB" />
-      <UploadTile label="Foto Usaha / Lapak" hint="JPG atau PNG, maks. 5MB" />
-      <UploadTile
-        label="Surat Izin Usaha (opsional)"
-        hint="PDF, JPG, atau PNG, maks. 5MB"
-      />
-      <UploadTile
-        label="Sertifikat Halal (opsional)"
-        hint="PDF, JPG, atau PNG, maks. 5MB"
-      />
-    </div>
-  );
-}
-
-function UploadTile({ label, hint }: { label: string; hint: string }) {
-  return (
-    <div>
-      <p className="mb-xs text-label-md font-semibold text-on-surface">{label}</p>
-      <button
-        type="button"
-        className="flex w-full flex-col items-center justify-center gap-sm rounded-lg border-2 border-dashed border-outline-variant bg-surface-container-low px-md py-xl text-center transition-colors hover:border-primary hover:bg-primary-fixed/30"
-      >
-        <UploadCloud className="h-6 w-6 text-primary" strokeWidth={1.75} />
-        <span className="text-label-md text-primary">Pilih berkas</span>
-        <span className="text-label-sm font-normal tracking-normal text-on-surface-variant">
-          {hint}
-        </span>
-      </button>
-    </div>
+    </main>
   );
 }
