@@ -2,6 +2,7 @@ package repository
 
 import (
 	"context"
+	"sort"
 
 	"cfd-backend/modules/menu/entity"
 
@@ -33,6 +34,11 @@ type menuRow struct {
 //
 // pedagangStage cuma relevan buat role "pedagang" (nilai "unverified"
 // atau "verified"); untuk role lain kirim nil aja.
+//
+// Parent yang cuma jadi "wadah" grouping (misal "Manajemen User") gak
+// wajib di-assign ke menu_roles secara eksplisit -- kalau ada anaknya
+// yang lolos filter role, parent-nya otomatis ikut ditarik lewat
+// fillMissingAncestors, murni buat rendering, bukan buat akses.
 func (r *MenuRepository) GetMenusByRoleSlug(ctx context.Context, roleSlug string, pedagangStage *string) ([]*entity.MenuItem, error) {
 	rows, err := r.db.Query(ctx, `
 		SELECT m.id, m.parent_id, m.name, m.slug, m.icon, m.route, m.sort_order
@@ -51,7 +57,6 @@ func (r *MenuRepository) GetMenusByRoleSlug(ctx context.Context, roleSlug string
 	defer rows.Close()
 
 	byID := make(map[string]*entity.MenuItem)
-	var order []string
 
 	for rows.Next() {
 		var m menuRow
@@ -68,22 +73,35 @@ func (r *MenuRepository) GetMenusByRoleSlug(ctx context.Context, roleSlug string
 			SortOrder: m.SortOrder,
 			Children:  []*entity.MenuItem{},
 		}
-		order = append(order, m.ID)
 	}
 	if err := rows.Err(); err != nil {
 		return nil, err
 	}
 
+	if err := r.fillMissingAncestors(ctx, byID); err != nil {
+		return nil, err
+	}
+
+	// Urutkan semua item (termasuk ancestor yang baru ditarik) sekali,
+	// biar roots & children keisi sesuai sort_order, bukan ikut urutan
+	// map yang acak.
+	items := make([]*entity.MenuItem, 0, len(byID))
+	for _, item := range byID {
+		items = append(items, item)
+	}
+	sort.Slice(items, func(i, j int) bool {
+		return items[i].SortOrder < items[j].SortOrder
+	})
+
 	var roots []*entity.MenuItem
-	for _, id := range order {
-		item := byID[id]
+	for _, item := range items {
 		if item.ParentID == nil {
 			roots = append(roots, item)
 			continue
 		}
 		parent, ok := byID[*item.ParentID]
 		if !ok {
-			// parent-nya kebetulan gak ke-assign ke role yang sama ->
+			// parent-nya beneran udah gak ada (dihapus/nonaktif) ->
 			// tampilkan aja sebagai root, daripada hilang gak kelihatan
 			roots = append(roots, item)
 			continue
@@ -92,6 +110,72 @@ func (r *MenuRepository) GetMenusByRoleSlug(ctx context.Context, roleSlug string
 	}
 
 	return roots, nil
+}
+
+// fillMissingAncestors menelusuri parent_id ke atas buat tiap menu yang
+// lolos filter role, dan menambahkan parent yang belum ada di byID --
+// walau parent itu sendiri gak ke-assign langsung ke role tsb. Parent
+// yang ditambahkan di sini murni wadah visual buat grouping di sidebar,
+// gak dipakai buat ngecek akses/route.
+func (r *MenuRepository) fillMissingAncestors(ctx context.Context, byID map[string]*entity.MenuItem) error {
+	for {
+		missing := map[string]bool{}
+		for _, item := range byID {
+			if item.ParentID != nil {
+				if _, ok := byID[*item.ParentID]; !ok {
+					missing[*item.ParentID] = true
+				}
+			}
+		}
+		if len(missing) == 0 {
+			return nil
+		}
+
+		ids := make([]string, 0, len(missing))
+		for id := range missing {
+			ids = append(ids, id)
+		}
+
+		rows, err := r.db.Query(ctx, `
+			SELECT id, parent_id, name, slug, icon, route, sort_order
+			FROM menus
+			WHERE id = ANY($1) AND deleted_at IS NULL AND is_active = true
+		`, ids)
+		if err != nil {
+			return err
+		}
+
+		found := 0
+		for rows.Next() {
+			var m menuRow
+			if err := rows.Scan(&m.ID, &m.ParentID, &m.Name, &m.Slug, &m.Icon, &m.Route, &m.SortOrder); err != nil {
+				rows.Close()
+				return err
+			}
+			byID[m.ID] = &entity.MenuItem{
+				ID:        m.ID,
+				ParentID:  m.ParentID,
+				Name:      m.Name,
+				Slug:      m.Slug,
+				Icon:      m.Icon,
+				Route:     m.Route,
+				SortOrder: m.SortOrder,
+				Children:  []*entity.MenuItem{},
+			}
+			found++
+		}
+		rows.Close()
+		if err := rows.Err(); err != nil {
+			return err
+		}
+
+		// Parent-nya beneran gak ketemu (dihapus/nonaktif) -> berhenti,
+		// biar gak infinite loop. Item yang nyangkut bakal di-fallback
+		// jadi root pas render di GetMenusByRoleSlug.
+		if found == 0 {
+			return nil
+		}
+	}
 }
 
 // ListAllMenus ambil SEMUA menu (flat, bukan tree) beserta role slug apa
