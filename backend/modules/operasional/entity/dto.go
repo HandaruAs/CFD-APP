@@ -7,8 +7,8 @@ package entity
 // atur jam buat hari ini), endpoint akan BIKIN baris baru (upsert) --
 // jadi petugas nggak perlu tombol "mulai sesi" terpisah.
 type UpdateSesiRequest struct {
-	JamMulai          string `json:"jamMulai" binding:"required"`          // format "HH:MM"
-	JamSelesaiRencana string `json:"jamSelesaiRencana" binding:"required"` // format "HH:MM"
+	JamMulai          string `json:"jamMulai" validate:"required"`          // format "HH:MM"
+	JamSelesaiRencana string `json:"jamSelesaiRencana" validate:"required"` // format "HH:MM"
 }
 
 // UpdatePendaftaranRequest dipakai buat tombol "Buka Pendaftaran" /
@@ -23,7 +23,7 @@ type UpdatePendaftaranRequest struct {
 // otomatis ganti status sesi jadi 'diperpanjang', nggak bisa dipakai
 // buat ubah jam_mulai.
 type PerpanjangSesiRequest struct {
-	JamSelesaiBaru string `json:"jamSelesaiBaru" binding:"required"` // format "HH:MM"
+	JamSelesaiBaru string `json:"jamSelesaiBaru" validate:"required"` // format "HH:MM"
 }
 
 // --- RESPONSE DTO (bentuk JSON yang dikirim ke frontend) ---
