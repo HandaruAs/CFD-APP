@@ -13,7 +13,7 @@ export type MenuNode = {
 };
 
 // Tambahkan icon yang ada di database backend kamu di sini
-const ICON_MAP: Record<string, LucideIcon> = {
+export const ICON_MAP: Record<string, LucideIcon> = {
   home: Home,
   users: Users,
   "check-circle": CheckCircle,

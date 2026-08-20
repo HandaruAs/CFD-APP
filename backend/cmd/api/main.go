@@ -31,6 +31,7 @@ import (
 	"github.com/gofiber/fiber/v3"
 	"github.com/gofiber/fiber/v3/middleware/cors"
 	"github.com/gofiber/fiber/v3/middleware/logger"
+	"github.com/gofiber/fiber/v3/middleware/recover"
 )
 
 func main() {
@@ -71,6 +72,7 @@ func main() {
 	})
 
 	// Middleware
+	app.Use(recover.New())
 	app.Use(logger.New())
 	app.Use(cors.New(cors.Config{
 		AllowOrigins:     cfg.CORSAllowedOrigins,
@@ -93,6 +95,37 @@ func main() {
 
 	// Menu dinamis
 	app.Get("/api/menus", middleware.AuthMiddleware(cfg.JWTSecret), menuController.GetMyMenus)
+
+	// ============ MENU MANAGEMENT (SUPERADMIN SAJA) ============
+	app.Get("/api/admin/menus",
+		middleware.AuthMiddleware(cfg.JWTSecret),
+		middleware.RoleMiddleware(userRepository, "superadmin"),
+		menuController.ListAllMenus,
+	)
+
+	app.Post("/api/admin/menus",
+		middleware.AuthMiddleware(cfg.JWTSecret),
+		middleware.RoleMiddleware(userRepository, "superadmin"),
+		menuController.CreateMenu,
+	)
+
+	app.Put("/api/admin/menus/:id",
+		middleware.AuthMiddleware(cfg.JWTSecret),
+		middleware.RoleMiddleware(userRepository, "superadmin"),
+		menuController.UpdateMenu,
+	)
+
+	app.Delete("/api/admin/menus/:id",
+		middleware.AuthMiddleware(cfg.JWTSecret),
+		middleware.RoleMiddleware(userRepository, "superadmin"),
+		menuController.DeleteMenu,
+	)
+
+	app.Get("/api/admin/roles",
+		middleware.AuthMiddleware(cfg.JWTSecret),
+		middleware.RoleMiddleware(userRepository, "superadmin"),
+		menuController.ListRoles,
+	)
 
 	// ============ ENDPOINT KHUSUS ROLE ============
 
@@ -215,6 +248,12 @@ func main() {
 		middleware.AuthMiddleware(cfg.JWTSecret),
 		middleware.RoleMiddleware(userRepository, "superadmin"),
 		pedagangController.ListPedagangByAdmin,
+	)
+
+	app.Get("/api/admin/users/pedagang/stats",
+		middleware.AuthMiddleware(cfg.JWTSecret),
+		middleware.RoleMiddleware(userRepository, "superadmin"),
+		pedagangController.GetPedagangStats,
 	)
 
 	// Petugas

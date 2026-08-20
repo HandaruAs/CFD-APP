@@ -11,15 +11,15 @@ import (
 )
 
 type CreatePedagangByAdminRequest struct {
-	Name           string `json:"name" binding:"required"`
-	Email          string `json:"email" binding:"required,email"`
-	Phone          string `json:"phone" binding:"required"`
-	Password       string `json:"password" binding:"required,min=8"`
-	NIK            string `json:"nik" binding:"required,len=16"`
-	NamaUsaha      string `json:"nama_usaha" binding:"required"`
-	JenisDagangan  string `json:"jenis_dagangan" binding:"required"`
-	PerkiraanHarga string `json:"perkiraan_harga" binding:"required"`
-	Alamat         string `json:"alamat" binding:"required"`
+	Name           string `json:"name" validate:"required"`
+	Email          string `json:"email" validate:"required,email"`
+	Phone          string `json:"phone" validate:"required"`
+	Password       string `json:"password" validate:"required,min=8"`
+	NIK            string `json:"nik" validate:"required,len=16"`
+	NamaUsaha      string `json:"nama_usaha" validate:"required"`
+	JenisDagangan  string `json:"jenis_dagangan" validate:"required"`
+	PerkiraanHarga string `json:"perkiraan_harga" validate:"required"`
+	Alamat         string `json:"alamat" validate:"required"`
 }
 
 type PedagangController struct {
