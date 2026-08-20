@@ -1,5 +1,5 @@
 import type { LucideIcon } from "lucide-react";
-import { Home, Users, CheckCircle, LayoutGrid, Store, Settings, Verified } from "lucide-react";
+import { Home, Users, CheckCircle, LayoutGrid, Store, Settings, Verified, QrCode, ClipboardList, Clock } from "lucide-react";
 
 export type MenuNode = {
   id: string;
@@ -21,6 +21,9 @@ const ICON_MAP: Record<string, LucideIcon> = {
   store: Store,
   settings: Settings,
   verified: Verified,
+  "qr-code": QrCode, // menu Scan QR Pedagang
+  "clipboard-list": ClipboardList, // menu Laporan
+  clock: Clock, // menu Jam Operasional
 };
 
 export function resolveMenuIcon(slug: string | null): LucideIcon {

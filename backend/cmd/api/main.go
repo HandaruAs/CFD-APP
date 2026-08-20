@@ -12,18 +12,21 @@ import (
 	pedagangRepo "cfd-backend/modules/pedagang/repository"
 	menuRepo "cfd-backend/modules/menu/repository"
 	permRepo "cfd-backend/modules/user/repository"
+	operasionalRepo "cfd-backend/modules/operasional/repository"
 
 	// Modul Usecase
 	authUsecase "cfd-backend/modules/auth/usecase"
 	userUsecase "cfd-backend/modules/user/usecase"
 	pedagangUsecase "cfd-backend/modules/pedagang/usecase"
 	menuUsecase "cfd-backend/modules/menu/usecase"
+	operasionalUsecase "cfd-backend/modules/operasional/usecase"
 
 	// Modul Controller
 	authController "cfd-backend/modules/auth/controller"
 	userController "cfd-backend/modules/user/controller"
 	pedagangController "cfd-backend/modules/pedagang/controller"
 	menuController "cfd-backend/modules/menu/controller"
+	operasionalController "cfd-backend/modules/operasional/controller"
 
 	"github.com/gofiber/fiber/v3"
 	"github.com/gofiber/fiber/v3/middleware/cors"
@@ -41,18 +44,21 @@ func main() {
 	pedagangRepository := pedagangRepo.NewPedagangRepository(db)
 	menuRepository := menuRepo.NewMenuRepository(db)
 	permissionRepository := permRepo.NewPermissionRepository(db)
+	operasionalRepository := operasionalRepo.NewOperasionalRepository(db)
 
 	// 2. Init All Usecases
 	authUsecase := authUsecase.NewAuthUsecase(userRepository, cfg.JWTSecret)
 	userUsecase := userUsecase.NewUserUsecase(userRepository)
 	pedagangUsecase := pedagangUsecase.NewPedagangUsecase(pedagangRepository)
 	menuUsecase := menuUsecase.NewMenuUsecase(menuRepository, userRepository, pedagangRepository)
+	operasionalUsecase := operasionalUsecase.NewOperasionalUsecase(operasionalRepository)
 
 	// 3. Init All Controllers
 	authController := authController.NewAuthController(authUsecase)
 	userController := userController.NewUserController(userUsecase)
 	pedagangController := pedagangController.NewPedagangController(pedagangUsecase, userUsecase)
 	menuController := menuController.NewMenuController(menuUsecase)
+	operasionalController := operasionalController.NewOperasionalController(operasionalUsecase)
 
 	// 4. Init Fiber App
 	app := fiber.New(fiber.Config{
@@ -147,6 +153,40 @@ func main() {
 		func(c fiber.Ctx) error {
 			return c.Status(200).JSON(fiber.Map{"message": "kamu punya akses users.read"})
 		},
+	)
+
+	// ============ ENDPOINT PETUGAS - JAM OPERASIONAL ============
+	// Pakai permission jadwal.read / jadwal.manage yang sudah di-seed di
+	// migration 000011/000012 dan sudah di-assign ke role petugas -- jadi
+	// nggak perlu migration permission baru.
+	app.Get("/api/petugas/jam-operasional",
+		middleware.AuthMiddleware(cfg.JWTSecret),
+		middleware.PermissionMiddleware(permissionRepository, "jadwal.read"),
+		operasionalController.GetStatusOperasional,
+	)
+
+	app.Patch("/api/petugas/jam-operasional/sesi",
+		middleware.AuthMiddleware(cfg.JWTSecret),
+		middleware.PermissionMiddleware(permissionRepository, "jadwal.manage"),
+		operasionalController.SimpanSesi,
+	)
+
+	app.Patch("/api/petugas/jam-operasional/sesi/perpanjang",
+		middleware.AuthMiddleware(cfg.JWTSecret),
+		middleware.PermissionMiddleware(permissionRepository, "jadwal.manage"),
+		operasionalController.PerpanjangSesi,
+	)
+
+	app.Patch("/api/petugas/jam-operasional/sesi/akhiri",
+		middleware.AuthMiddleware(cfg.JWTSecret),
+		middleware.PermissionMiddleware(permissionRepository, "jadwal.manage"),
+		operasionalController.AkhiriSesiLebihAwal,
+	)
+
+	app.Patch("/api/petugas/jam-operasional/pendaftaran",
+		middleware.AuthMiddleware(cfg.JWTSecret),
+		middleware.PermissionMiddleware(permissionRepository, "jadwal.manage"),
+		operasionalController.UpdatePendaftaran,
 	)
 
 	// ============ ENDPOINT PEDAGANG ============
