@@ -5,9 +5,10 @@ import (
 	"log"
 	"os"
 
-	"cfd-backend/config"    
-	"golang.org/x/crypto/bcrypt"
+	"cfd-backend/config"
 	"cfd-backend/database"
+
+	"golang.org/x/crypto/bcrypt"
 )
 
 // Seeder generik buat bikin akun awal role apa pun (superadmin, petugas,

@@ -9,6 +9,7 @@
     "lint": "eslint"
   },
   "dependencies": {
+    "bootstrap": "^5.3.8",
     "framer-motion": "^13.1.0",
     "lucide-react": "^1.31.0",
     "next": "16.3.0",
@@ -21,14 +22,16 @@
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",
+    "autoprefixer": "^10.5.4",
     "eslint": "^9",
     "eslint-config-next": "16.3.0",
     "install": "^0.13.0",
     "leaflet": "^1.9.4",
     "npm": "^11.19.0",
+    "postcss": "^8.5.26",
     "qrcode.react": "^4.2.0",
     "react-leaflet": "^5.0.0",
-    "tailwindcss": "^4",
+    "tailwindcss": "^4.3.3",
     "typescript": "^5"
   }
 }
