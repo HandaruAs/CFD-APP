@@ -8,25 +8,25 @@ import (
 	"cfd-backend/middleware"
 
 	// Modul Repository
-	userRepo "cfd-backend/modules/user/repository"
-	pedagangRepo "cfd-backend/modules/pedagang/repository"
 	menuRepo "cfd-backend/modules/menu/repository"
-	permRepo "cfd-backend/modules/user/repository"
 	operasionalRepo "cfd-backend/modules/operasional/repository"
+	pedagangRepo "cfd-backend/modules/pedagang/repository"
+	permRepo "cfd-backend/modules/user/repository"
+	userRepo "cfd-backend/modules/user/repository"
 
 	// Modul Usecase
 	authUsecase "cfd-backend/modules/auth/usecase"
-	userUsecase "cfd-backend/modules/user/usecase"
-	pedagangUsecase "cfd-backend/modules/pedagang/usecase"
 	menuUsecase "cfd-backend/modules/menu/usecase"
 	operasionalUsecase "cfd-backend/modules/operasional/usecase"
+	pedagangUsecase "cfd-backend/modules/pedagang/usecase"
+	userUsecase "cfd-backend/modules/user/usecase"
 
 	// Modul Controller
 	authController "cfd-backend/modules/auth/controller"
-	userController "cfd-backend/modules/user/controller"
-	pedagangController "cfd-backend/modules/pedagang/controller"
 	menuController "cfd-backend/modules/menu/controller"
 	operasionalController "cfd-backend/modules/operasional/controller"
+	pedagangController "cfd-backend/modules/pedagang/controller"
+	userController "cfd-backend/modules/user/controller"
 
 	"github.com/gofiber/fiber/v3"
 	"github.com/gofiber/fiber/v3/middleware/cors"
@@ -269,12 +269,6 @@ func main() {
 		userController.CreateUserByRole,
 	)
 
-		app.Post("/api/admin/users/petugas",
-		middleware.AuthMiddleware(cfg.JWTSecret),
-		middleware.RoleMiddleware(userRepository, "superadmin"),
-		userController.CreateUserByRole,
-	)
-
 	// --- TAMBAHAN: Edit & Delete Petugas ---
 	app.Get("/api/admin/users/petugas/:id",
 		middleware.AuthMiddleware(cfg.JWTSecret),
@@ -292,6 +286,39 @@ func main() {
 		middleware.AuthMiddleware(cfg.JWTSecret),
 		middleware.RoleMiddleware(userRepository, "superadmin"),
 		userController.DeleteUserByRole,
+	)
+
+	// Superadmin
+	app.Get("/api/admin/users/superadmin",
+		middleware.AuthMiddleware(cfg.JWTSecret),
+		middleware.RoleMiddleware(userRepository, "superadmin"),
+		userController.ListUsersByRole,
+	)
+
+	app.Post("/api/admin/users/superadmin",
+		middleware.AuthMiddleware(cfg.JWTSecret),
+		middleware.RoleMiddleware(userRepository, "superadmin"),
+		userController.CreateUserByRole,
+	)
+
+	app.Get("/api/admin/users/superadmin/:id",
+		middleware.AuthMiddleware(cfg.JWTSecret),
+		middleware.RoleMiddleware(userRepository, "superadmin"),
+		userController.GetUserByID,
+	)
+
+	app.Put("/api/admin/users/superadmin/:id",
+		middleware.AuthMiddleware(cfg.JWTSecret),
+		middleware.RoleMiddleware(userRepository, "superadmin"),
+		userController.UpdateUserByRole,
+	)
+
+	// Delete superadmin pakai handler khusus (bukan DeleteUserByRole) --
+	// ada guard self-delete & last-superadmin di usecase-nya.
+	app.Delete("/api/admin/users/superadmin/:id",
+		middleware.AuthMiddleware(cfg.JWTSecret),
+		middleware.RoleMiddleware(userRepository, "superadmin"),
+		userController.DeleteSuperadmin,
 	)
 
 	// Statistik

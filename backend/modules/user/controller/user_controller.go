@@ -1,6 +1,8 @@
 package controller
 
 import (
+	"errors"
+
 	"cfd-backend/modules/user/entity"
 	"cfd-backend/modules/user/usecase"
 
@@ -208,5 +210,40 @@ func (ctrl *UserController) DeleteUserByRole(c fiber.Ctx) error {
 
 	return c.Status(fiber.StatusOK).JSON(fiber.Map{
 		"message": "Petugas berhasil dihapus",
+	})
+}
+
+// DeleteSuperadmin handler untuk DELETE /api/admin/users/superadmin/:id
+// Beda dari DeleteUserByRole biasa -- ada guard self-delete & last-superadmin
+// yang ditangani di usecase, jadi errornya perlu dibedain jadi 400 (bukan 500).
+func (ctrl *UserController) DeleteSuperadmin(c fiber.Ctx) error {
+	id := c.Params("id")
+	if id == "" {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"error": "ID tidak boleh kosong",
+		})
+	}
+
+	requesterID, exists := c.Locals("user_id").(string)
+	if !exists || requesterID == "" {
+		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{
+			"error": "User tidak terautentikasi",
+		})
+	}
+
+	err := ctrl.userUsecase.DeleteSuperadmin(c.Context(), requesterID, id)
+	if err != nil {
+		if errors.Is(err, entity.ErrCannotDeleteSelf) || errors.Is(err, entity.ErrLastSuperadmin) {
+			return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+				"error": err.Error(),
+			})
+		}
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"error": "Gagal menghapus data",
+		})
+	}
+
+	return c.Status(fiber.StatusOK).JSON(fiber.Map{
+		"message": "Superadmin berhasil dihapus",
 	})
 }

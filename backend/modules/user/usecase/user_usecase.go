@@ -19,6 +19,7 @@ type UserRepository interface {
 	CreateUserByRole(ctx context.Context, email, passwordHash, name, phone, roleSlug string) (string, error)
 	UpdateUserBasic(ctx context.Context, id, name, phone string) error
 	DeleteUser(ctx context.Context, id string) error
+	CountByRole(ctx context.Context, roleSlug string) (int, error)
 }
 
 type UserUsecase interface {
@@ -30,6 +31,7 @@ type UserUsecase interface {
 	CreateUserByRole(ctx context.Context, name, email, phone, password, roleSlug string) (string, error)
 	UpdateUserBasic(ctx context.Context, id, name, phone string) error
 	DeleteUser(ctx context.Context, id string) error
+	DeleteSuperadmin(ctx context.Context, requesterID, targetID string) error
 }
 
 type userUsecase struct {
@@ -103,4 +105,27 @@ func (u *userUsecase) DeleteUser(ctx context.Context, id string) error {
 		return errors.New("id wajib diisi")
 	}
 	return u.userRepo.DeleteUser(ctx, id)
+}
+
+// DeleteSuperadmin soft-delete akun superadmin, dengan 2 guard tambahan
+// dibanding DeleteUser biasa: superadmin nggak boleh hapus akunnya sendiri,
+// dan superadmin terakhir yang tersisa nggak boleh dihapus sama sekali --
+// biar sistem nggak pernah kehilangan akses penuh.
+func (u *userUsecase) DeleteSuperadmin(ctx context.Context, requesterID, targetID string) error {
+	if targetID == "" {
+		return errors.New("id wajib diisi")
+	}
+	if requesterID == targetID {
+		return entity.ErrCannotDeleteSelf
+	}
+
+	count, err := u.userRepo.CountByRole(ctx, "superadmin")
+	if err != nil {
+		return err
+	}
+	if count <= 1 {
+		return entity.ErrLastSuperadmin
+	}
+
+	return u.userRepo.DeleteUser(ctx, targetID)
 }
