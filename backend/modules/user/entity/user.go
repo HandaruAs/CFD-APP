@@ -22,6 +22,19 @@ type UserProfile struct {
 	Status string
 }
 
+// UserManagementDTO dipakai buat list user role apapun (petugas, dll) di
+// halaman Manajemen User -- field & JSON tag disamakan dengan tipe `User`
+// di web/components/user-management-table.tsx.
+type UserManagementDTO struct {
+	ID       string `json:"id"`
+	Name     string `json:"name"`
+	Email    string `json:"email"`
+	Phone    string `json:"phone"`
+	JoinedAt string `json:"joinedAt"`
+	Active   bool   `json:"active"`
+	Initial  string `json:"initial"`
+}
+
 // UserStats adalah ringkasan jumlah user per status, untuk 1 role tertentu.
 // Field Status mengikuti enum user_status di DB: active, suspended, banned.
 type UserStats struct {

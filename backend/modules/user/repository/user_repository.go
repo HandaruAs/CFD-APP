@@ -2,6 +2,7 @@ package repository
 
 import (
 	"context"
+	"database/sql"
 
 	"cfd-backend/modules/user/entity"
 
@@ -113,6 +114,21 @@ func (r *UserRepository) GetUserRole(ctx context.Context, userID string) (string
 	return slug, nil
 }
 
+// UpdateUserBasic dipakai admin buat edit nama & telepon petugas
+func (r *UserRepository) UpdateUserBasic(ctx context.Context, id, name, phone string) error {
+	_, err := r.db.Exec(ctx,
+		`UPDATE users SET name = $1, phone = $2, updated_at = now() WHERE id = $3 AND deleted_at IS NULL`,
+		name, phone, id,
+	)
+	return err
+}
+
+// DeleteUser soft-delete user (dipakai buat hapus petugas dari Manajemen User).
+func (r *UserRepository) DeleteUser(ctx context.Context, id string) error {
+	_, err := r.db.Exec(ctx, `UPDATE users SET deleted_at = now() WHERE id = $1`, id)
+	return err
+}
+
 func (r *UserRepository) RegisterPedagangByAdmin(ctx context.Context, email, passwordHash, name, phone string) (string, error) {
 	return r.createUserWithRole(ctx, email, passwordHash, name, phone, "pedagang")
 }
@@ -158,28 +174,39 @@ func (r *UserRepository) GetUserStatsByRole(ctx context.Context, roleSlug string
 	return stats, nil
 }
 
-// ListUsersByRole ambil semua user (tanpa paginasi) yang punya role tertentu.
-func (r *UserRepository) ListUsersByRole(ctx context.Context, roleSlug string) ([]entity.UserProfile, int, error) {
+// ListUsersByRole ambil semua user (tanpa paginasi) yang punya role tertentu,
+// dengan filter opsional search (nama/email/phone).
+func (r *UserRepository) ListUsersByRole(ctx context.Context, roleSlug, search string) ([]entity.UserManagementDTO, int, error) {
 	rows, err := r.db.Query(ctx,
-		`SELECT u.id, u.name, u.email, u.phone, u.status
+		`SELECT u.id, u.name, u.email, u.phone, u.created_at, u.status
 		 FROM users u
 		 JOIN user_roles ur ON ur.user_id = u.id AND ur.deleted_at IS NULL
 		 JOIN roles r ON r.id = ur.role_id AND r.deleted_at IS NULL
 		 WHERE r.slug = $1 AND u.deleted_at IS NULL
+		   AND ($2 = '' OR u.name ILIKE '%' || $2 || '%' OR u.email ILIKE '%' || $2 || '%' OR u.phone ILIKE '%' || $2 || '%')
 		 ORDER BY u.created_at DESC`,
-		roleSlug,
+		roleSlug, search,
 	)
 	if err != nil {
 		return nil, 0, err
 	}
 	defer rows.Close()
 
-	users := make([]entity.UserProfile, 0)
+	users := make([]entity.UserManagementDTO, 0)
 	for rows.Next() {
-		var u entity.UserProfile
-		if err := rows.Scan(&u.ID, &u.Name, &u.Email, &u.Phone, &u.Status); err != nil {
+		var u entity.UserManagementDTO
+		var createdAt, status sql.NullString
+
+		if err := rows.Scan(&u.ID, &u.Name, &u.Email, &u.Phone, &createdAt, &status); err != nil {
 			return nil, 0, err
 		}
+
+		u.JoinedAt = createdAt.String
+		u.Active = status.String == "active"
+		if len(u.Name) > 0 {
+			u.Initial = string([]rune(u.Name)[0])
+		}
+
 		users = append(users, u)
 	}
 	if err := rows.Err(); err != nil {
