@@ -22,14 +22,10 @@ export type User = {
   joinedAt: string;
   active: boolean;
   initial: string;
-  // Field tambahan opsional -- cuma keisi buat role yang punya data ini
-  // (pedagang). Dibiarin optional biar komponen ini tetep generic, bisa
-  // dipakai juga buat Manajemen User Petugas yang gak punya field ini.
   nik?: string;
   namaUsaha?: string;
   jenisDagangan?: string;
   alamat?: string;
-  statusVerifikasi?: "pending" | "approved" | "rejected";
 };
 
 export type StatCard = {
@@ -57,6 +53,7 @@ export function UserManagementTable({
   searchPlaceholder,
   statCards,
   apiEndpoint,
+  extraParams,
   reloadSignal = 0,
   onAddClick,
   onEditUser,
@@ -69,13 +66,11 @@ export function UserManagementTable({
   searchPlaceholder: string;
   statCards: StatCard[];
   apiEndpoint: string;
-  // Naikkan angka ini dari parent (misal ++reloadSignal) tiap kali ada
-  // create/edit/delete yang sukses, biar tabel fetch ulang datanya.
+  extraParams?: Record<string, string>;
   reloadSignal?: number;
   onAddClick?: () => void;
   onEditUser?: (user: User) => void;
   onDeleteUser?: (user: User) => void;
-  // Kalau gak dikasih, toggle cuma ubah state lokal (gak ke-simpen ke server).
   onToggleActive?: (user: User) => Promise<void>;
 }) {
   const [users, setUsers] = useState<User[]>([]);
@@ -90,8 +85,9 @@ export function UserManagementTable({
       setLoading(true);
       try {
         const token = localStorage.getItem("cfd_token");
+        const params = new URLSearchParams({ search, ...extraParams });
         const res = await fetch(
-          `${process.env.NEXT_PUBLIC_API_URL}${apiEndpoint}?search=${encodeURIComponent(search)}`,
+          `${process.env.NEXT_PUBLIC_API_URL}${apiEndpoint}?${params.toString()}`,
           { headers: { Authorization: `Bearer ${token}` } }
         );
         if (!res.ok) throw new Error("gagal mengambil data pengguna");
@@ -114,10 +110,10 @@ export function UserManagementTable({
     return () => {
       cancelled = true;
     };
-  }, [search, apiEndpoint, reloadSignal]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [search, apiEndpoint, reloadSignal, JSON.stringify(extraParams)]);
 
   const toggleActive = async (u: User) => {
-    // Update optimis dulu di UI, biar kerasa instan
     setUsers((prev) =>
       prev.map((x) => (x.id === u.id ? { ...x, active: !x.active } : x))
     );
@@ -127,7 +123,6 @@ export function UserManagementTable({
     try {
       await onToggleActive(u);
     } catch {
-      // Gagal simpen ke server -> balikin lagi state lokalnya
       setUsers((prev) =>
         prev.map((x) => (x.id === u.id ? { ...x, active: u.active } : x))
       );
@@ -135,6 +130,7 @@ export function UserManagementTable({
   };
 
   const hasRowActions = Boolean(onEditUser || onDeleteUser);
+  const columnCount = hasRowActions ? 4 : 3;
 
   return (
     <div>
@@ -236,9 +232,6 @@ export function UserManagementTable({
               <th className="px-5 py-3.5 text-xs font-bold text-slate-500 tracking-wide">
                 TANGGAL BERGABUNG
               </th>
-              <th className="px-5 py-3.5 text-xs font-bold text-slate-500 tracking-wide">
-                STATUS VERIFIKASI
-              </th>
               {hasRowActions && (
                 <th className="px-5 py-3.5 text-xs font-bold text-slate-500 tracking-wide text-right">
                   AKSI
@@ -250,7 +243,7 @@ export function UserManagementTable({
             {loading ? (
               <tr>
                 <td
-                  colSpan={hasRowActions ? 5 : 4}
+                  colSpan={columnCount}
                   className="px-5 py-12 text-center text-sm text-slate-400"
                 >
                   Memuat data...
@@ -258,7 +251,7 @@ export function UserManagementTable({
               </tr>
             ) : users.length === 0 ? (
               <tr>
-                <td colSpan={hasRowActions ? 5 : 4} className="px-5 py-16">
+                <td colSpan={columnCount} className="px-5 py-16">
                   <div className="flex flex-col items-center gap-2 text-center">
                     <Inbox
                       className="w-9 h-9 text-slate-300"
@@ -301,20 +294,6 @@ export function UserManagementTable({
                   </td>
                   <td className="px-5 py-4 text-slate-600 font-medium">
                     {u.joinedAt}
-                  </td>
-                  <td className="px-5 py-4">
-                    {/* PERBAIKAN: Tampilkan Badge Status Verifikasi */}
-                    <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${
-                      u.statusVerifikasi === 'approved' 
-                        ? 'bg-emerald-100 text-emerald-700' 
-                        : u.statusVerifikasi === 'rejected'
-                        ? 'bg-red-100 text-red-700'
-                        : 'bg-amber-100 text-amber-700'
-                    }`}>
-                      {u.statusVerifikasi === 'pending' ? 'Menunggu Verifikasi' : 
-                       u.statusVerifikasi === 'approved' ? 'Terverifikasi' : 
-                       u.statusVerifikasi === 'rejected' ? 'Ditolak' : '-'}
-                    </span>
                   </td>
                   {hasRowActions && (
                     <td className="px-5 py-4">

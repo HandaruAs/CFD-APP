@@ -8,8 +8,8 @@ import (
 )
 
 type ListUsersResponse struct {
-	Users []entity.UserProfile `json:"users"`
-	Total int                  `json:"total"`
+	Users []entity.UserManagementDTO `json:"users"`
+	Total int                        `json:"total"`
 }
 
 type CreateUserByRoleRequest struct {
@@ -88,8 +88,9 @@ func (ctrl *UserController) ListUsersByRole(c fiber.Ctx) error {
 			"error": "Parameter 'role' wajib diisi",
 		})
 	}
+	search := c.Query("search")
 
-	users, total, err := ctrl.userUsecase.ListUsersByRole(c.Context(), roleSlug)
+	users, total, err := ctrl.userUsecase.ListUsersByRole(c.Context(), roleSlug, search)
 	if err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
 			"error": "Gagal mengambil data user",
@@ -131,5 +132,81 @@ func (ctrl *UserController) CreateUserByRole(c fiber.Ctx) error {
 	return c.Status(fiber.StatusCreated).JSON(fiber.Map{
 		"message": "User berhasil ditambahkan",
 		"user_id": userID,
+	})
+}
+
+type UpdateUserBasicRequest struct {
+	Name  string `json:"name" validate:"required"`
+	Phone string `json:"phone" validate:"required"`
+}
+
+// GetUserByID handler untuk GET /api/admin/users/petugas/:id
+func (ctrl *UserController) GetUserByID(c fiber.Ctx) error {
+	id := c.Params("id")
+	if id == "" {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"error": "ID tidak boleh kosong",
+		})
+	}
+
+	user, err := ctrl.userUsecase.GetUserProfile(c.Context(), id)
+	if err != nil {
+		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{
+			"error": "User tidak ditemukan",
+		})
+	}
+
+	return c.Status(fiber.StatusOK).JSON(fiber.Map{
+		"id":    user.ID,
+		"name":  user.Name,
+		"email": user.Email,
+		"phone": user.Phone,
+	})
+}
+
+// UpdateUserByRole handler untuk PUT /api/admin/users/petugas/:id
+func (ctrl *UserController) UpdateUserByRole(c fiber.Ctx) error {
+	id := c.Params("id")
+	if id == "" {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"error": "ID tidak boleh kosong",
+		})
+	}
+
+	var req UpdateUserBasicRequest
+	if err := c.Bind().Body(&req); err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"error": err.Error(),
+		})
+	}
+
+	if err := ctrl.userUsecase.UpdateUserBasic(c.Context(), id, req.Name, req.Phone); err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"error": "Gagal menyimpan perubahan",
+		})
+	}
+
+	return c.Status(fiber.StatusOK).JSON(fiber.Map{
+		"message": "Data berhasil diperbarui",
+	})
+}
+
+// DeleteUserByRole handler untuk DELETE /api/admin/users/petugas/:id
+func (ctrl *UserController) DeleteUserByRole(c fiber.Ctx) error {
+	id := c.Params("id")
+	if id == "" {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"error": "ID tidak boleh kosong",
+		})
+	}
+
+	if err := ctrl.userUsecase.DeleteUser(c.Context(), id); err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"error": "Gagal menghapus data",
+		})
+	}
+
+	return c.Status(fiber.StatusOK).JSON(fiber.Map{
+		"message": "Petugas berhasil dihapus",
 	})
 }

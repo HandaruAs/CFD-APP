@@ -269,6 +269,31 @@ func main() {
 		userController.CreateUserByRole,
 	)
 
+		app.Post("/api/admin/users/petugas",
+		middleware.AuthMiddleware(cfg.JWTSecret),
+		middleware.RoleMiddleware(userRepository, "superadmin"),
+		userController.CreateUserByRole,
+	)
+
+	// --- TAMBAHAN: Edit & Delete Petugas ---
+	app.Get("/api/admin/users/petugas/:id",
+		middleware.AuthMiddleware(cfg.JWTSecret),
+		middleware.RoleMiddleware(userRepository, "superadmin"),
+		userController.GetUserByID,
+	)
+
+	app.Put("/api/admin/users/petugas/:id",
+		middleware.AuthMiddleware(cfg.JWTSecret),
+		middleware.RoleMiddleware(userRepository, "superadmin"),
+		userController.UpdateUserByRole,
+	)
+
+	app.Delete("/api/admin/users/petugas/:id",
+		middleware.AuthMiddleware(cfg.JWTSecret),
+		middleware.RoleMiddleware(userRepository, "superadmin"),
+		userController.DeleteUserByRole,
+	)
+
 	// Statistik
 	app.Get("/api/admin/users/stats",
 		middleware.AuthMiddleware(cfg.JWTSecret),
