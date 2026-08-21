@@ -39,3 +39,18 @@ type PengaturanPendaftaran struct {
 	UpdatedBy       *string   `db:"updated_by"`
 	UpdatedAt       time.Time `db:"updated_at"`
 }
+
+// JadwalDefaultCFD merepresentasikan satu-satunya baris di tabel
+// jadwal_default_cfd -- jadwal mingguan berulang yang dipakai background
+// job buat OTOMATIS mulai & selesain cfd_sessions, tanpa petugas perlu
+// klik apa-apa. Hari pakai angka yang sama kayak time.Weekday() di Go
+// (0=Minggu ... 6=Sabtu).
+type JadwalDefaultCFD struct {
+	ID                string    `db:"id"`
+	Hari              int       `db:"hari"`
+	JamMulai          string    `db:"jam_mulai"`
+	JamSelesaiRencana string    `db:"jam_selesai_rencana"`
+	IsAktif           bool      `db:"is_aktif"`
+	UpdatedBy         *string   `db:"updated_by"`
+	UpdatedAt         time.Time `db:"updated_at"`
+}
