@@ -147,6 +147,37 @@
   --spacing-lg: 1.5rem;
   --spacing-xl: 2rem;
 
+  /* ============================================================
+     FIX (bug modal collapse jadi sempit): Container/max-width scale.
+
+     Tailwind v4 punya scale bawaan bernama sm/md/lg/xl/2xl/... yang
+     dipakai bareng oleh utility max-w-*, w-*, dll (via namespace
+     "--container-*"). Karena --spacing-sm/md/lg/xl di atas KEBETULAN
+     pakai nama yang sama (sm/md/lg/xl), Tailwind salah resolve
+     class seperti "max-w-sm" jadi memakai --spacing-sm (0.5rem)
+     alih-alih nilai container yang seharusnya (24rem) -- itu yang
+     bikin modal/dialog manapun yang pakai max-w-sm/md/lg/xl collapse
+     jadi sangat sempit (cuma ~8px).
+
+     Definisikan scale container SECARA EKSPLISIT di sini (nilai
+     default Tailwind) supaya max-w-sm/md/lg/xl selalu resolve ke
+     sini, bukan ke --spacing-*. Ini tidak mengubah perilaku p-lg,
+     gap-sm, mt-md, dst sama sekali -- itu tetap pakai --spacing-*
+     seperti biasa. */
+  --container-3xs: 16rem;
+  --container-2xs: 18rem;
+  --container-xs: 20rem;
+  --container-sm: 24rem;
+  --container-md: 28rem;
+  --container-lg: 32rem;
+  --container-xl: 36rem;
+  --container-2xl: 42rem;
+  --container-3xl: 48rem;
+  --container-4xl: 56rem;
+  --container-5xl: 64rem;
+  --container-6xl: 72rem;
+  --container-7xl: 80rem;
+
   /* Typography scale */
   --font-sans: Inter, ui-sans-serif, system-ui, sans-serif;
 

@@ -1,36 +1,48 @@
 package main
 
 import (
+	"context"
 	"log"
+	"time"
 
 	"cfd-backend/config"
 	"cfd-backend/database"
 	"cfd-backend/middleware"
 
 	// Modul Repository
-	userRepo "cfd-backend/modules/user/repository"
-	pedagangRepo "cfd-backend/modules/pedagang/repository"
 	menuRepo "cfd-backend/modules/menu/repository"
-	permRepo "cfd-backend/modules/user/repository"
 	operasionalRepo "cfd-backend/modules/operasional/repository"
+	pedagangRepo "cfd-backend/modules/pedagang/repository"
+	permRepo "cfd-backend/modules/user/repository"
+	userRepo "cfd-backend/modules/user/repository"
+
+	// Modul Repository - Scan QR
+	scanRepo "cfd-backend/modules/petugas/scan-qr/repository"
 
 	// Modul Usecase
 	authUsecase "cfd-backend/modules/auth/usecase"
-	userUsecase "cfd-backend/modules/user/usecase"
-	pedagangUsecase "cfd-backend/modules/pedagang/usecase"
 	menuUsecase "cfd-backend/modules/menu/usecase"
 	operasionalUsecase "cfd-backend/modules/operasional/usecase"
+	pedagangUsecase "cfd-backend/modules/pedagang/usecase"
+	userUsecase "cfd-backend/modules/user/usecase"
+
+	// Modul Usecase - Scan QR
+	scanUsecase "cfd-backend/modules/petugas/scan-qr/usecase"
 
 	// Modul Controller
 	authController "cfd-backend/modules/auth/controller"
-	userController "cfd-backend/modules/user/controller"
-	pedagangController "cfd-backend/modules/pedagang/controller"
 	menuController "cfd-backend/modules/menu/controller"
 	operasionalController "cfd-backend/modules/operasional/controller"
+	pedagangController "cfd-backend/modules/pedagang/controller"
+	userController "cfd-backend/modules/user/controller"
+
+	// Modul Controller - Scan QR
+	scanController "cfd-backend/modules/petugas/scan-qr/controller"
 
 	"github.com/gofiber/fiber/v3"
 	"github.com/gofiber/fiber/v3/middleware/cors"
 	"github.com/gofiber/fiber/v3/middleware/logger"
+	"github.com/gofiber/fiber/v3/middleware/recover"
 )
 
 func main() {
@@ -46,6 +58,9 @@ func main() {
 	permissionRepository := permRepo.NewPermissionRepository(db)
 	operasionalRepository := operasionalRepo.NewOperasionalRepository(db)
 
+	// 1a. Init Repository Scan QR
+	scanRepository := scanRepo.NewScanRepository(db)
+
 	// 2. Init All Usecases
 	authUsecase := authUsecase.NewAuthUsecase(userRepository, cfg.JWTSecret)
 	userUsecase := userUsecase.NewUserUsecase(userRepository)
@@ -53,12 +68,18 @@ func main() {
 	menuUsecase := menuUsecase.NewMenuUsecase(menuRepository, userRepository, pedagangRepository)
 	operasionalUsecase := operasionalUsecase.NewOperasionalUsecase(operasionalRepository)
 
+	// 2a. Init Usecase Scan QR
+	scanUsecase := scanUsecase.NewScanUsecase(scanRepository)
+
 	// 3. Init All Controllers
 	authController := authController.NewAuthController(authUsecase)
 	userController := userController.NewUserController(userUsecase)
 	pedagangController := pedagangController.NewPedagangController(pedagangUsecase, userUsecase)
 	menuController := menuController.NewMenuController(menuUsecase)
 	operasionalController := operasionalController.NewOperasionalController(operasionalUsecase)
+
+	// 3a. Init Controller Scan QR
+	scanController := scanController.NewScanController(scanUsecase)
 
 	// 4. Init Fiber App
 	app := fiber.New(fiber.Config{
@@ -71,6 +92,7 @@ func main() {
 	})
 
 	// Middleware
+	app.Use(recover.New())
 	app.Use(logger.New())
 	app.Use(cors.New(cors.Config{
 		AllowOrigins:     cfg.CORSAllowedOrigins,
@@ -93,6 +115,37 @@ func main() {
 
 	// Menu dinamis
 	app.Get("/api/menus", middleware.AuthMiddleware(cfg.JWTSecret), menuController.GetMyMenus)
+
+	// ============ MENU MANAGEMENT (SUPERADMIN SAJA) ============
+	app.Get("/api/admin/menus",
+		middleware.AuthMiddleware(cfg.JWTSecret),
+		middleware.RoleMiddleware(userRepository, "superadmin"),
+		menuController.ListAllMenus,
+	)
+
+	app.Post("/api/admin/menus",
+		middleware.AuthMiddleware(cfg.JWTSecret),
+		middleware.RoleMiddleware(userRepository, "superadmin"),
+		menuController.CreateMenu,
+	)
+
+	app.Put("/api/admin/menus/:id",
+		middleware.AuthMiddleware(cfg.JWTSecret),
+		middleware.RoleMiddleware(userRepository, "superadmin"),
+		menuController.UpdateMenu,
+	)
+
+	app.Delete("/api/admin/menus/:id",
+		middleware.AuthMiddleware(cfg.JWTSecret),
+		middleware.RoleMiddleware(userRepository, "superadmin"),
+		menuController.DeleteMenu,
+	)
+
+	app.Get("/api/admin/roles",
+		middleware.AuthMiddleware(cfg.JWTSecret),
+		middleware.RoleMiddleware(userRepository, "superadmin"),
+		menuController.ListRoles,
+	)
 
 	// ============ ENDPOINT KHUSUS ROLE ============
 
@@ -189,6 +242,38 @@ func main() {
 		operasionalController.UpdatePendaftaran,
 	)
 
+	app.Get("/api/petugas/jam-operasional/jadwal-mingguan",
+		middleware.AuthMiddleware(cfg.JWTSecret),
+		middleware.PermissionMiddleware(permissionRepository, "jadwal.read"),
+		operasionalController.GetJadwalMingguan,
+	)
+
+	app.Patch("/api/petugas/jam-operasional/jadwal-mingguan",
+		middleware.AuthMiddleware(cfg.JWTSecret),
+		middleware.PermissionMiddleware(permissionRepository, "jadwal.manage"),
+		operasionalController.UpdateJadwalMingguan,
+	)
+
+	// ============ ENDPOINT PETUGAS - SCAN QR ============
+	// Menggunakan permission pedagang.scan yang ditambahkan di migration 000023
+	app.Post("/api/petugas/scan",
+		middleware.AuthMiddleware(cfg.JWTSecret),
+		middleware.PermissionMiddleware(permissionRepository, "pedagang.scan"),
+		scanController.VerifyQR,
+	)
+
+	app.Post("/api/petugas/check-in",
+		middleware.AuthMiddleware(cfg.JWTSecret),
+		middleware.PermissionMiddleware(permissionRepository, "pedagang.scan"),
+		scanController.CheckIn,
+	)
+
+	app.Get("/api/petugas/riwayat-scan",
+		middleware.AuthMiddleware(cfg.JWTSecret),
+		middleware.PermissionMiddleware(permissionRepository, "pedagang.scan"),
+		scanController.GetRiwayatScan,
+	)
+
 	// ============ ENDPOINT PEDAGANG ============
 	app.Post("/api/pedagang/pengajuan",
 		middleware.AuthMiddleware(cfg.JWTSecret),
@@ -217,6 +302,12 @@ func main() {
 		pedagangController.ListPedagangByAdmin,
 	)
 
+	app.Get("/api/admin/users/pedagang/stats",
+		middleware.AuthMiddleware(cfg.JWTSecret),
+		middleware.RoleMiddleware(userRepository, "superadmin"),
+		pedagangController.GetPedagangStats,
+	)
+
 	// Petugas
 	app.Get("/api/admin/users/petugas",
 		middleware.AuthMiddleware(cfg.JWTSecret),
@@ -228,6 +319,58 @@ func main() {
 		middleware.AuthMiddleware(cfg.JWTSecret),
 		middleware.RoleMiddleware(userRepository, "superadmin"),
 		userController.CreateUserByRole,
+	)
+
+	// --- TAMBAHAN: Edit & Delete Petugas ---
+	app.Get("/api/admin/users/petugas/:id",
+		middleware.AuthMiddleware(cfg.JWTSecret),
+		middleware.RoleMiddleware(userRepository, "superadmin"),
+		userController.GetUserByID,
+	)
+
+	app.Put("/api/admin/users/petugas/:id",
+		middleware.AuthMiddleware(cfg.JWTSecret),
+		middleware.RoleMiddleware(userRepository, "superadmin"),
+		userController.UpdateUserByRole,
+	)
+
+	app.Delete("/api/admin/users/petugas/:id",
+		middleware.AuthMiddleware(cfg.JWTSecret),
+		middleware.RoleMiddleware(userRepository, "superadmin"),
+		userController.DeleteUserByRole,
+	)
+
+	// Superadmin
+	app.Get("/api/admin/users/superadmin",
+		middleware.AuthMiddleware(cfg.JWTSecret),
+		middleware.RoleMiddleware(userRepository, "superadmin"),
+		userController.ListUsersByRole,
+	)
+
+	app.Post("/api/admin/users/superadmin",
+		middleware.AuthMiddleware(cfg.JWTSecret),
+		middleware.RoleMiddleware(userRepository, "superadmin"),
+		userController.CreateUserByRole,
+	)
+
+	app.Get("/api/admin/users/superadmin/:id",
+		middleware.AuthMiddleware(cfg.JWTSecret),
+		middleware.RoleMiddleware(userRepository, "superadmin"),
+		userController.GetUserByID,
+	)
+
+	app.Put("/api/admin/users/superadmin/:id",
+		middleware.AuthMiddleware(cfg.JWTSecret),
+		middleware.RoleMiddleware(userRepository, "superadmin"),
+		userController.UpdateUserByRole,
+	)
+
+	// Delete superadmin pakai handler khusus (bukan DeleteUserByRole) --
+	// ada guard self-delete & last-superadmin di usecase-nya.
+	app.Delete("/api/admin/users/superadmin/:id",
+		middleware.AuthMiddleware(cfg.JWTSecret),
+		middleware.RoleMiddleware(userRepository, "superadmin"),
+		userController.DeleteSuperadmin,
 	)
 
 	// Statistik
@@ -249,6 +392,28 @@ func main() {
 		middleware.RoleMiddleware(userRepository, "superadmin"),
 		pedagangController.DeletePedagangByAdmin,
 	)
+
+	// ============ BACKGROUND JOB: AUTO MULAI/SELESAI SESI CFD ============
+	// Jalan sendiri di belakang tiap 1 menit, LEPAS dari ada/nggaknya
+	// petugas yang buka halaman Jam Operasional -- ini yang bikin sesi
+	// CFD beneran "real-time" sesuai jadwal_mingguan, bukan cuma tergantung
+	// petugas klik "Simpan Perubahan" tiap minggu.
+	go func() {
+		// Langsung jalanin sekali pas start, biar kalau server baru
+		// nyala di tengah jam operasional (misal abis restart), sesinya
+		// langsung ke-detect, nggak nunggu 1 menit pertama.
+		if err := operasionalUsecase.TickJadwalOtomatis(context.Background()); err != nil {
+			log.Printf("scheduler jam-operasional: tick awal gagal: %v", err)
+		}
+
+		ticker := time.NewTicker(1 * time.Minute)
+		defer ticker.Stop()
+		for range ticker.C {
+			if err := operasionalUsecase.TickJadwalOtomatis(context.Background()); err != nil {
+				log.Printf("scheduler jam-operasional: tick gagal: %v", err)
+			}
+		}
+	}()
 
 	log.Printf("server jalan di port %s", cfg.Port)
 	if err := app.Listen(":" + cfg.Port); err != nil {

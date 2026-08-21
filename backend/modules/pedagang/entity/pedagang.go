@@ -2,11 +2,11 @@ package entity
 
 // PengajuanUsahaRequest adalah DTO input dari JSON saat user mengajukan usaha.
 type PengajuanUsahaRequest struct {
-	NIK            string `json:"nik" binding:"required,len=16"`
-	NamaUsaha      string `json:"nama_usaha" binding:"required"`
-	JenisDagangan  string `json:"jenis_dagangan" binding:"required"`
-	PerkiraanHarga string `json:"perkiraan_harga" binding:"required"` // <-- Tambahan
-	Alamat         string `json:"alamat" binding:"required"`
+	NIK            string `json:"nik" validate:"required,len=16"`
+	NamaUsaha      string `json:"nama_usaha" validate:"required"`
+	JenisDagangan  string `json:"jenis_dagangan" validate:"required"`
+	PerkiraanHarga string `json:"perkiraan_harga" validate:"required"` // <-- Tambahan
+	Alamat         string `json:"alamat" validate:"required"`
 }
 
 // PengajuanStatus adalah representasi data dari tabel pedagang_profiles di database.

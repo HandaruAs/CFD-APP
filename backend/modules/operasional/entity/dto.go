@@ -7,8 +7,8 @@ package entity
 // atur jam buat hari ini), endpoint akan BIKIN baris baru (upsert) --
 // jadi petugas nggak perlu tombol "mulai sesi" terpisah.
 type UpdateSesiRequest struct {
-	JamMulai          string `json:"jamMulai" binding:"required"`          // format "HH:MM"
-	JamSelesaiRencana string `json:"jamSelesaiRencana" binding:"required"` // format "HH:MM"
+	JamMulai          string `json:"jamMulai" validate:"required"`          // format "HH:MM"
+	JamSelesaiRencana string `json:"jamSelesaiRencana" validate:"required"` // format "HH:MM"
 }
 
 // UpdatePendaftaranRequest dipakai buat tombol "Buka Pendaftaran" /
@@ -23,7 +23,7 @@ type UpdatePendaftaranRequest struct {
 // otomatis ganti status sesi jadi 'diperpanjang', nggak bisa dipakai
 // buat ubah jam_mulai.
 type PerpanjangSesiRequest struct {
-	JamSelesaiBaru string `json:"jamSelesaiBaru" binding:"required"` // format "HH:MM"
+	JamSelesaiBaru string `json:"jamSelesaiBaru" validate:"required"` // format "HH:MM"
 }
 
 // --- RESPONSE DTO (bentuk JSON yang dikirim ke frontend) ---
@@ -46,12 +46,20 @@ type PendaftaranStatusDTO struct {
 // SesiAktifDTO -- dipakai buat kartu "Status Sesi CFD" + ring "Sisa Waktu".
 // SisaMenit & TotalMenit dihitung di usecase (bukan cuma nge-passthrough
 // dari database), jadi frontend nggak perlu ngitung ulang.
+//
+// Aktif dihitung dari jam_selesai_aktual IS NULL -- itu satu-satunya
+// sumber kebenaran soal "sesi ini masih berjalan atau nggak", BUKAN dari
+// Status. Soalnya status 'diperpanjang' dipakai baik pas sesi itu MASIH
+// jalan (abis di-Perpanjang) MAUPUN pas udah kelar (buat riwayat, biar
+// keliatan "sesi ini pernah diperpanjang") -- Aktif yang bedain 2 kondisi
+// itu.
 type SesiAktifDTO struct {
 	ID                string `json:"id"`
 	Tanggal           string `json:"tanggal"`
 	JamMulai          string `json:"jamMulai"`
 	JamSelesaiRencana string `json:"jamSelesaiRencana"`
 	Status            string `json:"status"`
+	Aktif             bool   `json:"aktif"`
 	SisaMenit         int    `json:"sisaMenit"`
 	TotalMenit        int    `json:"totalMenit"`
 }
@@ -66,4 +74,23 @@ type RiwayatSesiDTO struct {
 	JamSelesai string `json:"jamSelesai"`
 	Durasi     string `json:"durasi"`
 	Status     string `json:"status"`
+}
+
+// --- JADWAL MINGGUAN (template buat auto mulai/selesai sesi) ---
+
+type JadwalMingguanDTO struct {
+	Hari              string `json:"hari"`
+	JamMulai          string `json:"jamMulai"`
+	JamSelesaiRencana string `json:"jamSelesaiRencana"`
+	IsActive          bool   `json:"isActive"`
+}
+
+// UpdateJadwalMingguanRequest dipakai buat ubah jadwal default 1 hari
+// tertentu (upsert by hari -- kalau baris buat hari itu belum ada,
+// dibikin baru).
+type UpdateJadwalMingguanRequest struct {
+	Hari              string `json:"hari" binding:"required"` // senin|selasa|rabu|kamis|jumat|sabtu|minggu
+	JamMulai          string `json:"jamMulai" binding:"required"`
+	JamSelesaiRencana string `json:"jamSelesaiRencana" binding:"required"`
+	IsActive          bool   `json:"isActive"`
 }

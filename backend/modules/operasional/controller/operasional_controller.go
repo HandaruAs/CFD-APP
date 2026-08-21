@@ -159,3 +159,48 @@ func (ctrl *OperasionalController) UpdatePendaftaran(c fiber.Ctx) error {
 		"isOpen":  req.IsOpen,
 	})
 }
+
+// GetJadwalMingguan menangani GET /api/petugas/jam-operasional/jadwal-mingguan
+// Balikin template jadwal CFD per hari -- ini yang dipakai background job
+// buat auto mulai/selesaiin sesi (lihat usecase.TickJadwalOtomatis).
+func (ctrl *OperasionalController) GetJadwalMingguan(c fiber.Ctx) error {
+	list, err := ctrl.operasionalUsecase.ListJadwalMingguan(c.Context())
+	if err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"error": "gagal mengambil jadwal mingguan",
+		})
+	}
+	return c.Status(fiber.StatusOK).JSON(fiber.Map{"jadwal": list})
+}
+
+// UpdateJadwalMingguan menangani PATCH /api/petugas/jam-operasional/jadwal-mingguan
+// Upsert (by hari) template jadwal CFD -- misal ubah dari "Minggu
+// 06:00-11:00" jadi jam lain, atau matiin sementara (isActive: false)
+// kalau minggu ini CFD-nya libur.
+func (ctrl *OperasionalController) UpdateJadwalMingguan(c fiber.Ctx) error {
+	var req entity.UpdateJadwalMingguanRequest
+	if err := c.Bind().Body(&req); err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"error": err.Error(),
+		})
+	}
+
+	userID, err := getUserID(c)
+	if err != nil {
+		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{
+			"error": err.Error(),
+		})
+	}
+
+	jadwal, err := ctrl.operasionalUsecase.UpdateJadwalMingguan(c.Context(), userID, &req)
+	if err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"error": "gagal menyimpan jadwal mingguan: " + err.Error(),
+		})
+	}
+
+	return c.Status(fiber.StatusOK).JSON(fiber.Map{
+		"message": "jadwal mingguan berhasil disimpan",
+		"jadwal":  jadwal,
+	})
+}

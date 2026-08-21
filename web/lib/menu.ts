@@ -1,5 +1,17 @@
 import type { LucideIcon } from "lucide-react";
-import { Home, Users, CheckCircle, LayoutGrid, Store, Settings, Verified, QrCode, ClipboardList, Clock } from "lucide-react";
+import { 
+  Home, 
+  Users, 
+  CheckCircle, 
+  LayoutGrid, 
+  Store, 
+  Settings, 
+  Verified, 
+  QrCode, 
+  ClipboardList, 
+  Clock,
+  Menu, // ✅ Tambahkan import Menu
+} from "lucide-react";
 
 export type MenuNode = {
   id: string;
@@ -12,18 +24,19 @@ export type MenuNode = {
   children: MenuNode[];
 };
 
-// Tambahkan icon yang ada di database backend kamu di sini
-const ICON_MAP: Record<string, LucideIcon> = {
+// ✅ Tambahkan 'menu' ke ICON_MAP
+export const ICON_MAP: Record<string, LucideIcon> = {
   home: Home,
   users: Users,
   "check-circle": CheckCircle,
-  dashboard: LayoutGrid, // Sesuaikan dengan icon yang kamu mau
+  dashboard: LayoutGrid,
   store: Store,
   settings: Settings,
   verified: Verified,
-  "qr-code": QrCode, // menu Scan QR Pedagang
-  "clipboard-list": ClipboardList, // menu Laporan
-  clock: Clock, // menu Jam Operasional
+  "qr-code": QrCode,
+  "clipboard-list": ClipboardList,
+  clock: Clock,
+  menu: Menu, // ✅ Tambahkan ini
 };
 
 export function resolveMenuIcon(slug: string | null): LucideIcon {
@@ -58,7 +71,6 @@ export async function getMyMenus(): Promise<MenuNode[]> {
   const data = await res.json();
   console.log("[getMyMenus] Data mentah dari backend:", data);
 
-  // PERBAIKAN UTAMA: Cek apakah data array langsung atau object { menus: [...] }
   const menus = Array.isArray(data) ? data : (data.menus ?? []);
   console.log(`[getMyMenus] Berhasil mengambil ${menus.length} menu.`);
 
