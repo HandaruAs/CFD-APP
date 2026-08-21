@@ -34,6 +34,7 @@ type SesiAktif = {
   jamMulai: string;
   jamSelesaiRencana: string;
   status: "berlangsung" | "selesai_normal" | "diperpanjang" | "diakhiri_awal";
+  aktif: boolean;
   sisaMenit: number;
   totalMenit: number;
 };
@@ -124,6 +125,15 @@ export default function JamOperasionalPage() {
   const [showPerpanjang, setShowPerpanjang] = useState(false);
   const [jamPerpanjangInput, setJamPerpanjangInput] = useState("");
 
+  // Ganti confirm() bawaan browser -- dipakai buat 2 aksi yang butuh
+  // konfirmasi (tutup pendaftaran & akhiri sesi lebih awal).
+  const [confirmDialog, setConfirmDialog] = useState<{
+    title: string;
+    message: string;
+    confirmLabel: string;
+    onConfirm: () => void;
+  } | null>(null);
+
   const showToast = (message: string, type: "success" | "error" = "success") => {
     setToast({ message, type });
     setTimeout(() => setToast(null), 3000);
@@ -171,7 +181,6 @@ export default function JamOperasionalPage() {
   };
 
   const handleAkhiriSesi = async () => {
-    if (!confirm("Yakin mau akhiri sesi CFD hari ini lebih awal?")) return;
     setActionLoading("akhiri");
     try {
       await apiFetch("/api/petugas/jam-operasional/sesi/akhiri", { method: "PATCH" });
@@ -182,6 +191,18 @@ export default function JamOperasionalPage() {
     } finally {
       setActionLoading(null);
     }
+  };
+
+  const askAkhiriSesi = () => {
+    setConfirmDialog({
+      title: "Akhiri Sesi Lebih Awal",
+      message: "Yakin mau akhiri sesi CFD hari ini lebih awal? Tindakan ini tidak bisa dibatalkan.",
+      confirmLabel: "Ya, Akhiri Sesi",
+      onConfirm: () => {
+        setConfirmDialog(null);
+        handleAkhiriSesi();
+      },
+    });
   };
 
   const handlePerpanjang = async () => {
@@ -204,7 +225,6 @@ export default function JamOperasionalPage() {
   };
 
   const handleTogglePendaftaran = async (isOpen: boolean) => {
-    if (!isOpen && !confirm("Yakin mau tutup pendaftaran pedagang?")) return;
     setActionLoading(isOpen ? "buka-pendaftaran" : "tutup-pendaftaran");
     try {
       await apiFetch("/api/petugas/jam-operasional/pendaftaran", {
@@ -220,6 +240,19 @@ export default function JamOperasionalPage() {
     } finally {
       setActionLoading(null);
     }
+  };
+
+  const askTutupPendaftaran = () => {
+    setConfirmDialog({
+      title: "Tutup Pendaftaran",
+      message:
+        "Yakin mau tutup pendaftaran pedagang? Pedagang baru tidak akan bisa mendaftar lewat website pendaftaran UMKM sampai dibuka lagi.",
+      confirmLabel: "Ya, Tutup",
+      onConfirm: () => {
+        setConfirmDialog(null);
+        handleTogglePendaftaran(false);
+      },
+    });
   };
 
   if (isLoadingPage) {
@@ -239,7 +272,7 @@ export default function JamOperasionalPage() {
   }
 
   const sesi = status.sesi;
-  const sesiSedangAktif = sesi?.status === "berlangsung" || sesi?.status === "diperpanjang";
+  const sesiSedangAktif = sesi?.aktif ?? false;
   const progress = sesi && sesi.totalMenit > 0 ? (sesi.sisaMenit / sesi.totalMenit) * CIRC : 0;
 
   return (
@@ -287,7 +320,7 @@ export default function JamOperasionalPage() {
         <div className="mt-md flex flex-wrap gap-sm border-t border-outline-variant pt-md">
           <button
             type="button"
-            onClick={() => handleTogglePendaftaran(false)}
+            onClick={askTutupPendaftaran}
             disabled={!status.pendaftaran.isOpen || actionLoading !== null}
             className="flex items-center gap-sm rounded-md bg-error-container/60 px-lg py-sm text-label-md text-on-error-container transition-all hover:bg-error-container hover:shadow-md disabled:opacity-60"
           >
@@ -343,7 +376,6 @@ export default function JamOperasionalPage() {
                   type="time"
                   value={jamMulaiInput}
                   onChange={(e) => setJamMulaiInput(e.target.value)}
-                  disabled={!!sesi && !sesiSedangAktif}
                   className="w-full bg-transparent text-title-lg text-on-surface outline-none"
                 />
               </div>
@@ -358,7 +390,6 @@ export default function JamOperasionalPage() {
                   type="time"
                   value={jamSelesaiInput}
                   onChange={(e) => setJamSelesaiInput(e.target.value)}
-                  disabled={!!sesi && !sesiSedangAktif}
                   className="w-full bg-transparent text-title-lg text-on-surface outline-none"
                 />
               </div>
@@ -369,7 +400,7 @@ export default function JamOperasionalPage() {
             <button
               type="button"
               onClick={handleSimpanPerubahan}
-              disabled={(!!sesi && !sesiSedangAktif) || actionLoading !== null}
+              disabled={actionLoading !== null}
               className="flex items-center gap-sm rounded-md bg-primary px-lg py-sm text-label-md text-on-primary transition-all hover:bg-primary-container hover:shadow-md disabled:opacity-60"
             >
               <CalendarCheck2 className="h-[18px] w-[18px]" strokeWidth={2} />
@@ -394,7 +425,7 @@ export default function JamOperasionalPage() {
             {sesiSedangAktif && (
               <button
                 type="button"
-                onClick={handleAkhiriSesi}
+                onClick={askAkhiriSesi}
                 disabled={actionLoading !== null}
                 className="flex items-center gap-sm rounded-md bg-error-container/60 px-lg py-sm text-label-md text-on-error-container transition-all hover:bg-error-container hover:shadow-md disabled:opacity-60"
               >
@@ -534,6 +565,37 @@ export default function JamOperasionalPage() {
           </table>
         </div>
       </div>
+
+      {/* Modal konfirmasi custom (ganti confirm() bawaan browser) */}
+      {confirmDialog && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
+          <div className="w-full max-w-sm rounded-lg bg-surface-container-lowest p-lg shadow-xl">
+            <div className="flex items-center gap-sm">
+              <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-error-container/60 text-on-error-container">
+                <AlertTriangle className="h-[18px] w-[18px]" strokeWidth={2} />
+              </span>
+              <h3 className="text-title-lg text-on-surface">{confirmDialog.title}</h3>
+            </div>
+            <p className="mt-md text-body-md text-on-surface-variant">{confirmDialog.message}</p>
+            <div className="mt-lg flex justify-end gap-sm">
+              <button
+                type="button"
+                onClick={() => setConfirmDialog(null)}
+                className="rounded-md px-lg py-sm text-label-md text-on-surface-variant hover:bg-surface-container-high"
+              >
+                Batal
+              </button>
+              <button
+                type="button"
+                onClick={confirmDialog.onConfirm}
+                className="rounded-md bg-error-container/60 px-lg py-sm text-label-md text-on-error-container hover:bg-error-container hover:shadow-md"
+              >
+                {confirmDialog.confirmLabel}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
