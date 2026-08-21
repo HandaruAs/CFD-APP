@@ -114,6 +114,24 @@ func (r *UserRepository) GetUserRole(ctx context.Context, userID string) (string
 	return slug, nil
 }
 
+// CountByRole hitung berapa user (yang belum dihapus) punya role tertentu.
+// Dipakai buat guard "jangan sampai superadmin terakhir kehapus".
+func (r *UserRepository) CountByRole(ctx context.Context, roleSlug string) (int, error) {
+	var count int
+	err := r.db.QueryRow(ctx,
+		`SELECT COUNT(*)
+		 FROM users u
+		 JOIN user_roles ur ON ur.user_id = u.id AND ur.deleted_at IS NULL
+		 JOIN roles r ON r.id = ur.role_id AND r.deleted_at IS NULL
+		 WHERE r.slug = $1 AND u.deleted_at IS NULL`,
+		roleSlug,
+	).Scan(&count)
+	if err != nil {
+		return 0, err
+	}
+	return count, nil
+}
+
 // UpdateUserBasic dipakai admin buat edit nama & telepon petugas
 func (r *UserRepository) UpdateUserBasic(ctx context.Context, id, name, phone string) error {
 	_, err := r.db.Exec(ctx,
