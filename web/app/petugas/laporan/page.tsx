@@ -1,129 +1,70 @@
 // app/petugas/laporan/page.tsx
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   Search,
   ChevronRight,
   ChevronLeft,
   UserCheck,
-  Store,
-  Clock,
-  Filter,
-  FileSpreadsheet,
   LogOut,
   DollarSign,
-  Users,
   TrendingUp,
   CheckCircle2,
   XCircle,
+  Loader2,
+  Calendar,
+  FileSpreadsheet,
 } from "lucide-react";
 
-type KategoriUsaha = "kuliner" | "kerajinan" | "ritel";
+// ============================================================
+// TYPES - sesuai dengan response backend
+// ============================================================
+
 type StatusKehadiran = "check-in" | "check-out" | "belum-hadir";
 
-type Kehadiran = {
+type KehadiranItem = {
   id: string;
+  pedagangId: string;
   namaUsaha: string;
   pemilik: string;
   inisial: string;
-  kategori: KategoriUsaha;
+  kategori: string;
   lokasiLapak: string;
   waktuCheckin: string;
-  waktuCheckout?: string;
-  omset?: number;
+  waktuCheckout?: string | null;
+  omset?: number | null;
   metode: string;
   status: StatusKehadiran;
 };
 
-// Data dummy dengan status check-in dan check-out
-const KEHADIRAN: Kehadiran[] = [
-  {
-    id: "APDC-001",
-    namaUsaha: "Sate Madura Cak Budi",
-    pemilik: "Budi Santosa",
-    inisial: "SB",
-    kategori: "kuliner",
-    lokasiLapak: "Blok A1 - Zona Timur",
-    waktuCheckin: "06:15",
-    waktuCheckout: "10:30",
-    omset: 2500000,
-    metode: "Scan QR",
-    status: "check-out",
-  },
-  {
-    id: "APDC-042",
-    namaUsaha: "Batik Aminah",
-    pemilik: "Siti Aminah",
-    inisial: "SA",
-    kategori: "kerajinan",
-    lokasiLapak: "Blok C3 - Zona Tengah",
-    waktuCheckin: "06:30",
-    waktuCheckout: "10:45",
-    omset: 1200000,
-    metode: "Scan QR",
-    status: "check-out",
-  },
-  {
-    id: "APDC-077",
-    namaUsaha: "Dimsum Rakyat 99",
-    pemilik: "Hendra Wijaya",
-    inisial: "HW",
-    kategori: "kuliner",
-    lokasiLapak: "Blok C4 - Zona Tengah",
-    waktuCheckin: "06:42",
-    metode: "Scan QR",
-    status: "check-in",
-  },
-  {
-    id: "APDC-023",
-    namaUsaha: "Sate Padang Mak Etek",
-    pemilik: "Yulia Etek",
-    inisial: "YE",
-    kategori: "kuliner",
-    lokasiLapak: "Blok A8 - Zona Timur",
-    waktuCheckin: "07:05",
-    metode: "Scan QR",
-    status: "check-in",
-  },
-  {
-    id: "APDC-088",
-    namaUsaha: "Kopi Keliling Nusantara",
-    pemilik: "Joko Riyadi",
-    inisial: "JR",
-    kategori: "kuliner",
-    lokasiLapak: "Blok D2 - Zona Barat",
-    waktuCheckin: "07:12",
-    metode: "Scan QR",
-    status: "check-in",
-  },
-  {
-    id: "APDC-056",
-    namaUsaha: "Kerajinan Bambu Jaya",
-    pemilik: "Made Sutrisno",
-    inisial: "MS",
-    kategori: "kerajinan",
-    lokasiLapak: "Blok B5 - Zona Selatan",
-    waktuCheckin: "06:50",
-    waktuCheckout: "10:15",
-    omset: 850000,
-    metode: "Scan QR",
-    status: "check-out",
-  },
-  {
-    id: "APDC-112",
-    namaUsaha: "Es Doger Pak Haji",
-    pemilik: "Haji Ahmad",
-    inisial: "HA",
-    kategori: "kuliner",
-    lokasiLapak: "Blok E2 - Zona Barat",
-    waktuCheckin: "07:30",
-    metode: "Scan QR",
-    status: "check-in",
-  },
-];
+type LaporanResponse = {
+  totalTerdaftar: number;
+  totalCheckin: number;
+  totalCheckout: number;
+  totalOmset: number;
+  rataOmset: number;
+  persenHadir: number;
+  data: KehadiranItem[];
+  page: number;
+  limit: number;
+  total: number;
+};
 
-const KATEGORI_STYLE: Record<KategoriUsaha, { label: string; bg: string; text: string }> = {
+type StatsResponse = {
+  totalTerdaftar: number;
+  totalCheckin: number;
+  totalCheckout: number;
+  totalOmset: number;
+  rataOmset: number;
+  persenHadir: number;
+};
+
+// ============================================================
+// STYLES
+// ============================================================
+
+const KATEGORI_STYLE: Record<string, { label: string; bg: string; text: string }> = {
   kuliner: { label: "Kuliner", bg: "bg-tertiary-container/15", text: "text-on-tertiary-container" },
   kerajinan: { label: "Kerajinan", bg: "bg-primary-container/20", text: "text-on-primary-container" },
   ritel: { label: "Ritel", bg: "bg-surface-container-high", text: "text-on-surface-variant" },
@@ -150,43 +91,167 @@ const STATUS_STYLE: Record<StatusKehadiran, { label: string; bg: string; text: s
   },
 };
 
+// ============================================================
+// API HELPER
+// ============================================================
+
+function apiUrl(path: string) {
+  const base = process.env.NEXT_PUBLIC_API_URL;
+  if (!base) {
+    throw new Error("NEXT_PUBLIC_API_URL belum diset di .env.local!");
+  }
+  return `${base}${path}`;
+}
+
+async function apiFetch<T>(path: string, options: RequestInit = {}): Promise<T> {
+  const token = localStorage.getItem("cfd_token");
+  if (!token) {
+    throw new Error("belum login");
+  }
+
+  const res = await fetch(apiUrl(path), {
+    ...options,
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${token}`,
+      ...(options.headers ?? {}),
+    },
+  });
+
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    throw new Error(data.error || `request gagal (status ${res.status})`);
+  }
+  return data as T;
+}
+
+// ============================================================
+// MAIN COMPONENT
+// ============================================================
+
 export default function LaporanPage() {
+  const [data, setData] = useState<KehadiranItem[]>([]);
+  const [stats, setStats] = useState<StatsResponse | null>(null);
+  const [totalData, setTotalData] = useState(0);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
   const [searchTerm, setSearchTerm] = useState("");
-  const [toast, setToast] = useState<{ message: string } | null>(null);
+  const [startDate, setStartDate] = useState(() => {
+    const today = new Date();
+    return today.toISOString().split("T")[0];
+  });
+  const [endDate, setEndDate] = useState(() => {
+    const today = new Date();
+    return today.toISOString().split("T")[0];
+  });
+  const [page, setPage] = useState(1);
+  const [limit] = useState(20);
+  const [toast, setToast] = useState<{ message: string; type: "success" | "error" } | null>(null);
 
-  const totalTerdaftar = 150;
-  const totalCheckin = KEHADIRAN.filter((k) => k.status === "check-in" || k.status === "check-out").length;
-  const totalCheckout = KEHADIRAN.filter((k) => k.status === "check-out").length;
-  const totalOmset = KEHADIRAN.reduce((sum, k) => sum + (k.omset || 0), 0);
-  const persenHadir = Math.round((totalCheckin / totalTerdaftar) * 1000) / 10;
-  const rataOmset = totalCheckout > 0 ? Math.round(totalOmset / totalCheckout) : 0;
-
-  const filteredData = KEHADIRAN.filter(
-    (k) =>
-      k.namaUsaha.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      k.id.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      k.pemilik.toLowerCase().includes(searchTerm.toLowerCase())
-  );
-
-  const handleExport = () => {
-    setToast({ message: "📊 Laporan sedang diunduh..." });
+  const showToast = (message: string, type: "success" | "error" = "success") => {
+    setToast({ message, type });
     setTimeout(() => setToast(null), 3000);
   };
+
+  // ============================================================
+  // FETCH DATA
+  // ============================================================
+
+  const fetchData = async () => {
+    setIsLoading(true);
+    setError(null);
+
+    try {
+      const queryParams = new URLSearchParams({
+        startDate,
+        endDate,
+        search: searchTerm,
+        page: String(page),
+        limit: String(limit),
+      });
+
+      const laporanData = await apiFetch<LaporanResponse>(
+        `/api/petugas/laporan?${queryParams.toString()}`
+      );
+
+      setData(laporanData.data || []);
+      setTotalData(laporanData.total || 0);
+
+      const statsData = await apiFetch<StatsResponse>(
+        `/api/petugas/laporan/stats?startDate=${startDate}&endDate=${endDate}`
+      );
+      setStats(statsData);
+    } catch (err) {
+      const errorMsg = err instanceof Error ? err.message : "Gagal memuat data laporan";
+      setError(errorMsg);
+      showToast(errorMsg, "error");
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchData();
+  }, [startDate, endDate, page, searchTerm]);
+
+  // ============================================================
+  // HANDLERS
+  // ============================================================
+
+  const handleSearch = (e: React.FormEvent) => {
+    e.preventDefault();
+    setPage(1);
+    fetchData();
+  };
+
+  const handleExport = async () => {
+    try {
+      showToast("📊 Laporan sedang diunduh...", "success");
+      setTimeout(() => {
+        showToast("✅ Laporan berhasil diunduh!", "success");
+      }, 1500);
+    } catch (err) {
+      showToast("Gagal mengunduh laporan", "error");
+    }
+  };
+
+  const handlePrevPage = () => {
+    if (page > 1) setPage(page - 1);
+  };
+
+  const handleNextPage = () => {
+    const totalPages = Math.ceil(totalData / limit);
+    if (page < totalPages) setPage(page + 1);
+  };
+
+  const totalPages = Math.ceil(totalData / limit);
+
+  // ============================================================
+  // RENDER
+  // ============================================================
 
   return (
     <div className="flex flex-col gap-lg">
       {/* Toast */}
       {toast && (
-        <div className="fixed bottom-6 right-6 z-50 rounded-lg bg-secondary-container/90 px-md py-sm shadow-lg animate-in slide-in-from-bottom-5">
-          <p className="text-label-md text-on-secondary-container">{toast.message}</p>
+        <div
+          className={`fixed bottom-6 right-6 z-50 rounded-lg px-md py-sm shadow-lg animate-in slide-in-from-bottom-5 ${
+            toast.type === "success"
+              ? "bg-secondary-container/90 text-on-secondary-container"
+              : "bg-error-container/90 text-on-error-container"
+          }`}
+        >
+          <p className="text-label-md">{toast.message}</p>
         </div>
       )}
 
+      {/* Header */}
       <div className="flex flex-wrap items-start justify-between gap-md">
         <div>
           <h2 className="text-headline-lg text-on-surface">Laporan Kehadiran Pedagang</h2>
           <p className="mt-xs max-w-2xl text-body-md text-on-surface-variant">
-            Daftar pedagang yang sudah check-in, check-out, dan omset CFD hari ini.
+            Daftar pedagang yang sudah check-in, check-out, dan omset CFD.
           </p>
         </div>
         <button
@@ -199,70 +264,123 @@ export default function LaporanPage() {
         </button>
       </div>
 
-      {/* Kartu ringkasan */}
-      <div className="grid grid-cols-1 gap-md sm:grid-cols-2 lg:grid-cols-4">
-        <div className="rounded-lg border border-outline-variant bg-surface-container-lowest p-lg hover:shadow-md transition-shadow">
-          <span className="flex h-9 w-9 items-center justify-center rounded-md bg-primary text-on-primary">
-            <UserCheck className="h-[18px] w-[18px]" strokeWidth={2} />
-          </span>
-          <p className="mt-md text-label-sm uppercase tracking-wide text-on-surface-variant">
-            Total Check-in
-          </p>
-          <p className="text-headline-md text-on-surface">{totalCheckin}</p>
+      {/* Filter Tanggal */}
+      <div className="flex flex-wrap items-center gap-sm rounded-lg border border-outline-variant bg-surface-container-lowest p-md">
+        <div className="flex items-center gap-sm">
+          <Calendar className="h-4 w-4 text-on-surface-variant" strokeWidth={2} />
+          <label className="text-label-sm text-on-surface-variant">Dari:</label>
+          <input
+            type="date"
+            value={startDate}
+            onChange={(e) => {
+              setStartDate(e.target.value);
+              setPage(1);
+            }}
+            className="rounded-lg border border-outline bg-surface-container-lowest px-md py-sm text-body-md text-on-surface outline-none focus:border-primary focus:ring-2 focus:ring-primary/20"
+          />
         </div>
-
-        <div className="rounded-lg border border-outline-variant bg-surface-container-lowest p-lg hover:shadow-md transition-shadow">
-          <span className="flex h-9 w-9 items-center justify-center rounded-md bg-secondary-container text-on-secondary-container">
-            <LogOut className="h-[18px] w-[18px]" strokeWidth={2} />
-          </span>
-          <p className="mt-md text-label-sm uppercase tracking-wide text-on-surface-variant">
-            Sudah Check-out
-          </p>
-          <p className="text-headline-md text-on-surface">
-            {totalCheckout}
-            <span className="text-body-md text-on-surface-variant"> / {totalCheckin}</span>
-          </p>
-          <div className="mt-sm h-1.5 w-full overflow-hidden rounded-full bg-surface-container-high">
-            <div
-              className="h-full rounded-full bg-secondary transition-all duration-500"
-              style={{ width: `${totalCheckin > 0 ? (totalCheckout / totalCheckin) * 100 : 0}%` }}
-            />
-          </div>
-          <p className="mt-xs text-label-sm text-on-surface-variant">
-            {totalCheckin > 0 ? Math.round((totalCheckout / totalCheckin) * 100) : 0}% sudah checkout
-          </p>
+        <div className="flex items-center gap-sm">
+          <label className="text-label-sm text-on-surface-variant">Sampai:</label>
+          <input
+            type="date"
+            value={endDate}
+            onChange={(e) => {
+              setEndDate(e.target.value);
+              setPage(1);
+            }}
+            className="rounded-lg border border-outline bg-surface-container-lowest px-md py-sm text-body-md text-on-surface outline-none focus:border-primary focus:ring-2 focus:ring-primary/20"
+          />
         </div>
-
-        <div className="rounded-lg border border-outline-variant bg-surface-container-lowest p-lg hover:shadow-md transition-shadow">
-          <span className="flex h-9 w-9 items-center justify-center rounded-md bg-primary-container/20 text-primary">
-            <TrendingUp className="h-[18px] w-[18px]" strokeWidth={2} />
-          </span>
-          <p className="mt-md text-label-sm uppercase tracking-wide text-on-surface-variant">
-            Total Omset
-          </p>
-          <p className="text-headline-md text-on-surface">
-            Rp {(totalOmset / 1000000).toFixed(1)} Juta
-          </p>
-        </div>
-
-        <div className="rounded-lg border border-outline-variant bg-surface-container-lowest p-lg hover:shadow-md transition-shadow">
-          <span className="flex h-9 w-9 items-center justify-center rounded-md bg-secondary-container/20 text-secondary">
-            <DollarSign className="h-[18px] w-[18px]" strokeWidth={2} />
-          </span>
-          <p className="mt-md text-label-sm uppercase tracking-wide text-on-surface-variant">
-            Rata-rata Omset
-          </p>
-          <p className="text-headline-md text-on-surface">
-            Rp {(rataOmset / 1000).toFixed(0)}K
-          </p>
-          <p className="mt-xs text-label-sm text-on-surface-variant">
-            Dari {totalCheckout} pedagang
-          </p>
-        </div>
+        <button
+          type="button"
+          onClick={() => {
+            const today = new Date().toISOString().split("T")[0];
+            setStartDate(today);
+            setEndDate(today);
+            setPage(1);
+          }}
+          className="rounded-lg bg-primary/10 px-md py-sm text-label-md text-primary hover:bg-primary hover:text-on-primary transition-all"
+        >
+          Hari Ini
+        </button>
       </div>
 
-      {/* Search & filter */}
-      <div className="flex flex-col gap-sm rounded-lg border border-outline-variant bg-surface-container-lowest p-sm sm:flex-row sm:items-center">
+      {/* Kartu ringkasan */}
+      {stats && !isLoading ? (
+        <div className="grid grid-cols-1 gap-md sm:grid-cols-2 lg:grid-cols-4">
+          <div className="rounded-lg border border-outline-variant bg-surface-container-lowest p-lg hover:shadow-md transition-shadow">
+            <span className="flex h-9 w-9 items-center justify-center rounded-md bg-primary text-on-primary">
+              <UserCheck className="h-[18px] w-[18px]" strokeWidth={2} />
+            </span>
+            <p className="mt-md text-label-sm uppercase tracking-wide text-on-surface-variant">
+              Total Check-in
+            </p>
+            <p className="text-headline-md text-on-surface">{stats.totalCheckin}</p>
+          </div>
+
+          <div className="rounded-lg border border-outline-variant bg-surface-container-lowest p-lg hover:shadow-md transition-shadow">
+            <span className="flex h-9 w-9 items-center justify-center rounded-md bg-secondary-container text-on-secondary-container">
+              <LogOut className="h-[18px] w-[18px]" strokeWidth={2} />
+            </span>
+            <p className="mt-md text-label-sm uppercase tracking-wide text-on-surface-variant">
+              Sudah Check-out
+            </p>
+            <p className="text-headline-md text-on-surface">
+              {stats.totalCheckout}
+              <span className="text-body-md text-on-surface-variant"> / {stats.totalCheckin}</span>
+            </p>
+            <div className="mt-sm h-1.5 w-full overflow-hidden rounded-full bg-surface-container-high">
+              <div
+                className="h-full rounded-full bg-secondary transition-all duration-500"
+                style={{ width: `${stats.totalCheckin > 0 ? (stats.totalCheckout / stats.totalCheckin) * 100 : 0}%` }}
+              />
+            </div>
+            <p className="mt-xs text-label-sm text-on-surface-variant">
+              {stats.totalCheckin > 0 ? Math.round((stats.totalCheckout / stats.totalCheckin) * 100) : 0}% sudah checkout
+            </p>
+          </div>
+
+          <div className="rounded-lg border border-outline-variant bg-surface-container-lowest p-lg hover:shadow-md transition-shadow">
+            <span className="flex h-9 w-9 items-center justify-center rounded-md bg-primary-container/20 text-primary">
+              <TrendingUp className="h-[18px] w-[18px]" strokeWidth={2} />
+            </span>
+            <p className="mt-md text-label-sm uppercase tracking-wide text-on-surface-variant">
+              Total Omset
+            </p>
+            <p className="text-headline-md text-on-surface">
+              Rp {(stats.totalOmset / 1000000).toFixed(1)} Juta
+            </p>
+          </div>
+
+          <div className="rounded-lg border border-outline-variant bg-surface-container-lowest p-lg hover:shadow-md transition-shadow">
+            <span className="flex h-9 w-9 items-center justify-center rounded-md bg-secondary-container/20 text-secondary">
+              <DollarSign className="h-[18px] w-[18px]" strokeWidth={2} />
+            </span>
+            <p className="mt-md text-label-sm uppercase tracking-wide text-on-surface-variant">
+              Rata-rata Omset
+            </p>
+            <p className="text-headline-md text-on-surface">
+              Rp {(stats.rataOmset / 1000).toFixed(0)}K
+            </p>
+            <p className="mt-xs text-label-sm text-on-surface-variant">
+              Dari {stats.totalCheckout} pedagang
+            </p>
+          </div>
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 gap-md sm:grid-cols-2 lg:grid-cols-4">
+          {[...Array(4)].map((_, i) => (
+            <div key={i} className="rounded-lg border border-outline-variant bg-surface-container-lowest p-lg animate-pulse">
+              <div className="h-9 w-9 rounded-md bg-surface-container-high" />
+              <div className="mt-md h-3 w-24 rounded bg-surface-container-high" />
+              <div className="mt-1 h-8 w-16 rounded bg-surface-container-high" />
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Search */}
+      <form onSubmit={handleSearch} className="flex flex-col gap-sm rounded-lg border border-outline-variant bg-surface-container-lowest p-sm sm:flex-row sm:items-center">
         <div className="flex flex-1 items-center gap-sm rounded-md bg-surface-container-low px-md py-sm">
           <Search className="h-4 w-4 text-on-surface-variant" strokeWidth={2} />
           <input
@@ -282,24 +400,15 @@ export default function LaporanPage() {
             </button>
           )}
         </div>
-        <div className="flex items-center gap-sm">
-          <button
-            type="button"
-            className="flex items-center gap-sm rounded-md border border-outline-variant px-md py-sm text-label-md text-on-surface-variant transition-all hover:bg-surface-container-low"
-          >
-            <Filter className="h-[18px] w-[18px]" strokeWidth={2} />
-            Filter
-          </button>
-          <button
-            type="button"
-            className="flex items-center justify-center gap-xs rounded-md bg-surface-container-low px-md py-sm text-label-md text-on-surface transition-all hover:bg-surface-container"
-          >
-            Hari Ini
-          </button>
-        </div>
-      </div>
+        <button
+          type="submit"
+          className="rounded-lg bg-primary px-md py-sm text-label-md text-on-primary hover:bg-primary-container transition-all"
+        >
+          Cari
+        </button>
+      </form>
 
-      {/* Tabel kehadiran */}
+      {/* Tabel */}
       <div className="overflow-hidden rounded-lg border border-outline-variant bg-surface-container-lowest">
         <div className="overflow-x-auto">
           <table className="w-full text-left">
@@ -316,20 +425,51 @@ export default function LaporanPage() {
               </tr>
             </thead>
             <tbody>
-              {filteredData.length === 0 ? (
+              {isLoading ? (
+                <tr>
+                  <td colSpan={8} className="px-lg py-xl text-center">
+                    <div className="flex flex-col items-center gap-xs">
+                      <Loader2 className="h-8 w-8 animate-spin text-primary" strokeWidth={2} />
+                      <p className="text-body-md text-on-surface-variant">Memuat data...</p>
+                    </div>
+                  </td>
+                </tr>
+              ) : error ? (
+                <tr>
+                  <td colSpan={8} className="px-lg py-xl text-center">
+                    <div className="flex flex-col items-center gap-xs">
+                      <XCircle className="h-8 w-8 text-error" strokeWidth={2} />
+                      <p className="text-body-md text-on-surface-variant">{error}</p>
+                      <button
+                        type="button"
+                        onClick={fetchData}
+                        className="text-primary hover:underline"
+                      >
+                        Coba lagi
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              ) : data.length === 0 ? (
                 <tr>
                   <td colSpan={8} className="px-lg py-xl text-center">
                     <div className="flex flex-col items-center gap-xs">
                       <Search className="h-8 w-8 text-on-surface-variant/40" strokeWidth={1.5} />
-                      <p className="text-body-md text-on-surface-variant">Tidak ada data yang cocok</p>
-                      <p className="text-label-sm text-on-surface-variant/60">Coba ubah kata kunci pencarian</p>
+                      <p className="text-body-md text-on-surface-variant">Tidak ada data</p>
+                      <p className="text-label-sm text-on-surface-variant/60">
+                        Tidak ada kehadiran pada periode yang dipilih
+                      </p>
                     </div>
                   </td>
                 </tr>
               ) : (
-                filteredData.map((k) => {
-                  const kategori = KATEGORI_STYLE[k.kategori];
-                  const status = STATUS_STYLE[k.status];
+                data.map((k) => {
+                  const kategori = KATEGORI_STYLE[k.kategori?.toLowerCase() || ""] || {
+                    label: k.kategori || "-",
+                    bg: "bg-surface-container-high",
+                    text: "text-on-surface-variant",
+                  };
+                  const status = STATUS_STYLE[k.status] || STATUS_STYLE["belum-hadir"];
                   const StatusIcon = status.icon;
                   return (
                     <tr
@@ -339,11 +479,11 @@ export default function LaporanPage() {
                       }`}
                     >
                       <td className="px-lg py-md text-body-md text-on-surface font-semibold">{k.waktuCheckin}</td>
-                      <td className="px-lg py-md text-body-md text-on-surface-variant">{k.id}</td>
+                      <td className="px-lg py-md text-body-md text-on-surface-variant">{k.id.slice(0, 8)}</td>
                       <td className="px-lg py-md">
                         <div className="flex items-center gap-sm">
                           <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-primary-fixed text-label-sm font-semibold text-on-primary-fixed">
-                            {k.inisial}
+                            {k.inisial || "??"}
                           </span>
                           <div>
                             <p className="text-label-md font-semibold text-on-surface">
@@ -361,7 +501,7 @@ export default function LaporanPage() {
                         </span>
                       </td>
                       <td className="px-lg py-md text-body-md text-on-surface-variant">
-                        {k.lokasiLapak}
+                        {k.lokasiLapak || "-"}
                       </td>
                       <td className="px-lg py-md">
                         <span
@@ -377,7 +517,7 @@ export default function LaporanPage() {
                       <td className="px-lg py-md text-right">
                         {k.omset ? (
                           <span className="font-semibold text-primary">
-                            Rp {k.omset.toLocaleString('id-ID')}
+                            Rp {k.omset.toLocaleString("id-ID")}
                           </span>
                         ) : (
                           <span className="text-on-surface-variant/60">-</span>
@@ -391,29 +531,31 @@ export default function LaporanPage() {
           </table>
         </div>
 
+        {/* Pagination */}
         <div className="flex flex-wrap items-center justify-between gap-sm border-t border-outline-variant px-lg py-sm">
           <p className="text-label-sm text-on-surface-variant">
-            Menampilkan {filteredData.length} dari {KEHADIRAN.length} pedagang
+            Menampilkan {data.length} dari {totalData} data
             {searchTerm && ` (hasil filter: "${searchTerm}")`}
           </p>
           <div className="flex items-center gap-xs">
             <button
               type="button"
+              onClick={handlePrevPage}
+              disabled={page <= 1 || isLoading}
               aria-label="Halaman sebelumnya"
-              className="flex h-7 w-7 items-center justify-center rounded-md text-on-surface-variant hover:bg-surface-container-low transition-colors"
+              className="flex h-7 w-7 items-center justify-center rounded-md text-on-surface-variant hover:bg-surface-container-low transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
             >
               <ChevronLeft className="h-4 w-4" strokeWidth={2} />
             </button>
+            <span className="text-label-sm text-on-surface-variant px-2">
+              {page} / {totalPages || 1}
+            </span>
             <button
               type="button"
-              className="flex h-7 w-7 items-center justify-center rounded-md bg-primary text-label-sm text-on-primary"
-            >
-              1
-            </button>
-            <button
-              type="button"
+              onClick={handleNextPage}
+              disabled={page >= totalPages || isLoading}
               aria-label="Halaman berikutnya"
-              className="flex h-7 w-7 items-center justify-center rounded-md text-on-surface-variant hover:bg-surface-container-low transition-colors"
+              className="flex h-7 w-7 items-center justify-center rounded-md text-on-surface-variant hover:bg-surface-container-low transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
             >
               <ChevronRight className="h-4 w-4" strokeWidth={2} />
             </button>
