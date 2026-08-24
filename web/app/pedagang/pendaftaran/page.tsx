@@ -1,18 +1,18 @@
 "use client";
 
 import { useState, FormEvent } from "react";
-import { useRouter } from "next/navigation";
-
-// Pastikan sudah terpasang di project ini:
-//   npm install bootstrap bootstrap-icons
-// Lalu import CSS-nya sekali di app/layout.tsx (paling atas, sebelum globals.css):
-//   import "bootstrap/dist/css/bootstrap.min.css";
-//   import "bootstrap-icons/font/bootstrap-icons.css";
+import {
+  CreditCard,
+  Tag,
+  ShoppingCart,
+  Table2,
+  CheckCircle2,
+  AlertTriangle,
+} from "lucide-react";
 
 type StallType = "rombong" | "meja" | "";
 
 export default function PendaftaranPedagangPage() {
-  const router = useRouter();
   const [nik, setNik] = useState("");
   const [dob, setDob] = useState("");
   const [fullName, setFullName] = useState("");
@@ -21,6 +21,8 @@ export default function PendaftaranPedagangPage() {
   const [stallType, setStallType] = useState<StallType>("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  const [success, setSuccess] = useState(false);
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
@@ -36,295 +38,242 @@ export default function PendaftaranPedagangPage() {
     }
 
     setLoading(true);
+
+    // Sementara belum ada API pendaftaran yang beneran, jadi langsung
+    // anggap berhasil supaya bisa cek tampilan. Nanti tinggal ganti
+    // bagian ini dengan fetch ke backend yang sebenarnya.
+    setTimeout(() => {
+      setSuccess(true);
+      setLoading(false);
+    }, 500);
+
+    /* 
+    // TODO: ganti dengan pemanggilan API yang sebenarnya nanti
     try {
-      // TODO: sesuaikan endpoint dengan API pendaftaran pedagang yang sebenarnya
       const res = await fetch("/api/pedagang/daftar", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          nik,
-          dob,
-          fullName,
-          businessName,
-          category,
-          stallType,
-        }),
+        body: JSON.stringify({ nik, dob, fullName, businessName, category, stallType }),
       });
-
-      if (!res.ok) {
-        throw new Error("Gagal menyimpan data. Silakan coba lagi.");
-      }
-
-      // Data alokasi lapak (zona, nomor stand, QR) idealnya dikembalikan oleh API.
-      // Sesuaikan field di bawah ini dengan response API pendaftaran yang sebenarnya.
-      const data = await res.json().catch(() => ({}));
-
-      const categoryLabel =
-        category === "makanan_minuman"
-          ? "Makanan dan Minuman"
-          : "Bukan Makanan dan Minuman";
-      const stallLabel = stallType === "rombong" ? "Rombong" : "Meja";
-
-      const query = new URLSearchParams({
-        nik,
-        namaLengkap: fullName,
-        tanggalLahir: dob,
-        namaUsaha: businessName,
-        kategori: categoryLabel,
-        jenisLapak: stallLabel,
-        ...(data.zona ? { zona: data.zona } : {}),
-        ...(data.alamat ? { alamat: data.alamat } : {}),
-        ...(data.nomorStand ? { nomorStand: data.nomorStand } : {}),
-        ...(data.qrUrl ? { qrUrl: data.qrUrl } : {}),
-      });
-
-      router.push(`/pedagang/pendaftaran/detail_pendaftaran?${query.toString()}`);
+      if (!res.ok) throw new Error("Gagal menyimpan data. Silakan coba lagi.");
+      setSuccess(true);
     } catch (err) {
-      setError(
-        err instanceof Error ? err.message : "Terjadi kesalahan. Silakan coba lagi."
-      );
+      setError(err instanceof Error ? err.message : "Terjadi kesalahan. Silakan coba lagi.");
     } finally {
       setLoading(false);
     }
+    */
   };
 
   return (
-    <main
-      className="d-flex align-items-center justify-content-center min-vh-100 p-3"
-      style={{
-        background:
-          "radial-gradient(circle at 15% 10%, #eef2ff 0%, #f5f6fa 45%, #f5f6fa 100%)",
-      }}
-    >
-      <style jsx global>{`
-        :root {
-          --brand: #00288e;
-          --brand-dark: #001a5e;
-          --accent: #f0a83c;
-        }
-        .pedagang-card {
-          max-width: 440px;
-          width: 100%;
-          border: none;
-          border-radius: 18px;
-          overflow: hidden;
-          box-shadow: 0 10px 40px rgba(0, 40, 142, 0.14);
-        }
-        .pedagang-header {
-          background: linear-gradient(135deg, var(--brand) 0%, var(--brand-dark) 100%);
-        }
-        .form-control:focus,
-        .form-select:focus {
-          border-color: var(--brand);
-          box-shadow: 0 0 0 0.2rem rgba(0, 40, 142, 0.15);
-        }
-        .stall-option {
-          border: 1.5px solid #e2e5f1;
-          border-radius: 12px;
-          padding: 0.65rem 0.5rem;
-          text-align: center;
-          cursor: pointer;
-          transition: all 0.15s ease;
-          background: #fff;
-        }
-        .stall-option:hover {
-          border-color: #b9c2e8;
-          background: #f8f9ff;
-        }
-        .stall-option.active {
-          border-color: var(--brand);
-          background: #eef2ff;
-          box-shadow: 0 0 0 1px var(--brand);
-        }
-        .stall-option i {
-          font-size: 1.15rem;
-          color: var(--brand);
-        }
-        .btn-brand {
-          background: var(--brand);
-          border-color: var(--brand);
-          color: #fff;
-          font-weight: 600;
-          letter-spacing: 0.2px;
-        }
-        .btn-brand:hover,
-        .btn-brand:focus {
-          background: var(--brand-dark);
-          border-color: var(--brand-dark);
-          color: #fff;
-        }
-        .btn-brand:disabled {
-          background: var(--brand);
-          opacity: 0.6;
-        }
-        .form-label-sm {
-          font-size: 0.72rem;
-          font-weight: 600;
-          color: #5b5d6b;
-          text-transform: uppercase;
-          letter-spacing: 0.4px;
-        }
-      `}</style>
-
-      <div className="card pedagang-card">
+    <main className="w-full min-h-screen flex items-center justify-center px-4 py-10 bg-[#f6f7fb]">
+      <div className="w-full max-w-[420px]">
         {/* Header */}
-        <div className="pedagang-header px-4 py-3">
-          <h2 className="h6 mb-0 text-white fw-semibold">
-            Pendaftaran Pedagang Baru
-          </h2>
-          <p className="mb-0 small" style={{ color: "#c3cdf5", fontSize: "0.75rem" }}>
-            Lengkapi data untuk mendaftar sebagai pedagang di CFD
-          </p>
-        </div>
+        {!success && (
+          <div className="w-full text-center mb-5">
+            <h1 className="text-[20px] leading-tight font-bold text-[#1a1d29] mb-1.5">
+              Pendaftaran Pedagang Baru
+            </h1>
+            <p className="text-[12.5px] leading-5 text-[#767884] px-2 max-w-[380px] mx-auto">
+              Lengkapi data berikut untuk mendaftar sebagai pedagang di CFD.
+            </p>
+          </div>
+        )}
 
-        {/* Form Body */}
-        <form onSubmit={handleSubmit} className="p-4">
-          {/* NIK */}
-          <div className="mb-3">
-            <label htmlFor="nik" className="form-label-sm mb-1 d-block">
-              NIK (Nomor Induk Kependudukan)
-            </label>
-            <div className="input-group">
-              <span className="input-group-text bg-white text-muted">
-                <i className="bi bi-person-vcard" />
-              </span>
-              <input
-                id="nik"
-                name="nik"
-                type="text"
-                inputMode="numeric"
-                maxLength={16}
-                placeholder="16 digit NIK"
-                value={nik}
-                onChange={(e) => setNik(e.target.value.replace(/\D/g, ""))}
-                className="form-control"
-              />
+        {/* Form */}
+        {!success && (
+          <form
+            onSubmit={handleSubmit}
+            className="w-full bg-white rounded-2xl shadow-[0_2px_8px_-2px_rgba(23,29,64,0.06),0_12px_28px_-8px_rgba(23,29,64,0.12)] overflow-hidden"
+          >
+            <div className="px-4 pt-4 pb-2 text-center">
+              <h2
+                className="font-semibold text-[#1a1d29] leading-tight"
+                style={{ fontSize: "18px", margin: 0 }}
+              >
+                Data Pedagang
+              </h2>
+              <div className="w-full h-px bg-[#ececf3] mt-2" />
             </div>
-          </div>
 
-          {/* Tanggal Lahir */}
-          <div className="mb-3">
-            <label htmlFor="dob" className="form-label-sm mb-1 d-block">
-              Tanggal Lahir
-            </label>
-            <input
-              id="dob"
-              name="dob"
-              type="date"
-              value={dob}
-              onChange={(e) => setDob(e.target.value)}
-              className="form-control"
-            />
-          </div>
-
-          {/* Nama Lengkap */}
-          <div className="mb-3">
-            <label htmlFor="fullName" className="form-label-sm mb-1 d-block">
-              Nama Lengkap
-            </label>
-            <input
-              id="fullName"
-              name="fullName"
-              type="text"
-              placeholder="Sesuai KTP"
-              value={fullName}
-              onChange={(e) => setFullName(e.target.value)}
-              className="form-control"
-            />
-          </div>
-
-          {/* Nama Usaha */}
-          <div className="mb-3">
-            <label htmlFor="businessName" className="form-label-sm mb-1 d-block">
-              Nama Usaha
-            </label>
-            <div className="input-group">
-              <span className="input-group-text bg-white text-muted">
-                <i className="bi bi-tag" />
-              </span>
-              <input
-                id="businessName"
-                name="businessName"
-                type="text"
-                placeholder="Contoh: Kedai Kopi Senja"
-                value={businessName}
-                onChange={(e) => setBusinessName(e.target.value)}
-                className="form-control"
-              />
-            </div>
-          </div>
-
-          {/* Kategori Dagangan */}
-          <div className="mb-3">
-            <label htmlFor="category" className="form-label-sm mb-1 d-block">
-              Kategori Dagangan
-            </label>
-            <select
-              id="category"
-              name="category"
-              value={category}
-              onChange={(e) => setCategory(e.target.value)}
-              className="form-select"
-            >
-              <option value="" disabled>
-                Pilih Kategori
-              </option>
-              <option value="makanan_minuman">Makanan dan Minuman</option>
-              <option value="bukan_makanan_minuman">
-                Bukan Makanan dan Minuman
-              </option>
-            </select>
-          </div>
-
-          {/* Pilihan Lapak */}
-          <div className="mb-3">
-            <label className="form-label-sm mb-1 d-block">Pilihan Lapak</label>
-            <div className="row g-2">
-              <div className="col-6">
-                <div
-                  className={`stall-option ${stallType === "rombong" ? "active" : ""}`}
-                  onClick={() => setStallType("rombong")}
-                  role="button"
-                >
-                  <i className="bi bi-cart3 d-block mb-1" />
-                  <span className="small fw-medium text-dark">Rombong</span>
+            <div className="px-4 pb-5 pt-2 flex flex-col gap-3">
+              {/* NIK */}
+              <div className="w-full flex flex-col gap-1.5">
+                <label htmlFor="nik" className="text-[13px] font-medium text-[#4b4d5a]">
+                  NIK (Nomor Induk Kependudukan)
+                </label>
+                <div className="relative">
+                  <CreditCard
+                    size={15}
+                    className="absolute left-3 top-1/2 -translate-y-1/2 text-[#8fa3d6]"
+                  />
+                  <input
+                    id="nik"
+                    type="text"
+                    inputMode="numeric"
+                    maxLength={16}
+                    placeholder="Masukkan 16 digit NIK"
+                    value={nik}
+                    onChange={(e) => setNik(e.target.value.replace(/\D/g, ""))}
+                    className="w-full box-border h-10 pl-9 pr-3 bg-[#eff4ff] rounded-lg text-[13px] text-[#1a1d29] placeholder:text-[#8fa3d6] shadow-[inset_0_1px_2px_rgba(23,29,64,0.05)] border border-[#c9d6f5] focus:outline-none focus:bg-white focus:border-[#00288e] focus:ring-2 focus:ring-[#00288e]/15 transition-all"
+                  />
                 </div>
               </div>
-              <div className="col-6">
-                <div
-                  className={`stall-option ${stallType === "meja" ? "active" : ""}`}
-                  onClick={() => setStallType("meja")}
-                  role="button"
-                >
-                  <i className="bi bi-table d-block mb-1" />
-                  <span className="small fw-medium text-dark">Meja</span>
+
+              {/* Tanggal Lahir */}
+              <div className="w-full flex flex-col gap-1.5">
+                <label htmlFor="dob" className="text-[13px] font-medium text-[#4b4d5a]">
+                  Tanggal Lahir
+                </label>
+                <input
+                  id="dob"
+                  type="date"
+                  value={dob}
+                  onChange={(e) => setDob(e.target.value)}
+                  className="w-full box-border h-10 px-3 bg-[#eff4ff] rounded-lg text-[13px] text-[#1a1d29] shadow-[inset_0_1px_2px_rgba(23,29,64,0.05)] border border-[#c9d6f5] focus:outline-none focus:bg-white focus:border-[#00288e] focus:ring-2 focus:ring-[#00288e]/15 transition-all"
+                />
+              </div>
+
+              {/* Nama Lengkap */}
+              <div className="w-full flex flex-col gap-1.5">
+                <label htmlFor="fullName" className="text-[13px] font-medium text-[#4b4d5a]">
+                  Nama Lengkap
+                </label>
+                <input
+                  id="fullName"
+                  type="text"
+                  placeholder="Sesuai KTP"
+                  value={fullName}
+                  onChange={(e) => setFullName(e.target.value)}
+                  className="w-full box-border h-10 px-3 bg-[#eff4ff] rounded-lg text-[13px] text-[#1a1d29] placeholder:text-[#8fa3d6] shadow-[inset_0_1px_2px_rgba(23,29,64,0.05)] border border-[#c9d6f5] focus:outline-none focus:bg-white focus:border-[#00288e] focus:ring-2 focus:ring-[#00288e]/15 transition-all"
+                />
+              </div>
+
+              {/* Nama Usaha */}
+              <div className="w-full flex flex-col gap-1.5">
+                <label htmlFor="businessName" className="text-[13px] font-medium text-[#4b4d5a]">
+                  Nama Usaha
+                </label>
+                <div className="relative">
+                  <Tag
+                    size={15}
+                    className="absolute left-3 top-1/2 -translate-y-1/2 text-[#8fa3d6]"
+                  />
+                  <input
+                    id="businessName"
+                    type="text"
+                    placeholder="Contoh: Kedai Kopi Senja"
+                    value={businessName}
+                    onChange={(e) => setBusinessName(e.target.value)}
+                    className="w-full box-border h-10 pl-9 pr-3 bg-[#eff4ff] rounded-lg text-[13px] text-[#1a1d29] placeholder:text-[#8fa3d6] shadow-[inset_0_1px_2px_rgba(23,29,64,0.05)] border border-[#c9d6f5] focus:outline-none focus:bg-white focus:border-[#00288e] focus:ring-2 focus:ring-[#00288e]/15 transition-all"
+                  />
                 </div>
               </div>
-            </div>
-          </div>
 
-          {error && (
-            <div className="alert alert-danger py-2 px-3 small mb-3" role="alert">
-              <i className="bi bi-exclamation-triangle-fill me-1" />
-              {error}
-            </div>
-          )}
+              {/* Kategori Dagangan */}
+              <div className="w-full flex flex-col gap-1.5">
+                <label htmlFor="category" className="text-[13px] font-medium text-[#4b4d5a]">
+                  Kategori Dagangan
+                </label>
+                <select
+                  id="category"
+                  value={category}
+                  onChange={(e) => setCategory(e.target.value)}
+                  className="w-full box-border h-10 px-3 bg-[#eff4ff] rounded-lg text-[13px] text-[#1a1d29] shadow-[inset_0_1px_2px_rgba(23,29,64,0.05)] border border-[#c9d6f5] focus:outline-none focus:bg-white focus:border-[#00288e] focus:ring-2 focus:ring-[#00288e]/15 transition-all appearance-none bg-no-repeat"
+                  style={{
+                    backgroundImage:
+                      "url(\"data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'><path d='M2 4l4 4 4-4' stroke='%235b5d6b' stroke-width='1.5' fill='none' stroke-linecap='round' stroke-linejoin='round'/></svg>\")",
+                    backgroundPosition: "right 0.75rem center",
+                  }}
+                >
+                  <option value="" disabled>
+                    Pilih Kategori
+                  </option>
+                  <option value="makanan_minuman">Makanan dan Minuman</option>
+                  <option value="bukan_makanan_minuman">
+                    Bukan Makanan dan Minuman
+                  </option>
+                </select>
+              </div>
 
-          {/* Form Actions */}
-          <div className="d-flex gap-2 pt-3 border-top mt-3">
-            <button type="button" className="btn btn-outline-secondary flex-fill">
-              Batal
-            </button>
-            <button
-              type="submit"
-              disabled={loading}
-              className="btn btn-brand flex-fill d-flex align-items-center justify-content-center gap-2"
-            >
-              {loading && <span className="spinner-border spinner-border-sm" />}
-              {loading ? "Menyimpan..." : "Simpan"}
-            </button>
-          </div>
-        </form>
+              {/* Pilihan Lapak */}
+              <div className="w-full flex flex-col gap-1.5">
+                <label className="text-[13px] font-medium text-[#4b4d5a]">
+                  Pilihan Lapak
+                </label>
+                <div className="grid grid-cols-2 gap-2">
+                  <div
+                    onClick={() => setStallType("rombong")}
+                    role="button"
+                    className={`flex flex-col items-center gap-1 py-2.5 px-2 rounded-xl border cursor-pointer transition-all ${
+                      stallType === "rombong"
+                        ? "border-[#00288e] bg-[#eef2fd] shadow-[0_0_0_1px_#00288e]"
+                        : "border-[#e2e5f1] bg-white hover:border-[#b9c2e8] hover:bg-[#f8f9ff]"
+                    }`}
+                  >
+                    <ShoppingCart size={18} className="text-[#00288e]" />
+                    <span className="text-[13px] font-medium text-[#1a1d29]">
+                      Rombong
+                    </span>
+                  </div>
+                  <div
+                    onClick={() => setStallType("meja")}
+                    role="button"
+                    className={`flex flex-col items-center gap-1 py-2.5 px-2 rounded-xl border cursor-pointer transition-all ${
+                      stallType === "meja"
+                        ? "border-[#00288e] bg-[#eef2fd] shadow-[0_0_0_1px_#00288e]"
+                        : "border-[#e2e5f1] bg-white hover:border-[#b9c2e8] hover:bg-[#f8f9ff]"
+                    }`}
+                  >
+                    <Table2 size={18} className="text-[#00288e]" />
+                    <span className="text-[13px] font-medium text-[#1a1d29]">
+                      Meja
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              {error && (
+                <p className="w-full flex items-center gap-1.5 text-[11.5px] text-[#ba1a1a]" role="alert">
+                  <AlertTriangle size={13} />
+                  {error}
+                </p>
+              )}
+
+              <div className="w-full flex gap-2 pt-3 mt-1 border-t border-[#ececf3]">
+                <button
+                  type="button"
+                  className="flex-1 h-9 bg-white text-[#4b4d5a] border border-[#e7e8f1] text-[12.5px] font-medium rounded-lg hover:bg-[#f5f7fe] active:scale-[0.98] transition-all"
+                >
+                  Batal
+                </button>
+                <button
+                  type="submit"
+                  disabled={loading}
+                  className="flex-1 h-9 bg-[#00288e] text-white text-[12.5px] font-medium rounded-lg shadow-[0_4px_10px_-3px_rgba(0,40,142,0.4)] hover:bg-[#173bab] active:scale-[0.98] transition-all flex items-center justify-center gap-1.5 disabled:opacity-50 disabled:active:scale-100"
+                >
+                  {loading && (
+                    <span className="w-3.5 h-3.5 border-2 border-white/50 border-t-white rounded-full animate-spin" />
+                  )}
+                  {loading ? "Menyimpan..." : "Simpan"}
+                </button>
+              </div>
+            </div>
+          </form>
+        )}
+
+        {/* Tampilan sukses */}
+        {success && (
+          <section className="w-full bg-white rounded-2xl shadow-[0_2px_8px_-2px_rgba(23,29,64,0.06),0_12px_28px_-8px_rgba(23,29,64,0.12)] px-5 py-10 flex flex-col items-center text-center gap-3">
+            <div className="w-16 h-16 rounded-2xl bg-[#d3f5e4] flex items-center justify-center">
+              <CheckCircle2 size={32} className="text-[#16a34a]" />
+            </div>
+            <h3 className="text-[17px] font-bold text-[#00288e]">Berhasil</h3>
+            <p className="text-[13px] text-[#767884]">
+              Selamat Pendaftaran Anda Berhasil.
+            </p>
+          </section>
+        )}
       </div>
     </main>
   );
