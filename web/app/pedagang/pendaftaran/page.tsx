@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, FormEvent } from "react";
+import { useState, useEffect, FormEvent } from "react";
+import { useRouter } from "next/navigation";
 import {
   CreditCard,
   Tag,
@@ -12,7 +13,30 @@ import {
 
 type StallType = "rombong" | "meja" | "";
 
+const REDIRECT_DELAY_SECONDS = 3;
+
+const KATEGORI_LABEL: Record<string, string> = {
+  makanan_minuman: "Makanan dan Minuman",
+  bukan_makanan_minuman: "Bukan Makanan dan Minuman",
+};
+
+const LAPAK_LABEL: Record<string, string> = {
+  rombong: "Rombong",
+  meja: "Meja",
+};
+
 export default function PendaftaranPedagangPage() {
+  const router = useRouter();
+  const [redirectIn, setRedirectIn] = useState(REDIRECT_DELAY_SECONDS);
+
+  // Cek dulu apakah user ini sudah pernah mengajukan usaha, sebelum
+  // nampilin form -- daripada baru ketauan gagal pas submit.
+  const [checkingExisting, setCheckingExisting] = useState(true);
+  const [alreadyRegistered, setAlreadyRegistered] = useState(false);
+
+  // Dialog konfirmasi "periksa kembali data" sebelum submit beneran.
+  const [showConfirm, setShowConfirm] = useState(false);
+
   const [nik, setNik] = useState("");
   const [dob, setDob] = useState("");
   const [fullName, setFullName] = useState("");
@@ -21,10 +45,48 @@ export default function PendaftaranPedagangPage() {
   const [stallType, setStallType] = useState<StallType>("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-
   const [success, setSuccess] = useState(false);
 
-  const handleSubmit = async (e: FormEvent) => {
+  useEffect(() => {
+    async function checkExisting() {
+      try {
+        const token = localStorage.getItem("cfd_token");
+        const baseUrl = process.env.NEXT_PUBLIC_API_URL;
+        if (!token || !baseUrl) {
+          setCheckingExisting(false);
+          return;
+        }
+
+        const res = await fetch(`${baseUrl}/api/pedagang/pengajuan`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        if (res.ok) {
+          const data = await res.json();
+          setAlreadyRegistered(Boolean(data.has_pengajuan));
+        }
+      } catch {
+        // kalau gagal cek, biarin form tetap muncul -- backend tetap
+        // nolak lewat 409 kalau ternyata sudah pernah daftar
+      } finally {
+        setCheckingExisting(false);
+      }
+    }
+    checkExisting();
+  }, []);
+
+  useEffect(() => {
+    if (!success) return;
+
+    if (redirectIn <= 0) {
+      router.push("/pedagang");
+      return;
+    }
+
+    const timer = setTimeout(() => setRedirectIn((prev) => prev - 1), 1000);
+    return () => clearTimeout(timer);
+  }, [success, redirectIn, router]);
+
+  const handleSubmit = (e: FormEvent) => {
     e.preventDefault();
     setError(null);
 
@@ -37,33 +99,95 @@ export default function PendaftaranPedagangPage() {
       return;
     }
 
+    // Jangan langsung submit -- tampilin dialog konfirmasi dulu biar
+    // user sempat ngecek ulang datanya.
+    setShowConfirm(true);
+  };
+
+  const handleConfirmSubmit = async () => {
+    setError(null);
     setLoading(true);
-
-    // Sementara belum ada API pendaftaran yang beneran, jadi langsung
-    // anggap berhasil supaya bisa cek tampilan. Nanti tinggal ganti
-    // bagian ini dengan fetch ke backend yang sebenarnya.
-    setTimeout(() => {
-      setSuccess(true);
-      setLoading(false);
-    }, 500);
-
-    /* 
-    // TODO: ganti dengan pemanggilan API yang sebenarnya nanti
     try {
-      const res = await fetch("/api/pedagang/daftar", {
+      const token = localStorage.getItem("cfd_token");
+      if (!token) throw new Error("Anda belum login. Silakan login terlebih dahulu.");
+
+      const baseUrl = process.env.NEXT_PUBLIC_API_URL;
+      if (!baseUrl) throw new Error("NEXT_PUBLIC_API_URL belum diset di .env.local!");
+
+      const res = await fetch(`${baseUrl}/api/pedagang/pengajuan`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ nik, dob, fullName, businessName, category, stallType }),
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          nik,
+          nama_lengkap: fullName,
+          tanggal_lahir: dob,
+          nama_usaha: businessName,
+          jenis_dagangan: category,
+          jenis_lapak: stallType,
+        }),
       });
-      if (!res.ok) throw new Error("Gagal menyimpan data. Silakan coba lagi.");
+
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        if (res.status === 409) {
+          // Backend bedain 2 pesan: NIK sudah terdaftar, atau user ini
+          // sudah pernah mengajukan usaha sebelumnya.
+          throw new Error(data.error || "Data sudah terdaftar sebelumnya.");
+        }
+        if (res.status === 401) {
+          throw new Error("Sesi kamu sudah habis. Silakan login ulang.");
+        }
+        throw new Error(data.error || `Gagal menyimpan data (Status: ${res.status})`);
+      }
+
       setSuccess(true);
+      setShowConfirm(false);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Terjadi kesalahan. Silakan coba lagi.");
+      setShowConfirm(false);
     } finally {
       setLoading(false);
     }
-    */
   };
+
+  if (checkingExisting) {
+    return (
+      <main className="w-full min-h-screen flex items-center justify-center px-4 py-10 bg-[#f6f7fb]">
+        <p className="text-[13px] text-[#767884]">Memeriksa status pendaftaran...</p>
+      </main>
+    );
+  }
+
+  if (alreadyRegistered) {
+    return (
+      <main className="w-full min-h-screen flex items-center justify-center px-4 py-10 bg-[#f6f7fb]">
+        <div className="w-full max-w-[420px]">
+          <section className="w-full bg-white rounded-2xl shadow-[0_2px_8px_-2px_rgba(23,29,64,0.06),0_12px_28px_-8px_rgba(23,29,64,0.12)] px-5 py-10 flex flex-col items-center text-center gap-3">
+            <div className="w-16 h-16 rounded-2xl bg-[#eef2fd] flex items-center justify-center">
+              <CheckCircle2 size={32} className="text-[#00288e]" />
+            </div>
+            <h3 className="text-[17px] font-bold text-[#00288e]">
+              Kamu Sudah Terdaftar
+            </h3>
+            <p className="text-[13px] text-[#767884]">
+              Kamu sudah pernah mengajukan usaha sebelumnya. Satu akun hanya
+              bisa mengajukan usaha satu kali.
+            </p>
+            <button
+              type="button"
+              onClick={() => router.push("/pedagang")}
+              className="mt-2 h-9 px-6 bg-[#00288e] text-white text-[12.5px] font-medium rounded-lg hover:bg-[#173bab] active:scale-[0.98] transition-all"
+            >
+              Ke Dashboard
+            </button>
+          </section>
+        </div>
+      </main>
+    );
+  }
 
   return (
     <main className="w-full min-h-screen flex items-center justify-center px-4 py-10 bg-[#f6f7fb]">
@@ -272,9 +396,93 @@ export default function PendaftaranPedagangPage() {
             <p className="text-[13px] text-[#767884]">
               Selamat Pendaftaran Anda Berhasil.
             </p>
+            <p className="text-[12px] text-[#8fa3d6]">
+              Mengarahkan ke dashboard dalam {redirectIn} detik...
+            </p>
           </section>
         )}
       </div>
+
+      {/* Dialog konfirmasi -- periksa ulang data sebelum benar-benar dikirim */}
+      {showConfirm && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4 backdrop-blur-sm">
+          <div className="w-full max-w-[420px] rounded-2xl bg-white shadow-xl overflow-hidden">
+            <div className="px-5 pt-5 pb-3 text-center border-b border-[#ececf3]">
+              <h3 className="text-[16px] font-bold text-[#1a1d29]">
+                Periksa Kembali Data Kamu
+              </h3>
+              <p className="text-[12px] text-[#767884] mt-1">
+                Pastikan semua data di bawah ini sudah benar sebelum dikirim.
+                Data yang sudah diverifikasi tidak bisa diubah sembarangan.
+              </p>
+            </div>
+
+            <div className="px-5 py-4 flex flex-col gap-2.5">
+              <ConfirmRow label="NIK" value={nik} />
+              <ConfirmRow
+                label="Tanggal Lahir"
+                value={
+                  dob
+                    ? new Date(dob).toLocaleDateString("id-ID", {
+                        day: "numeric",
+                        month: "long",
+                        year: "numeric",
+                      })
+                    : "-"
+                }
+              />
+              <ConfirmRow label="Nama Lengkap" value={fullName} />
+              <ConfirmRow label="Nama Usaha" value={businessName} />
+              <ConfirmRow
+                label="Kategori Dagangan"
+                value={KATEGORI_LABEL[category] ?? category}
+              />
+              <ConfirmRow
+                label="Pilihan Lapak"
+                value={LAPAK_LABEL[stallType] ?? stallType}
+              />
+
+              {error && (
+                <p className="w-full flex items-center gap-1.5 text-[11.5px] text-[#ba1a1a]" role="alert">
+                  <AlertTriangle size={13} />
+                  {error}
+                </p>
+              )}
+            </div>
+
+            <div className="px-5 pb-5 flex gap-2">
+              <button
+                type="button"
+                onClick={() => setShowConfirm(false)}
+                disabled={loading}
+                className="flex-1 h-9 bg-white text-[#4b4d5a] border border-[#e7e8f1] text-[12.5px] font-medium rounded-lg hover:bg-[#f5f7fe] active:scale-[0.98] transition-all disabled:opacity-50"
+              >
+                Periksa Lagi
+              </button>
+              <button
+                type="button"
+                onClick={handleConfirmSubmit}
+                disabled={loading}
+                className="flex-1 h-9 bg-[#00288e] text-white text-[12.5px] font-medium rounded-lg shadow-[0_4px_10px_-3px_rgba(0,40,142,0.4)] hover:bg-[#173bab] active:scale-[0.98] transition-all flex items-center justify-center gap-1.5 disabled:opacity-50 disabled:active:scale-100"
+              >
+                {loading && (
+                  <span className="w-3.5 h-3.5 border-2 border-white/50 border-t-white rounded-full animate-spin" />
+                )}
+                {loading ? "Mengirim..." : "Ya, Kirim"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </main>
+  );
+}
+
+function ConfirmRow({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="flex items-start justify-between gap-3 text-[13px]">
+      <span className="text-[#767884]">{label}</span>
+      <span className="font-medium text-[#1a1d29] text-right">{value || "-"}</span>
+    </div>
   );
 }

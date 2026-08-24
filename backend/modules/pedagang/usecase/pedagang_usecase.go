@@ -7,12 +7,13 @@ import (
 )
 
 type PedagangRepository interface {
+	CreatePengajuanMandiri(ctx context.Context, userID, nik, namaLengkap, tanggalLahir, namaUsaha, jenisDagangan, jenisLapak string) (string, error)
 	CreatePengajuan(ctx context.Context, userID, nik, namaUsaha, jenisDagangan, perkiraanHarga, alamat string) (string, error)
 	GetPengajuanByUserID(ctx context.Context, userID string) (*entity.PengajuanStatus, error)
 	ListPedagang(ctx context.Context) ([]entity.PedagangUserDTO, int, error)
 	GetPedagangStats(ctx context.Context) (entity.PedagangStatsResponse, error)
 	GetPedagangByID(ctx context.Context, id string) (*entity.PedagangUserDTO, error)
-	DeletePedagang(ctx context.Context, id string) error // <-- TAMBAHAN
+	DeletePedagang(ctx context.Context, id string) error
 }
 
 type PedagangUsecase interface {
@@ -22,7 +23,7 @@ type PedagangUsecase interface {
 	ListPedagangByAdmin(ctx context.Context) ([]entity.PedagangUserDTO, int, error)
 	GetPedagangStats(ctx context.Context) (entity.PedagangStatsResponse, error)
 	GetPedagangByID(ctx context.Context, id string) (*entity.PedagangUserDTO, error)
-	DeletePedagangByAdmin(ctx context.Context, id string) error // <-- TAMBAHAN
+	DeletePedagangByAdmin(ctx context.Context, id string) error
 }
 
 type pedagangUsecase struct {
@@ -33,15 +34,17 @@ func NewPedagangUsecase(pedagangRepo PedagangRepository) PedagangUsecase {
 	return &pedagangUsecase{pedagangRepo: pedagangRepo}
 }
 
+// AjukanUsaha dipakai alur self-service (pedagang daftar sendiri).
 func (u *pedagangUsecase) AjukanUsaha(ctx context.Context, userID string, req *entity.PengajuanUsahaRequest) (string, error) {
-	return u.pedagangRepo.CreatePengajuan(
+	return u.pedagangRepo.CreatePengajuanMandiri(
 		ctx,
 		userID,
 		req.NIK,
+		req.NamaLengkap,
+		req.TanggalLahir,
 		req.NamaUsaha,
 		req.JenisDagangan,
-		req.PerkiraanHarga,
-		req.Alamat,
+		req.JenisLapak,
 	)
 }
 
@@ -66,7 +69,6 @@ func (u *pedagangUsecase) GetPedagangByID(ctx context.Context, id string) (*enti
 	return u.pedagangRepo.GetPedagangByID(ctx, id)
 }
 
-// --- TAMBAHAN BARU: DeletePedagangByAdmin ---
 func (u *pedagangUsecase) DeletePedagangByAdmin(ctx context.Context, id string) error {
 	return u.pedagangRepo.DeletePedagang(ctx, id)
 }

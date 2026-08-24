@@ -18,13 +18,38 @@ func NewPedagangRepository(db *pgxpool.Pool) *PedagangRepository {
 	return &PedagangRepository{db: db}
 }
 
-// CreatePengajuan bikin baris pedagang_profiles baru
+// CreatePengajuanMandiri bikin baris pedagang_profiles baru dari alur
+// self-service (pedagang daftar sendiri lewat form single-page).
+// alamat & perkiraan_harga sengaja gak diisi (biarin NULL, kolomnya nullable),
+// karena form yang sekarang gak nanya dua hal itu lagi.
+func (r *PedagangRepository) CreatePengajuanMandiri(
+	ctx context.Context,
+	userID, nik, namaLengkap, tanggalLahir, namaUsaha, jenisDagangan, jenisLapak string,
+) (string, error) {
+	var id string
+	err := r.db.QueryRow(ctx,
+		`INSERT INTO pedagang_profiles 
+		 (user_id, nik, nama_lengkap, tanggal_lahir, nama_usaha, jenis_dagangan, jenis_lapak, status_verifikasi)
+		 VALUES ($1, $2, $3, $4, $5, $6::jenis_dagangan_enum, $7::jenis_lapak_enum, 'pending')
+		 RETURNING id`,
+		userID, nik, namaLengkap, tanggalLahir, namaUsaha, jenisDagangan, jenisLapak,
+	).Scan(&id)
+	if err != nil {
+		return "", err
+	}
+	return id, nil
+}
+
+// CreatePengajuan dipakai alur ADMIN (CreatePedagangByAdmin) -- belum diubah,
+// masih pakai jenis_dagangan bebas teks & wajib alamat/perkiraan_harga.
+// Catatan: karena jenis_dagangan sekarang enum, kalau admin ngirim nilai di
+// luar 'makanan_minuman'/'bukan_makanan_minuman', ini bakal gagal insert.
 func (r *PedagangRepository) CreatePengajuan(ctx context.Context, userID, nik, namaUsaha, jenisDagangan, perkiraanHarga, alamat string) (string, error) {
 	var id string
 	err := r.db.QueryRow(ctx,
 		`INSERT INTO pedagang_profiles 
 		 (user_id, nik, nama_usaha, jenis_dagangan, perkiraan_harga, alamat, status_verifikasi)
-		 VALUES ($1, $2, $3, $4, $5, $6, 'pending')
+		 VALUES ($1, $2, $3, $4::jenis_dagangan_enum, $5, $6, 'pending')
 		 RETURNING id`,
 		userID, nik, namaUsaha, jenisDagangan, perkiraanHarga, alamat,
 	).Scan(&id)
@@ -37,18 +62,31 @@ func (r *PedagangRepository) CreatePengajuan(ctx context.Context, userID, nik, n
 // GetPengajuanByUserID dipakai buat nampilin status pengajuan
 func (r *PedagangRepository) GetPengajuanByUserID(ctx context.Context, userID string) (*entity.PengajuanStatus, error) {
 	var p entity.PengajuanStatus
+	var namaLengkap, tanggalLahir, jenisLapak, perkiraanHarga, alamat sql.NullString
+
 	err := r.db.QueryRow(ctx,
-		`SELECT id, nik, nama_usaha, jenis_dagangan, perkiraan_harga, alamat, status_verifikasi, catatan
+		`SELECT id, nik, nama_lengkap, tanggal_lahir::text, nama_usaha, jenis_dagangan,
+		        jenis_lapak, perkiraan_harga, alamat, status_verifikasi, catatan
 		 FROM pedagang_profiles
 		 WHERE user_id = $1 AND deleted_at IS NULL`,
 		userID,
-	).Scan(&p.ID, &p.NIK, &p.NamaUsaha, &p.JenisDagangan, &p.PerkiraanHarga, &p.Alamat, &p.StatusVerifikasi, &p.Catatan)
+	).Scan(
+		&p.ID, &p.NIK, &namaLengkap, &tanggalLahir, &p.NamaUsaha, &p.JenisDagangan,
+		&jenisLapak, &perkiraanHarga, &alamat, &p.StatusVerifikasi, &p.Catatan,
+	)
 	if err != nil {
 		if err == pgx.ErrNoRows {
 			return nil, nil
 		}
 		return nil, err
 	}
+
+	p.NamaLengkap = &namaLengkap.String
+	p.TanggalLahir = &tanggalLahir.String
+	p.JenisLapak = &jenisLapak.String
+	p.PerkiraanHarga = &perkiraanHarga.String
+	p.Alamat = &alamat.String
+
 	return &p, nil
 }
 
@@ -57,7 +95,8 @@ func (r *PedagangRepository) ListPedagang(ctx context.Context) ([]entity.Pedagan
 	rows, err := r.db.Query(ctx, `
 		SELECT 
 			u.id, u.name, u.email, u.phone, u.created_at, u.status,
-			p.nik, p.nama_usaha, p.jenis_dagangan, p.perkiraan_harga, p.alamat, p.status_verifikasi
+			p.nik, p.nama_lengkap, p.tanggal_lahir::text, p.nama_usaha, p.jenis_dagangan,
+			p.jenis_lapak, p.perkiraan_harga, p.alamat, p.status_verifikasi
 		FROM users u
 		JOIN user_roles ur ON ur.user_id = u.id AND ur.deleted_at IS NULL
 		JOIN roles r ON r.id = ur.role_id AND r.deleted_at IS NULL
@@ -74,12 +113,13 @@ func (r *PedagangRepository) ListPedagang(ctx context.Context) ([]entity.Pedagan
 	var users []entity.PedagangUserDTO
 	for rows.Next() {
 		var u entity.PedagangUserDTO
-		var createdAt, status, nik, namaUsaha, jenisDagangan, perkiraanHarga, alamat, statusVerifikasi sql.NullString
+		var createdAt, status, nik, namaLengkap, tanggalLahir, namaUsaha, jenisDagangan, jenisLapak, perkiraanHarga, alamat, statusVerifikasi sql.NullString
 
 		err := rows.Scan(
 			&u.ID, &u.Name, &u.Email, &u.Phone,
 			&createdAt, &status,
-			&nik, &namaUsaha, &jenisDagangan, &perkiraanHarga, &alamat, &statusVerifikasi,
+			&nik, &namaLengkap, &tanggalLahir, &namaUsaha, &jenisDagangan,
+			&jenisLapak, &perkiraanHarga, &alamat, &statusVerifikasi,
 		)
 		if err != nil {
 			return nil, 0, err
@@ -89,8 +129,11 @@ func (r *PedagangRepository) ListPedagang(ctx context.Context) ([]entity.Pedagan
 		u.Active = status.String == "active"
 		u.Initial = string([]rune(u.Name)[0])
 		u.NIK = &nik.String
+		u.NamaLengkap = &namaLengkap.String
+		u.TanggalLahir = &tanggalLahir.String
 		u.NamaUsaha = &namaUsaha.String
 		u.JenisDagangan = &jenisDagangan.String
+		u.JenisLapak = &jenisLapak.String
 		u.PerkiraanHarga = &perkiraanHarga.String
 		u.Alamat = &alamat.String
 		u.StatusVerifikasi = &statusVerifikasi.String
@@ -159,12 +202,13 @@ func (r *PedagangRepository) GetPedagangStats(ctx context.Context) (entity.Pedag
 
 func (r *PedagangRepository) GetPedagangByID(ctx context.Context, id string) (*entity.PedagangUserDTO, error) {
 	var u entity.PedagangUserDTO
-	var createdAt, status, nik, namaUsaha, jenisDagangan, perkiraanHarga, alamat, statusVerifikasi sql.NullString
+	var createdAt, status, nik, namaLengkap, tanggalLahir, namaUsaha, jenisDagangan, jenisLapak, perkiraanHarga, alamat, statusVerifikasi sql.NullString
 
 	err := r.db.QueryRow(ctx, `
 		SELECT 
 			u.id, u.name, u.email, u.phone, u.created_at, u.status,
-			p.nik, p.nama_usaha, p.jenis_dagangan, p.perkiraan_harga, p.alamat, p.status_verifikasi
+			p.nik, p.nama_lengkap, p.tanggal_lahir::text, p.nama_usaha, p.jenis_dagangan,
+			p.jenis_lapak, p.perkiraan_harga, p.alamat, p.status_verifikasi
 		FROM users u
 		JOIN user_roles ur ON ur.user_id = u.id AND ur.deleted_at IS NULL
 		JOIN roles r ON r.id = ur.role_id AND r.deleted_at IS NULL
@@ -174,7 +218,8 @@ func (r *PedagangRepository) GetPedagangByID(ctx context.Context, id string) (*e
 	).Scan(
 		&u.ID, &u.Name, &u.Email, &u.Phone,
 		&createdAt, &status,
-		&nik, &namaUsaha, &jenisDagangan, &perkiraanHarga, &alamat, &statusVerifikasi,
+		&nik, &namaLengkap, &tanggalLahir, &namaUsaha, &jenisDagangan,
+		&jenisLapak, &perkiraanHarga, &alamat, &statusVerifikasi,
 	)
 	if err != nil {
 		if err == pgx.ErrNoRows {
@@ -187,8 +232,11 @@ func (r *PedagangRepository) GetPedagangByID(ctx context.Context, id string) (*e
 	u.Active = status.String == "active"
 	u.Initial = string([]rune(u.Name)[0])
 	u.NIK = &nik.String
+	u.NamaLengkap = &namaLengkap.String
+	u.TanggalLahir = &tanggalLahir.String
 	u.NamaUsaha = &namaUsaha.String
 	u.JenisDagangan = &jenisDagangan.String
+	u.JenisLapak = &jenisLapak.String
 	u.PerkiraanHarga = &perkiraanHarga.String
 	u.Alamat = &alamat.String
 	u.StatusVerifikasi = &statusVerifikasi.String
@@ -196,7 +244,7 @@ func (r *PedagangRepository) GetPedagangByID(ctx context.Context, id string) (*e
 	return &u, nil
 }
 
-// --- TAMBAHAN BARU: DeletePedagang ---
+// DeletePedagang soft-delete pedagang
 func (r *PedagangRepository) DeletePedagang(ctx context.Context, id string) error {
 	_, err := r.db.Exec(ctx, `UPDATE users SET deleted_at = NOW() WHERE id = $1`, id)
 	return err
