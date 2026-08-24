@@ -1,7 +1,7 @@
 "use client";
 
-import { useState, FormEvent, Suspense } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useState, useEffect, FormEvent } from "react";
+import { useRouter } from "next/navigation";
 import {
   MapPin,
   User,
@@ -10,6 +10,7 @@ import {
   CheckCircle2,
   Store,
   QrCode,
+  AlertTriangle,
 } from "lucide-react";
 
 interface DataPendaftar {
@@ -28,27 +29,87 @@ interface HasilAlokasi {
   qrUrl?: string;
 }
 
-function PilihLokasiStanContent() {
+const KATEGORI_LABEL: Record<string, string> = {
+  makanan_minuman: "Makanan dan Minuman",
+  bukan_makanan_minuman: "Bukan Makanan dan Minuman",
+};
+
+const LAPAK_LABEL: Record<string, string> = {
+  rombong: "Rombong",
+  meja: "Meja",
+};
+
+const EMPTY_DATA_PENDAFTAR: DataPendaftar = {
+  nik: "",
+  namaLengkap: "",
+  tanggalLahir: "",
+  namaUsaha: "",
+  kategori: "",
+  jenisLapak: "",
+};
+
+export default function PilihLokasiStanPage() {
   const router = useRouter();
-  const searchParams = useSearchParams();
 
   // Daftar kecamatan akan diisi oleh petugas (sumber datanya di luar
   // scope halaman ini — backend/API yang mengaturnya). Untuk sekarang
   // dikosongkan dulu.
   const [kecamatanList, setKecamatanList] = useState<string[]>([]);
 
-  // Data pendaftar diambil dari query params yang dikirim dari halaman
-  // pendaftaran sebelumnya (bukan hardcode). Kalau nanti sumber datanya
-  // berubah (misal dari sesi login atau fetch API by NIK), tinggal ganti
-  // bagian ini saja.
-  const dataPendaftar: DataPendaftar = {
-    nik: searchParams.get("nik") ?? "",
-    namaLengkap: searchParams.get("namaLengkap") ?? "",
-    tanggalLahir: searchParams.get("tanggalLahir") ?? "",
-    namaUsaha: searchParams.get("namaUsaha") ?? "",
-    kategori: searchParams.get("kategori") ?? "",
-    jenisLapak: searchParams.get("jenisLapak") ?? "",
-  };
+  // Data pendaftar sekarang diambil dari backend (data pengajuan usaha
+  // milik pedagang yang lagi login), bukan dari query params lagi.
+  const [dataPendaftar, setDataPendaftar] = useState<DataPendaftar>(EMPTY_DATA_PENDAFTAR);
+  const [checkingPendaftar, setCheckingPendaftar] = useState(true);
+  const [sudahDaftar, setSudahDaftar] = useState(false);
+
+  useEffect(() => {
+    async function fetchDataPendaftar() {
+      try {
+        const token = localStorage.getItem("cfd_token");
+        const baseUrl = process.env.NEXT_PUBLIC_API_URL;
+        if (!token || !baseUrl) {
+          setCheckingPendaftar(false);
+          return;
+        }
+
+        const res = await fetch(`${baseUrl}/api/pedagang/pengajuan`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        if (!res.ok) {
+          setCheckingPendaftar(false);
+          return;
+        }
+
+        const data = await res.json();
+        if (!data.has_pengajuan) {
+          setCheckingPendaftar(false);
+          return;
+        }
+
+        setSudahDaftar(true);
+        setDataPendaftar({
+          nik: data.nik ?? "",
+          namaLengkap: data.nama_lengkap ?? "",
+          tanggalLahir: data.tanggal_lahir
+            ? new Date(data.tanggal_lahir).toLocaleDateString("id-ID", {
+                day: "numeric",
+                month: "long",
+                year: "numeric",
+              })
+            : "",
+          namaUsaha: data.nama_usaha ?? "",
+          kategori: KATEGORI_LABEL[data.jenis_dagangan] ?? data.jenis_dagangan ?? "",
+          jenisLapak: LAPAK_LABEL[data.jenis_lapak] ?? data.jenis_lapak ?? "",
+        });
+      } catch {
+        // gagal fetch -- anggap belum daftar, fail closed, biar nggak
+        // ada data ambigu yang ditampilkan
+      } finally {
+        setCheckingPendaftar(false);
+      }
+    }
+    fetchDataPendaftar();
+  }, []);
 
   const [kecamatan, setKecamatan] = useState("");
   const [loading, setLoading] = useState(false);
@@ -301,7 +362,8 @@ function PilihLokasiStanContent() {
                   id="kecamatan"
                   value={kecamatan}
                   onChange={(e) => setKecamatan(e.target.value)}
-                  className="w-full box-border h-10 px-3 bg-[#eff4ff] rounded-lg text-[13px] text-[#1a1d29] shadow-[inset_0_1px_2px_rgba(23,29,64,0.05)] border border-[#c9d6f5] focus:outline-none focus:bg-white focus:border-[#00288e] focus:ring-2 focus:ring-[#00288e]/15 transition-all appearance-none bg-no-repeat"
+                  disabled={checkingPendaftar || !sudahDaftar}
+                  className="w-full box-border h-10 px-3 bg-[#eff4ff] rounded-lg text-[13px] text-[#1a1d29] shadow-[inset_0_1px_2px_rgba(23,29,64,0.05)] border border-[#c9d6f5] focus:outline-none focus:bg-white focus:border-[#00288e] focus:ring-2 focus:ring-[#00288e]/15 transition-all appearance-none bg-no-repeat disabled:opacity-60 disabled:cursor-not-allowed"
                   style={{
                     backgroundImage:
                       "url(\"data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'><path d='M2 4l4 4 4-4' stroke='%235b5d6b' stroke-width='1.5' fill='none' stroke-linecap='round' stroke-linejoin='round'/></svg>\")",
@@ -328,10 +390,18 @@ function PilihLokasiStanContent() {
                   Data Pendaftar
                 </h2>
               </div>
-              <p className="text-[12.5px] text-[#767884] mb-4">
-                Data ini diambil secara otomatis dari pendaftaran Anda dan
-                tidak dapat diubah di halaman ini.
-              </p>
+
+              {!checkingPendaftar && !sudahDaftar ? (
+                <p className="flex items-center gap-1.5 text-[12px] font-medium text-[#ba1a1a] mb-4">
+                  <AlertTriangle size={13} />
+                  Anda belum mendaftar, daftar terlebih dahulu
+                </p>
+              ) : (
+                <p className="text-[12.5px] text-[#767884] mb-4">
+                  Data ini diambil secara otomatis dari pendaftaran Anda dan
+                  tidak dapat diubah di halaman ini.
+                </p>
+              )}
 
               <div className="flex flex-col gap-3">
                 <div className="w-full flex flex-col gap-1.5">
@@ -424,7 +494,7 @@ function PilihLokasiStanContent() {
             <div className="w-full flex gap-3">
               <button
                 type="submit"
-                disabled={loading}
+                disabled={loading || checkingPendaftar || !sudahDaftar}
                 className="flex-1 sm:flex-none sm:w-auto sm:min-w-[220px] h-11 px-5 bg-[#00288e] text-white text-[13px] font-medium rounded-lg shadow-[0_4px_10px_-3px_rgba(0,40,142,0.4)] hover:bg-[#173bab] active:scale-[0.98] transition-all flex items-center justify-center gap-2 disabled:opacity-50 disabled:active:scale-100"
               >
                 {loading ? (
@@ -446,13 +516,5 @@ function PilihLokasiStanContent() {
         )}
       </div>
     </main>
-  );
-}
-
-export default function PilihLokasiStanPage() {
-  return (
-    <Suspense fallback={null}>
-      <PilihLokasiStanContent />
-    </Suspense>
   );
 }

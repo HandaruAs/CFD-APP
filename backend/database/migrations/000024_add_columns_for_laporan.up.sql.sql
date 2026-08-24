@@ -14,6 +14,14 @@ ADD COLUMN IF NOT EXISTS omset BIGINT;
 ALTER TABLE pedagang_profiles 
 ADD COLUMN IF NOT EXISTS lokasi_lapak VARCHAR(255);
 
--- 4. Index untuk performa query
+-- 4. Fungsi pembantu: convert timestamptz -> tanggal (WIB), ditandai
+--    IMMUTABLE secara eksplisit. Aman karena zona 'Asia/Jakarta' selalu
+--    fixed, gak pernah gantung ke setting session manapun.
+CREATE OR REPLACE FUNCTION tanggal_wib(ts TIMESTAMPTZ)
+RETURNS DATE AS $$
+    SELECT (ts AT TIME ZONE 'Asia/Jakarta')::date;
+$$ LANGUAGE SQL IMMUTABLE;
+
+-- 5. Index untuk performa query
 CREATE INDEX IF NOT EXISTS idx_kehadiran_check_out_at ON kehadiran_pedagang(check_out_at);
-CREATE INDEX IF NOT EXISTS idx_kehadiran_tanggal ON kehadiran_pedagang(DATE(check_in_at));
+CREATE INDEX IF NOT EXISTS idx_kehadiran_tanggal ON kehadiran_pedagang(tanggal_wib(check_in_at));
