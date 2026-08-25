@@ -37,15 +37,7 @@ func (u *scanUsecase) VerifyQRCode(ctx context.Context, qrCode string, petugasID
         }, nil
     }
 
-    // 2. Cek status verifikasi
-    if pedagang.StatusVerifikasi != "approved" {
-        return &entity.VerifyQRResponse{
-            Valid:   false,
-            Message: fmt.Sprintf("Pedagang belum diverifikasi (status: %s)", pedagang.StatusVerifikasi),
-        }, nil
-    }
-
-    // 3. Cek sesi CFD aktif hari ini
+    // 2. Cek sesi CFD aktif hari ini
     session, err := u.repo.GetActiveSessionToday(ctx, time.Now())
     if err != nil {
         return nil, err
@@ -57,7 +49,7 @@ func (u *scanUsecase) VerifyQRCode(ctx context.Context, qrCode string, petugasID
         }, nil
     }
 
-    // 4. Cek sudah check-in belum
+    // 3. Cek sudah check-in belum
     existing, err := u.repo.GetKehadiranByPedagangAndSession(ctx, pedagang.ID, session.ID)
     if err != nil {
         return nil, err
@@ -69,7 +61,7 @@ func (u *scanUsecase) VerifyQRCode(ctx context.Context, qrCode string, petugasID
         checkInAt = &existing.CheckInAt
     }
 
-    // 5. Siapkan response
+    // 4. Siapkan response
     detail := &entity.PedagangDetailDTO{
         ID:                pedagang.ID,
         NamaUsaha:         getString(pedagang.NamaUsaha),
@@ -77,7 +69,6 @@ func (u *scanUsecase) VerifyQRCode(ctx context.Context, qrCode string, petugasID
         Inisial:           getInisial(pedagang.Pemilik),
         Kategori:          getString(pedagang.JenisDagangan),
         LokasiLapak:       getString(pedagang.Alamat),
-        StatusPendaftaran: getStatusLabel(pedagang.StatusVerifikasi),
         Nik:               getString(pedagang.NIK),
         Alamat:            getString(pedagang.Alamat),
         PerkiraanHarga:    getString(pedagang.PerkiraanHarga),
@@ -100,9 +91,6 @@ func (u *scanUsecase) CheckInPedagang(ctx context.Context, pedagangID, petugasID
     }
     if pedagang == nil {
         return nil, fmt.Errorf("pedagang tidak ditemukan")
-    }
-    if pedagang.StatusVerifikasi != "approved" {
-        return nil, fmt.Errorf("pedagang belum diverifikasi")
     }
 
     // 2. Cek sesi aktif
@@ -216,17 +204,4 @@ func splitName(name string) []string {
         parts = append(parts, current)
     }
     return parts
-}
-
-func getStatusLabel(status string) string {
-    switch status {
-    case "pending":
-        return "Menunggu Verifikasi"
-    case "approved":
-        return "Terverifikasi"
-    case "rejected":
-        return "Ditolak"
-    default:
-        return status
-    }
 }

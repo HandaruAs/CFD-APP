@@ -16,6 +16,9 @@ import (
 	permRepo "cfd-backend/modules/user/repository"
 	userRepo "cfd-backend/modules/user/repository"
 
+	// Modul Repository - Lapak
+	lapakRepo "cfd-backend/modules/pedagang/lapak/repository"
+
 	// Modul Repository - Scan QR
 	scanRepo "cfd-backend/modules/petugas/scan-qr/repository"
 
@@ -29,6 +32,9 @@ import (
 	pedagangUsecase "cfd-backend/modules/pedagang/usecase"
 	userUsecase "cfd-backend/modules/user/usecase"
 
+	// Modul Usecase - Lapak
+	lapakUsecase "cfd-backend/modules/pedagang/lapak/usecase"
+
 	// Modul Usecase - Scan QR
 	scanUsecase "cfd-backend/modules/petugas/scan-qr/usecase"
 
@@ -41,6 +47,9 @@ import (
 	operasionalController "cfd-backend/modules/operasional/controller"
 	pedagangController "cfd-backend/modules/pedagang/controller"
 	userController "cfd-backend/modules/user/controller"
+
+	// Modul Controller - Lapak
+	lapakController "cfd-backend/modules/pedagang/lapak/controller"
 
 	// Modul Controller - Scan QR
 	scanController "cfd-backend/modules/petugas/scan-qr/controller"
@@ -69,10 +78,13 @@ func main() {
 	permissionRepository := permRepo.NewPermissionRepository(db)
 	operasionalRepository := operasionalRepo.NewOperasionalRepository(db)
 
-	// 1a. Repository Scan QR
+	// 1a. Repository Lapak
+	lapakRepository := lapakRepo.NewLapakRepository(db)
+
+	// 1b. Repository Scan QR
 	scanRepository := scanRepo.NewScanRepository(db)
 
-	// 1b. Repository Laporan
+	// 1c. Repository Laporan
 	laporanRepository := laporanRepo.NewLaporanRepository(db)
 
 	// ============================================================
@@ -84,10 +96,13 @@ func main() {
 	menuUsecase := menuUsecase.NewMenuUsecase(menuRepository, userRepository, pedagangRepository)
 	operasionalUsecase := operasionalUsecase.NewOperasionalUsecase(operasionalRepository)
 
-	// 2a. Usecase Scan QR
+	// 2a. Usecase Lapak
+	lapakUsecase := lapakUsecase.NewLapakUsecase(lapakRepository)
+
+	// 2b. Usecase Scan QR
 	scanUsecase := scanUsecase.NewScanUsecase(scanRepository)
 
-	// 2b. Usecase Laporan
+	// 2c. Usecase Laporan
 	laporanUsecase := laporanUsecase.NewLaporanUsecase(laporanRepository)
 
 	// ============================================================
@@ -99,10 +114,13 @@ func main() {
 	menuController := menuController.NewMenuController(menuUsecase)
 	operasionalController := operasionalController.NewOperasionalController(operasionalUsecase)
 
-	// 3a. Controller Scan QR
+	// 3a. Controller Lapak
+	lapakController := lapakController.NewLapakController(lapakUsecase)
+
+	// 3b. Controller Scan QR
 	scanController := scanController.NewScanController(scanUsecase)
 
-	// 3b. Controller Laporan
+	// 3c. Controller Laporan
 	laporanController := laporanController.NewLaporanController(laporanUsecase)
 
 	// ============================================================
@@ -333,6 +351,31 @@ func main() {
 		middleware.AuthMiddleware(cfg.JWTSecret),
 		middleware.RoleMiddleware(userRepository, "pedagang"),
 		pedagangController.StatusPengajuan,
+	)
+
+	// 12a. Lapak (klaim nomor stand / "war")
+	app.Get("/api/pedagang/lapak/kecamatan",
+		middleware.AuthMiddleware(cfg.JWTSecret),
+		middleware.RoleMiddleware(userRepository, "pedagang"),
+		lapakController.ListKecamatan,
+	)
+
+	app.Get("/api/pedagang/lapak/jalan",
+		middleware.AuthMiddleware(cfg.JWTSecret),
+		middleware.RoleMiddleware(userRepository, "pedagang"),
+		lapakController.ListJalan,
+	)
+
+	app.Post("/api/pedagang/lapak/klaim",
+		middleware.AuthMiddleware(cfg.JWTSecret),
+		middleware.RoleMiddleware(userRepository, "pedagang"),
+		lapakController.ClaimLapak,
+	)
+
+	app.Get("/api/pedagang/lapak/status",
+		middleware.AuthMiddleware(cfg.JWTSecret),
+		middleware.RoleMiddleware(userRepository, "pedagang"),
+		lapakController.GetStatus,
 	)
 
 	// ============================================================
