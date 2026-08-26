@@ -25,6 +25,9 @@ import (
 	// Modul Repository - Laporan
 	laporanRepo "cfd-backend/modules/petugas/laporan/repository"
 
+	// ===== TAMBAHKAN: Repository Sisa Lapak =====
+	sisaLapakRepo "cfd-backend/modules/petugas/sisa-lapak/repository"
+
 	// Modul Usecase
 	authUsecase "cfd-backend/modules/auth/usecase"
 	menuUsecase "cfd-backend/modules/menu/usecase"
@@ -41,6 +44,9 @@ import (
 	// Modul Usecase - Laporan
 	laporanUsecase "cfd-backend/modules/petugas/laporan/usecase"
 
+	// ===== TAMBAHKAN: Usecase Sisa Lapak =====
+	sisaLapakUsecase "cfd-backend/modules/petugas/sisa-lapak/usecase"
+
 	// Modul Controller
 	authController "cfd-backend/modules/auth/controller"
 	menuController "cfd-backend/modules/menu/controller"
@@ -56,6 +62,9 @@ import (
 
 	// Modul Controller - Laporan
 	laporanController "cfd-backend/modules/petugas/laporan/controller"
+
+	// ===== TAMBAHKAN: Controller Sisa Lapak =====
+	sisaLapakController "cfd-backend/modules/petugas/sisa-lapak/controller"
 
 	"github.com/gofiber/fiber/v3"
 	"github.com/gofiber/fiber/v3/middleware/cors"
@@ -87,6 +96,9 @@ func main() {
 	// 1c. Repository Laporan
 	laporanRepository := laporanRepo.NewLaporanRepository(db)
 
+	// ===== TAMBAHKAN: Repository Sisa Lapak =====
+	sisaLapakRepository := sisaLapakRepo.NewRepository(db)
+
 	// ============================================================
 	// 2. INIT USECASES
 	// ============================================================
@@ -105,6 +117,9 @@ func main() {
 	// 2c. Usecase Laporan
 	laporanUsecase := laporanUsecase.NewLaporanUsecase(laporanRepository)
 
+	// ===== TAMBAHKAN: Usecase Sisa Lapak =====
+	sisaLapakUsecase := sisaLapakUsecase.NewUsecase(sisaLapakRepository)
+
 	// ============================================================
 	// 3. INIT CONTROLLERS
 	// ============================================================
@@ -122,6 +137,9 @@ func main() {
 
 	// 3c. Controller Laporan
 	laporanController := laporanController.NewLaporanController(laporanUsecase)
+
+	// ===== TAMBAHKAN: Controller Sisa Lapak =====
+	sisaLapakController := sisaLapakController.NewController(sisaLapakUsecase)
 
 	// ============================================================
 	// 4. INIT FIBER APP
@@ -272,12 +290,6 @@ func main() {
 		operasionalController.SimpanSesi,
 	)
 
-	app.Patch("/api/petugas/jam-operasional/sesi/perpanjang",
-		middleware.AuthMiddleware(cfg.JWTSecret),
-		middleware.PermissionMiddleware(permissionRepository, "jadwal.manage"),
-		operasionalController.PerpanjangSesi,
-	)
-
 	app.Patch("/api/petugas/jam-operasional/sesi/akhiri",
 		middleware.AuthMiddleware(cfg.JWTSecret),
 		middleware.PermissionMiddleware(permissionRepository, "jadwal.manage"),
@@ -339,7 +351,16 @@ func main() {
 	)
 
 	// ============================================================
-	// 12. ENDPOINT PEDAGANG
+	// 12. ENDPOINT PETUGAS - SISA LAPAK (BARU)
+	// ============================================================
+	app.Get("/api/petugas/sisa-lapak",
+		middleware.AuthMiddleware(cfg.JWTSecret),
+		middleware.PermissionMiddleware(permissionRepository, "pedagang.read"),
+		sisaLapakController.GetSisaLapak,
+	)
+
+	// ============================================================
+	// 13. ENDPOINT PEDAGANG
 	// ============================================================
 	app.Post("/api/pedagang/pengajuan",
 		middleware.AuthMiddleware(cfg.JWTSecret),
@@ -379,10 +400,10 @@ func main() {
 	)
 
 	// ============================================================
-	// 13. ENDPOINT SUPERADMIN (Manajemen User)
+	// 14. ENDPOINT SUPERADMIN (Manajemen User)
 	// ============================================================
 
-	// 13a. Pedagang
+	// 14a. Pedagang
 	app.Post("/api/admin/users/pedagang",
 		middleware.AuthMiddleware(cfg.JWTSecret),
 		middleware.RoleMiddleware(userRepository, "superadmin"),
@@ -413,7 +434,7 @@ func main() {
 		pedagangController.DeletePedagangByAdmin,
 	)
 
-	// 13b. Petugas
+	// 14b. Petugas
 	app.Get("/api/admin/users/petugas",
 		middleware.AuthMiddleware(cfg.JWTSecret),
 		middleware.RoleMiddleware(userRepository, "superadmin"),
@@ -444,7 +465,7 @@ func main() {
 		userController.DeleteUserByRole,
 	)
 
-	// 13c. Superadmin
+	// 14c. Superadmin
 	app.Get("/api/admin/users/superadmin",
 		middleware.AuthMiddleware(cfg.JWTSecret),
 		middleware.RoleMiddleware(userRepository, "superadmin"),
@@ -475,7 +496,7 @@ func main() {
 		userController.DeleteSuperadmin,
 	)
 
-	// 13d. Statistik
+	// 14d. Statistik
 	app.Get("/api/admin/users/stats",
 		middleware.AuthMiddleware(cfg.JWTSecret),
 		middleware.RoleMiddleware(userRepository, "superadmin"),
@@ -483,7 +504,7 @@ func main() {
 	)
 
 	// ============================================================
-	// 14. BACKGROUND JOB: AUTO MULAI/SELESAI SESI CFD
+	// 15. BACKGROUND JOB: AUTO MULAI/SELESAI SESI CFD
 	// ============================================================
 	go func() {
 		if err := operasionalUsecase.TickJadwalOtomatis(context.Background()); err != nil {
@@ -500,7 +521,7 @@ func main() {
 	}()
 
 	// ============================================================
-	// 15. START SERVER
+	// 16. START SERVER
 	// ============================================================
 	log.Printf("server jalan di port %s", cfg.Port)
 	if err := app.Listen(":" + cfg.Port); err != nil {

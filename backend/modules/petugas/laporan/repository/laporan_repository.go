@@ -51,7 +51,7 @@ func (r *laporanRepository) GetKehadiranByDateRange(ctx context.Context, startDa
 				UPPER(SUBSTRING(SPLIT_PART(u.name, ' ', 2), 1, 1)),
 				UPPER(SUBSTRING(u.name, 1, 2))
 			) AS inisial,
-			COALESCE(p.jenis_dagangan, '') AS kategori,
+			COALESCE(p.jenis_dagangan::text, '') AS kategori,
 			COALESCE(p.lokasi_lapak, p.alamat, '') AS lokasi_lapak,
 			TO_CHAR(k.check_in_at, 'HH24:MI') AS waktu_checkin,
 			TO_CHAR(k.check_out_at, 'HH24:MI') AS waktu_checkout,
@@ -65,7 +65,7 @@ func (r *laporanRepository) GetKehadiranByDateRange(ctx context.Context, startDa
 		FROM kehadiran_pedagang k
 		JOIN pedagang_profiles p ON k.pedagang_id = p.id
 		JOIN users u ON p.user_id = u.id
-		WHERE DATE(k.check_in_at) BETWEEN $1 AND $2
+		WHERE tanggal_wib(k.check_in_at) BETWEEN $1 AND $2
 			AND k.deleted_at IS NULL
 			%s
 		ORDER BY k.check_in_at DESC
@@ -141,7 +141,7 @@ func (r *laporanRepository) GetStatsKehadiran(ctx context.Context, startDate, en
 				ELSE 0
 			END AS persen_hadir
 		FROM kehadiran_pedagang k
-		WHERE DATE(k.check_in_at) BETWEEN $1 AND $2
+		WHERE tanggal_wib(k.check_in_at) BETWEEN $1 AND $2
 			AND k.deleted_at IS NULL
 	`
 

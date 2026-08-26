@@ -47,15 +47,17 @@ type KehadiranWithPedagang struct {
     LokasiLapak   string `db:"lokasi_lapak"`
 }
 
-// CfdSession - model untuk tabel cfd_sessions
+// CfdSession - model untuk tabel cfd_sessions (disetarakan dengan migrasi 26)
 type CfdSession struct {
     ID                string     `db:"id"`
+    NamaSesi          string     `db:"nama_sesi"`          // baru
     Tanggal           time.Time  `db:"tanggal"`
     JamMulai          time.Time  `db:"jam_mulai"`
-    JamSelesaiRencana time.Time  `db:"jam_selesai_rencana"`
+    JamSelesaiRencana time.Time  `db:"jam_selesai"`        // di migrasi 26 kolom ini bernama jam_selesai
     JamSelesaiAktual  *time.Time `db:"jam_selesai_aktual"`
-    Status            string     `db:"status"`
+    Status            string     `db:"status"`             // VARCHAR: 'aktif', 'ditutup', 'selesai', 'dibatalkan'
     CreatedBy         *string    `db:"created_by"`
+    IsActive          bool       `db:"is_active"`          // baru
     CreatedAt         time.Time  `db:"created_at"`
     UpdatedAt         time.Time  `db:"updated_at"`
     DeletedAt         *time.Time `db:"deleted_at"`

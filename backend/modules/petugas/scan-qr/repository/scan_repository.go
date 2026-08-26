@@ -28,7 +28,7 @@ func NewScanRepository(db *pgxpool.Pool) ScanRepository {
 func (r *scanRepository) GetPedagangByID(ctx context.Context, id string) (*entity.PedagangProfile, error) {
     query := `
         SELECT 
-            p.id, p.user_id, p.nik, p.nama_usaha, p.jenis_dagangan, p.alamat,
+            p.id, p.user_id, p.nik, p.nama_usaha, p.jenis_dagangan::text, p.alamat,   -- <-- ubah di sini
             p.status_verifikasi, p.catatan, p.verified_by, p.verified_at,
             p.perkiraan_harga, p.phone, p.submitted_at,
             p.created_at, p.updated_at, p.deleted_at,
@@ -107,7 +107,7 @@ func (r *scanRepository) GetRiwayatScanHariIni(ctx context.Context, petugasID st
                 UPPER(SUBSTRING(SPLIT_PART(u.name, ' ', 2), 1, 1)),
                 UPPER(SUBSTRING(u.name, 1, 2))
             ) AS inisial,
-            COALESCE(p.jenis_dagangan, '') AS jenis_dagangan,
+            COALESCE(p.jenis_dagangan::text, '') AS jenis_dagangan,   -- <-- ubah di sini
             COALESCE(p.alamat, '') AS lokasi_lapak
         FROM kehadiran_pedagang k
         JOIN pedagang_profiles p ON k.pedagang_id = p.id
@@ -143,18 +143,29 @@ func (r *scanRepository) GetRiwayatScanHariIni(ctx context.Context, petugasID st
 func (r *scanRepository) GetActiveSessionToday(ctx context.Context, t time.Time) (*entity.CfdSession, error) {
     query := `
         SELECT 
-            id, tanggal, jam_mulai, jam_selesai_rencana, 
-            jam_selesai_aktual, status, created_by, created_at, updated_at, deleted_at
+            id, nama_sesi, tanggal, jam_mulai, jam_selesai, 
+            jam_selesai_aktual, status, created_by, is_active, created_at, updated_at, deleted_at
         FROM cfd_sessions
         WHERE tanggal = $1 
-            AND status IN ('berlangsung', 'diperpanjang')
+            AND status = 'aktif'
+            AND is_active = true
             AND deleted_at IS NULL
+        LIMIT 1
     `
     var session entity.CfdSession
     err := r.db.QueryRow(ctx, query, t.Format("2006-01-02")).Scan(
-        &session.ID, &session.Tanggal, &session.JamMulai, &session.JamSelesaiRencana,
-        &session.JamSelesaiAktual, &session.Status, &session.CreatedBy,
-        &session.CreatedAt, &session.UpdatedAt, &session.DeletedAt,
+        &session.ID,
+        &session.NamaSesi,
+        &session.Tanggal,
+        &session.JamMulai,
+        &session.JamSelesaiRencana,
+        &session.JamSelesaiAktual,
+        &session.Status,
+        &session.CreatedBy,
+        &session.IsActive,
+        &session.CreatedAt,
+        &session.UpdatedAt,
+        &session.DeletedAt,
     )
     if err == pgx.ErrNoRows {
         return nil, nil

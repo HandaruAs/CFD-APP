@@ -1,7 +1,7 @@
 // app/petugas/laporan/page.tsx
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import {
   Search,
   ChevronRight,
@@ -15,10 +15,12 @@ import {
   Loader2,
   Calendar,
   FileSpreadsheet,
+  Store,
+  RefreshCw,
 } from "lucide-react";
 
 // ============================================================
-// TYPES - sesuai dengan response backend
+// TYPES
 // ============================================================
 
 type StatusKehadiran = "check-in" | "check-out" | "belum-hadir";
@@ -45,7 +47,7 @@ type LaporanResponse = {
   totalOmset: number;
   rataOmset: number;
   persenHadir: number;
-  data: KehadiranItem[];
+  data: KehadiranItem[] | null;
   page: number;
   limit: number;
   total: number;
@@ -97,18 +99,13 @@ const STATUS_STYLE: Record<StatusKehadiran, { label: string; bg: string; text: s
 
 function apiUrl(path: string) {
   const base = process.env.NEXT_PUBLIC_API_URL;
-  if (!base) {
-    throw new Error("NEXT_PUBLIC_API_URL belum diset di .env.local!");
-  }
+  if (!base) throw new Error("NEXT_PUBLIC_API_URL belum diset!");
   return `${base}${path}`;
 }
 
 async function apiFetch<T>(path: string, options: RequestInit = {}): Promise<T> {
   const token = localStorage.getItem("cfd_token");
-  if (!token) {
-    throw new Error("belum login");
-  }
-
+  if (!token) throw new Error("belum login");
   const res = await fetch(apiUrl(path), {
     ...options,
     headers: {
@@ -117,11 +114,8 @@ async function apiFetch<T>(path: string, options: RequestInit = {}): Promise<T> 
       ...(options.headers ?? {}),
     },
   });
-
   const data = await res.json().catch(() => ({}));
-  if (!res.ok) {
-    throw new Error(data.error || `request gagal (status ${res.status})`);
-  }
+  if (!res.ok) throw new Error(data.error || `request gagal (status ${res.status})`);
   return data as T;
 }
 
@@ -149,6 +143,13 @@ export default function LaporanPage() {
   const [limit] = useState(20);
   const [toast, setToast] = useState<{ message: string; type: "success" | "error" } | null>(null);
 
+  const [lapakTerisi, setLapakTerisi] = useState(0);
+
+  // ========== REAL-TIME POLLING ==========
+  const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
+  const [isPolling, setIsPolling] = useState(true);
+  const pollingIntervalRef = useRef<NodeJS.Timeout | null>(null);
+
   const showToast = (message: string, type: "success" | "error" = "success") => {
     setToast({ message, type });
     setTimeout(() => setToast(null), 3000);
@@ -158,8 +159,8 @@ export default function LaporanPage() {
   // FETCH DATA
   // ============================================================
 
-  const fetchData = async () => {
-    setIsLoading(true);
+  const fetchData = async (showLoading = true) => {
+    if (showLoading) setIsLoading(true);
     setError(null);
 
     try {
@@ -175,25 +176,58 @@ export default function LaporanPage() {
         `/api/petugas/laporan?${queryParams.toString()}`
       );
 
-      setData(laporanData.data || []);
+      const dataArray = laporanData.data || [];
+      setData(dataArray);
       setTotalData(laporanData.total || 0);
+
+      const uniqueLokasi = new Set(
+        dataArray
+          .filter((item) => item.lokasiLapak && item.status !== "belum-hadir")
+          .map((item) => item.lokasiLapak)
+      );
+      setLapakTerisi(uniqueLokasi.size);
 
       const statsData = await apiFetch<StatsResponse>(
         `/api/petugas/laporan/stats?startDate=${startDate}&endDate=${endDate}`
       );
       setStats(statsData);
+
+      setLastUpdated(new Date());
+
     } catch (err) {
       const errorMsg = err instanceof Error ? err.message : "Gagal memuat data laporan";
-      setError(errorMsg);
-      showToast(errorMsg, "error");
+      if (showLoading) {
+        setError(errorMsg);
+        showToast(errorMsg, "error");
+      }
     } finally {
-      setIsLoading(false);
+      if (showLoading) setIsLoading(false);
     }
   };
 
+  // ========== POLLING SETUP ==========
   useEffect(() => {
-    fetchData();
-  }, [startDate, endDate, page, searchTerm]);
+    // Fetch pertama kali
+    fetchData(true);
+
+    // Setup interval polling setiap 30 detik
+    if (pollingIntervalRef.current) {
+      clearInterval(pollingIntervalRef.current);
+    }
+
+    pollingIntervalRef.current = setInterval(() => {
+      if (isPolling) {
+        // Fetch data tanpa loading indicator (agar tidak berkedip)
+        fetchData(false);
+      }
+    }, 30000); // 30 detik
+
+    return () => {
+      if (pollingIntervalRef.current) {
+        clearInterval(pollingIntervalRef.current);
+      }
+    };
+  }, [startDate, endDate, page, searchTerm, isPolling]);
 
   // ============================================================
   // HANDLERS
@@ -202,7 +236,7 @@ export default function LaporanPage() {
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault();
     setPage(1);
-    fetchData();
+    // fetch akan otomatis terpanggil karena useEffect bergantung pada page & searchTerm
   };
 
   const handleExport = async () => {
@@ -211,9 +245,14 @@ export default function LaporanPage() {
       setTimeout(() => {
         showToast("✅ Laporan berhasil diunduh!", "success");
       }, 1500);
-    } catch (err) {
+    } catch {
       showToast("Gagal mengunduh laporan", "error");
     }
+  };
+
+  const handleManualRefresh = () => {
+    fetchData(true);
+    showToast("🔄 Data diperbarui", "success");
   };
 
   const handlePrevPage = () => {
@@ -252,16 +291,33 @@ export default function LaporanPage() {
           <h2 className="text-headline-lg text-on-surface">Laporan Kehadiran Pedagang</h2>
           <p className="mt-xs max-w-2xl text-body-md text-on-surface-variant">
             Daftar pedagang yang sudah check-in, check-out, dan omset CFD.
+            {lastUpdated && (
+              <span className="ml-2 text-label-sm text-on-surface-variant/60">
+                Terakhir diperbarui: {lastUpdated.toLocaleTimeString("id-ID")}
+              </span>
+            )}
           </p>
         </div>
-        <button
-          type="button"
-          onClick={handleExport}
-          className="flex items-center gap-sm rounded-md bg-primary px-md py-sm text-label-md text-on-primary transition-all hover:bg-primary-container hover:shadow-md"
-        >
-          <FileSpreadsheet className="h-[18px] w-[18px]" strokeWidth={2} />
-          Unduh Laporan
-        </button>
+        <div className="flex items-center gap-sm">
+          <button
+            type="button"
+            onClick={handleManualRefresh}
+            disabled={isLoading}
+            className="flex items-center gap-sm rounded-md bg-surface-container-high px-md py-sm text-label-md text-on-surface-variant transition-all hover:bg-surface-container hover:shadow-md disabled:opacity-60"
+            title="Refresh data"
+          >
+            <RefreshCw className={`h-[18px] w-[18px] ${isLoading ? "animate-spin" : ""}`} strokeWidth={2} />
+            Refresh
+          </button>
+          <button
+            type="button"
+            onClick={handleExport}
+            className="flex items-center gap-sm rounded-md bg-primary px-md py-sm text-label-md text-on-primary transition-all hover:bg-primary-container hover:shadow-md"
+          >
+            <FileSpreadsheet className="h-[18px] w-[18px]" strokeWidth={2} />
+            Unduh Laporan
+          </button>
+        </div>
       </div>
 
       {/* Filter Tanggal */}
@@ -303,27 +359,47 @@ export default function LaporanPage() {
         >
           Hari Ini
         </button>
+        <div className="ml-auto flex items-center gap-2 text-label-sm text-on-surface-variant">
+          <span className="relative flex h-2 w-2">
+            <span className={`absolute inline-flex h-full w-full rounded-full ${isPolling ? "bg-secondary animate-ping" : "bg-surface-container-high"}`} />
+            <span className={`relative inline-flex h-2 w-2 rounded-full ${isPolling ? "bg-secondary" : "bg-surface-container-high"}`} />
+          </span>
+          {isPolling ? "Live" : "Paused"}
+        </div>
       </div>
 
       {/* Kartu ringkasan */}
       {stats && !isLoading ? (
-        <div className="grid grid-cols-1 gap-md sm:grid-cols-2 lg:grid-cols-4">
+        <div className="grid grid-cols-1 gap-md sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5">
           <div className="rounded-lg border border-outline-variant bg-surface-container-lowest p-lg hover:shadow-md transition-shadow">
             <span className="flex h-9 w-9 items-center justify-center rounded-md bg-primary text-on-primary">
               <UserCheck className="h-[18px] w-[18px]" strokeWidth={2} />
             </span>
             <p className="mt-md text-label-sm uppercase tracking-wide text-on-surface-variant">
-              Total Check-in
+              Total Pedagang
             </p>
-            <p className="text-headline-md text-on-surface">{stats.totalCheckin}</p>
+            <p className="text-headline-md text-on-surface">{stats.totalTerdaftar}</p>
           </div>
 
           <div className="rounded-lg border border-outline-variant bg-surface-container-lowest p-lg hover:shadow-md transition-shadow">
             <span className="flex h-9 w-9 items-center justify-center rounded-md bg-secondary-container text-on-secondary-container">
+              <UserCheck className="h-[18px] w-[18px]" strokeWidth={2} />
+            </span>
+            <p className="mt-md text-label-sm uppercase tracking-wide text-on-surface-variant">
+              Check-in
+            </p>
+            <p className="text-headline-md text-on-surface">{stats.totalCheckin}</p>
+            <p className="text-label-sm text-on-surface-variant">
+              {stats.persenHadir}% hadir
+            </p>
+          </div>
+
+          <div className="rounded-lg border border-outline-variant bg-surface-container-lowest p-lg hover:shadow-md transition-shadow">
+            <span className="flex h-9 w-9 items-center justify-center rounded-md bg-primary-container/20 text-primary">
               <LogOut className="h-[18px] w-[18px]" strokeWidth={2} />
             </span>
             <p className="mt-md text-label-sm uppercase tracking-wide text-on-surface-variant">
-              Sudah Check-out
+              Check-out
             </p>
             <p className="text-headline-md text-on-surface">
               {stats.totalCheckout}
@@ -335,20 +411,18 @@ export default function LaporanPage() {
                 style={{ width: `${stats.totalCheckin > 0 ? (stats.totalCheckout / stats.totalCheckin) * 100 : 0}%` }}
               />
             </div>
-            <p className="mt-xs text-label-sm text-on-surface-variant">
-              {stats.totalCheckin > 0 ? Math.round((stats.totalCheckout / stats.totalCheckin) * 100) : 0}% sudah checkout
-            </p>
           </div>
 
           <div className="rounded-lg border border-outline-variant bg-surface-container-lowest p-lg hover:shadow-md transition-shadow">
-            <span className="flex h-9 w-9 items-center justify-center rounded-md bg-primary-container/20 text-primary">
-              <TrendingUp className="h-[18px] w-[18px]" strokeWidth={2} />
+            <span className="flex h-9 w-9 items-center justify-center rounded-md bg-tertiary-container/25 text-tertiary">
+              <Store className="h-[18px] w-[18px]" strokeWidth={2} />
             </span>
             <p className="mt-md text-label-sm uppercase tracking-wide text-on-surface-variant">
-              Total Omset
+              Lapak Terisi
             </p>
-            <p className="text-headline-md text-on-surface">
-              Rp {(stats.totalOmset / 1000000).toFixed(1)} Juta
+            <p className="text-headline-md text-on-surface">{lapakTerisi}</p>
+            <p className="text-label-sm text-on-surface-variant">
+              dari {data.length} pedagang check-in
             </p>
           </div>
 
@@ -362,14 +436,14 @@ export default function LaporanPage() {
             <p className="text-headline-md text-on-surface">
               Rp {(stats.rataOmset / 1000).toFixed(0)}K
             </p>
-            <p className="mt-xs text-label-sm text-on-surface-variant">
+            <p className="text-label-sm text-on-surface-variant">
               Dari {stats.totalCheckout} pedagang
             </p>
           </div>
         </div>
       ) : (
-        <div className="grid grid-cols-1 gap-md sm:grid-cols-2 lg:grid-cols-4">
-          {[...Array(4)].map((_, i) => (
+        <div className="grid grid-cols-1 gap-md sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5">
+          {[...Array(5)].map((_, i) => (
             <div key={i} className="rounded-lg border border-outline-variant bg-surface-container-lowest p-lg animate-pulse">
               <div className="h-9 w-9 rounded-md bg-surface-container-high" />
               <div className="mt-md h-3 w-24 rounded bg-surface-container-high" />
@@ -387,7 +461,7 @@ export default function LaporanPage() {
             type="text"
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
-            placeholder="Cari ID, Nama Usaha, atau Pemilik..."
+            placeholder="Cari Nama Usaha atau Pemilik..."
             className="w-full bg-transparent text-body-md text-on-surface placeholder:text-on-surface-variant focus:outline-none"
           />
           {searchTerm && (
@@ -418,7 +492,7 @@ export default function LaporanPage() {
                 <th className="px-lg py-sm font-medium">ID</th>
                 <th className="px-lg py-sm font-medium">Profil Usaha</th>
                 <th className="px-lg py-sm font-medium">Kategori</th>
-                <th className="px-lg py-sm font-medium">Lokasi</th>
+                <th className="px-lg py-sm font-medium">Lokasi Lapak</th>
                 <th className="px-lg py-sm font-medium">Status</th>
                 <th className="px-lg py-sm font-medium">Waktu Out</th>
                 <th className="px-lg py-sm font-medium text-right">Omset</th>
@@ -442,7 +516,7 @@ export default function LaporanPage() {
                       <p className="text-body-md text-on-surface-variant">{error}</p>
                       <button
                         type="button"
-                        onClick={fetchData}
+                        onClick={() => fetchData(true)}
                         className="text-primary hover:underline"
                       >
                         Coba lagi
@@ -457,7 +531,9 @@ export default function LaporanPage() {
                       <Search className="h-8 w-8 text-on-surface-variant/40" strokeWidth={1.5} />
                       <p className="text-body-md text-on-surface-variant">Tidak ada data</p>
                       <p className="text-label-sm text-on-surface-variant/60">
-                        Tidak ada kehadiran pada periode yang dipilih
+                        {lastUpdated
+                          ? `Data terakhir diperbarui pukul ${lastUpdated.toLocaleTimeString("id-ID")}.`
+                          : "Belum ada kehadiran pada periode yang dipilih"}
                       </p>
                     </div>
                   </td>
@@ -486,17 +562,13 @@ export default function LaporanPage() {
                             {k.inisial || "??"}
                           </span>
                           <div>
-                            <p className="text-label-md font-semibold text-on-surface">
-                              {k.namaUsaha}
-                            </p>
+                            <p className="text-label-md font-semibold text-on-surface">{k.namaUsaha}</p>
                             <p className="text-label-sm text-on-surface-variant">{k.pemilik}</p>
                           </div>
                         </div>
                       </td>
                       <td className="px-lg py-md">
-                        <span
-                          className={`inline-flex rounded-full px-sm py-1 text-label-sm ${kategori.bg} ${kategori.text}`}
-                        >
+                        <span className={`inline-flex rounded-full px-sm py-1 text-label-sm ${kategori.bg} ${kategori.text}`}>
                           {kategori.label}
                         </span>
                       </td>
@@ -504,9 +576,7 @@ export default function LaporanPage() {
                         {k.lokasiLapak || "-"}
                       </td>
                       <td className="px-lg py-md">
-                        <span
-                          className={`inline-flex items-center gap-xs rounded-full px-sm py-1 text-label-sm ${status.bg} ${status.text}`}
-                        >
+                        <span className={`inline-flex items-center gap-xs rounded-full px-sm py-1 text-label-sm ${status.bg} ${status.text}`}>
                           <StatusIcon className="h-3 w-3" strokeWidth={2.5} />
                           {status.label}
                         </span>
@@ -542,7 +612,6 @@ export default function LaporanPage() {
               type="button"
               onClick={handlePrevPage}
               disabled={page <= 1 || isLoading}
-              aria-label="Halaman sebelumnya"
               className="flex h-7 w-7 items-center justify-center rounded-md text-on-surface-variant hover:bg-surface-container-low transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
             >
               <ChevronLeft className="h-4 w-4" strokeWidth={2} />
@@ -554,7 +623,6 @@ export default function LaporanPage() {
               type="button"
               onClick={handleNextPage}
               disabled={page >= totalPages || isLoading}
-              aria-label="Halaman berikutnya"
               className="flex h-7 w-7 items-center justify-center rounded-md text-on-surface-variant hover:bg-surface-container-low transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
             >
               <ChevronRight className="h-4 w-4" strokeWidth={2} />
