@@ -194,16 +194,21 @@ func (r *UserRepository) GetUserStatsByRole(ctx context.Context, roleSlug string
 
 // ListUsersByRole ambil semua user (tanpa paginasi) yang punya role tertentu,
 // dengan filter opsional search (nama/email/phone).
-func (r *UserRepository) ListUsersByRole(ctx context.Context, roleSlug, search string) ([]entity.UserManagementDTO, int, error) {
+func (r *UserRepository) ListUsersByRole(ctx context.Context, roleSlug, search, status string, page, limit int) ([]entity.UserManagementDTO, int, error) {
+	offset := (page - 1) * limit
+
 	rows, err := r.db.Query(ctx,
-		`SELECT u.id, u.name, u.email, u.phone, u.created_at, u.status
+		`SELECT u.id, u.name, u.email, u.phone, u.created_at, u.status,
+		        COUNT(*) OVER() AS total_count
 		 FROM users u
 		 JOIN user_roles ur ON ur.user_id = u.id AND ur.deleted_at IS NULL
 		 JOIN roles r ON r.id = ur.role_id AND r.deleted_at IS NULL
 		 WHERE r.slug = $1 AND u.deleted_at IS NULL
 		   AND ($2 = '' OR u.name ILIKE '%' || $2 || '%' OR u.email ILIKE '%' || $2 || '%' OR u.phone ILIKE '%' || $2 || '%')
-		 ORDER BY u.created_at DESC`,
-		roleSlug, search,
+		   AND ($3 = '' OR u.status::text = $3)
+		 ORDER BY u.created_at DESC
+		 LIMIT $4 OFFSET $5`,
+		roleSlug, search, status, limit, offset,
 	)
 	if err != nil {
 		return nil, 0, err
@@ -211,16 +216,17 @@ func (r *UserRepository) ListUsersByRole(ctx context.Context, roleSlug, search s
 	defer rows.Close()
 
 	users := make([]entity.UserManagementDTO, 0)
+	total := 0
 	for rows.Next() {
 		var u entity.UserManagementDTO
-		var createdAt, status sql.NullString
+		var createdAt, statusVal sql.NullString
 
-		if err := rows.Scan(&u.ID, &u.Name, &u.Email, &u.Phone, &createdAt, &status); err != nil {
+		if err := rows.Scan(&u.ID, &u.Name, &u.Email, &u.Phone, &createdAt, &statusVal, &total); err != nil {
 			return nil, 0, err
 		}
 
 		u.JoinedAt = createdAt.String
-		u.Active = status.String == "active"
+		u.Active = statusVal.String == "active"
 		if len(u.Name) > 0 {
 			u.Initial = string([]rune(u.Name)[0])
 		}
@@ -231,7 +237,7 @@ func (r *UserRepository) ListUsersByRole(ctx context.Context, roleSlug, search s
 		return nil, 0, err
 	}
 
-	return users, len(users), nil
+	return users, total, nil
 }
 
 // CreateUserByRole bikin akun baru langsung dengan role apapun (dipakai superadmin

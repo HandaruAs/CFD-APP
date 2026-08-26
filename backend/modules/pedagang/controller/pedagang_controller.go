@@ -2,6 +2,7 @@ package controller
 
 import (
 	"errors"
+
 	"cfd-backend/modules/pedagang/entity"
 	"cfd-backend/modules/pedagang/usecase"
 	userUC "cfd-backend/modules/user/usecase"
@@ -11,15 +12,23 @@ import (
 )
 
 type CreatePedagangByAdminRequest struct {
-	Name           string `json:"name" validate:"required"`
-	Email          string `json:"email" validate:"required,email"`
-	Phone          string `json:"phone" validate:"required"`
-	Password       string `json:"password" validate:"required,min=8"`
-	NIK            string `json:"nik" validate:"required,len=16"`
-	NamaUsaha      string `json:"nama_usaha" validate:"required"`
-	JenisDagangan  string `json:"jenis_dagangan" validate:"required"`
-	PerkiraanHarga string `json:"perkiraan_harga" validate:"required"`
-	Alamat         string `json:"alamat" validate:"required"`
+	Name          string `json:"name" validate:"required"`
+	Email         string `json:"email" validate:"required,email"`
+	Phone         string `json:"phone" validate:"required"`
+	Password      string `json:"password" validate:"required,min=8"`
+	NIK           string `json:"nik" validate:"required,len=16"`
+	TanggalLahir  string `json:"tanggal_lahir" validate:"required,datetime=2006-01-02"`
+	NamaUsaha     string `json:"nama_usaha" validate:"required"`
+	JenisDagangan string `json:"jenis_dagangan" validate:"required,oneof=makanan_minuman bukan_makanan_minuman"`
+	JenisLapak    string `json:"jenis_lapak" validate:"required,oneof=rombong meja"`
+}
+
+type UpdatePedagangByAdminRequest struct {
+	Name          string `json:"name" validate:"required"`
+	Phone         string `json:"phone" validate:"required"`
+	NamaUsaha     string `json:"nama_usaha" validate:"required"`
+	JenisDagangan string `json:"jenis_dagangan" validate:"required,oneof=makanan_minuman bukan_makanan_minuman"`
+	JenisLapak    string `json:"jenis_lapak" validate:"required,oneof=rombong meja"`
 }
 
 type PedagangController struct {
@@ -133,7 +142,7 @@ func (ctrl *PedagangController) CreatePedagangByAdmin(c fiber.Ctx) error {
 
 	err = ctrl.pedagangUsecase.CreatePengajuanByAdmin(
 		c.Context(),
-		userID, req.NIK, req.NamaUsaha, req.JenisDagangan, req.PerkiraanHarga, req.Alamat,
+		userID, req.NIK, req.Name, req.TanggalLahir, req.NamaUsaha, req.JenisDagangan, req.JenisLapak,
 	)
 	if err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
@@ -188,6 +197,35 @@ func (ctrl *PedagangController) GetPedagangByID(c fiber.Ctx) error {
 	}
 
 	return c.Status(fiber.StatusOK).JSON(user)
+}
+
+func (ctrl *PedagangController) UpdatePedagangByAdmin(c fiber.Ctx) error {
+	id := c.Params("id")
+	if id == "" {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"error": "ID tidak boleh kosong",
+		})
+	}
+
+	var req UpdatePedagangByAdminRequest
+	if err := c.Bind().Body(&req); err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"error": err.Error(),
+		})
+	}
+
+	err := ctrl.pedagangUsecase.UpdatePedagangByAdmin(
+		c.Context(), id, req.Name, req.Phone, req.NamaUsaha, req.JenisDagangan, req.JenisLapak,
+	)
+	if err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"error": "Gagal menyimpan perubahan: " + err.Error(),
+		})
+	}
+
+	return c.Status(fiber.StatusOK).JSON(fiber.Map{
+		"message": "Pedagang berhasil diperbarui",
+	})
 }
 
 func (ctrl *PedagangController) DeletePedagangByAdmin(c fiber.Ctx) error {
