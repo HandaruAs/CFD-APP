@@ -15,7 +15,7 @@ type UserRepository interface {
 	GetUserRole(ctx context.Context, userID string) (string, error)
 	RegisterPedagangByAdmin(ctx context.Context, email, passwordHash, name, phone string) (string, error)
 	GetUserStatsByRole(ctx context.Context, roleSlug string) (entity.UserStats, error)
-	ListUsersByRole(ctx context.Context, roleSlug, search string) ([]entity.UserManagementDTO, int, error)
+	ListUsersByRole(ctx context.Context, roleSlug, search, status string, page, limit int) ([]entity.UserManagementDTO, int, error)
 	CreateUserByRole(ctx context.Context, email, passwordHash, name, phone, roleSlug string) (string, error)
 	UpdateUserBasic(ctx context.Context, id, name, phone string) error
 	DeleteUser(ctx context.Context, id string) error
@@ -27,7 +27,7 @@ type UserUsecase interface {
 	GetUserRole(ctx context.Context, userID string) (string, error)
 	RegisterPedagangByAdmin(ctx context.Context, name, email, phone, password string) (string, error)
 	GetUserStatsByRole(ctx context.Context, roleSlug string) (entity.UserStats, error)
-	ListUsersByRole(ctx context.Context, roleSlug, search string) ([]entity.UserManagementDTO, int, error)
+	ListUsersByRole(ctx context.Context, roleSlug, search, status string, page, limit int) ([]entity.UserManagementDTO, int, error)
 	CreateUserByRole(ctx context.Context, name, email, phone, password, roleSlug string) (string, error)
 	UpdateUserBasic(ctx context.Context, id, name, phone string) error
 	DeleteUser(ctx context.Context, id string) error
@@ -69,11 +69,17 @@ func (u *userUsecase) GetUserStatsByRole(ctx context.Context, roleSlug string) (
 }
 
 // ListUsersByRole ambil semua user (beserta total) yang punya role tertentu.
-func (u *userUsecase) ListUsersByRole(ctx context.Context, roleSlug, search string) ([]entity.UserManagementDTO, int, error) {
+func (u *userUsecase) ListUsersByRole(ctx context.Context, roleSlug, search, status string, page, limit int) ([]entity.UserManagementDTO, int, error) {
 	if roleSlug == "" {
 		return nil, 0, errors.New("role wajib diisi")
 	}
-	return u.userRepo.ListUsersByRole(ctx, roleSlug, search)
+	if page < 1 {
+		page = 1
+	}
+	if limit < 1 {
+		limit = 10
+	}
+	return u.userRepo.ListUsersByRole(ctx, roleSlug, search, status, page, limit)
 }
 
 // CreateUserByRole dipakai superadmin buat bikin akun petugas/pedagang langsung

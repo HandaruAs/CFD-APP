@@ -2,19 +2,20 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { Loader2, ArrowLeft } from "lucide-react";
+import { Loader2, ArrowLeft, CreditCard, Tag, ShoppingCart, Table2 } from "lucide-react";
 
-// Tipe data form kita
+type StallType = "rombong" | "meja" | "";
+
 export type PedagangFormValues = {
   name: string;
   email: string;
   phone: string;
   password: string;
   nik: string;
+  tanggalLahir: string;
   namaUsaha: string;
   jenisDagangan: string;
-  perkiraanHarga: string; // <-- TAMBAHAN
-  alamat: string;
+  jenisLapak: StallType;
 };
 
 const EMPTY_FORM: PedagangFormValues = {
@@ -23,10 +24,10 @@ const EMPTY_FORM: PedagangFormValues = {
   phone: "",
   password: "",
   nik: "",
+  tanggalLahir: "",
   namaUsaha: "",
   jenisDagangan: "",
-  perkiraanHarga: "", // <-- TAMBAHAN
-  alamat: "",
+  jenisLapak: "",
 };
 
 export default function TambahPedagangPage() {
@@ -42,23 +43,26 @@ export default function TambahPedagangPage() {
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError("");
+
+    if (values.nik.trim().length !== 16) {
+      setError("NIK harus terdiri dari 16 digit.");
+      return;
+    }
+    if (!values.jenisLapak) {
+      setError("Mohon pilih jenis lapak.");
+      return;
+    }
+
     setSaving(true);
     try {
-      // 1. Ambil token dari localStorage
-      const token = localStorage.getItem("cfd_token"); 
+      const token = localStorage.getItem("cfd_token");
+      if (!token) throw new Error("Anda belum login. Silakan login kembali.");
 
-      if (!token) {
-        throw new Error("Anda belum login. Silakan login kembali.");
-      }
-
-      console.log("🚀 Mengirim data ke backend:", values);
-
-      // 2. Kirim request dengan header Authorization
       const res = await fetch("http://localhost:8080/api/admin/users/pedagang", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          "Authorization": `Bearer ${token}`,
+          Authorization: `Bearer ${token}`,
         },
         body: JSON.stringify({
           name: values.name,
@@ -66,20 +70,18 @@ export default function TambahPedagangPage() {
           phone: values.phone,
           password: values.password,
           nik: values.nik,
+          tanggal_lahir: values.tanggalLahir,
           nama_usaha: values.namaUsaha,
           jenis_dagangan: values.jenisDagangan,
-          perkiraan_harga: values.perkiraanHarga, // <-- TAMBAHAN
-          alamat: values.alamat,
+          jenis_lapak: values.jenisLapak,
         }),
       });
 
-      // Jika response tidak oke (status bukan 200/201), ambil pesan error dari backend
       if (!res.ok) {
-        const errorData = await res.json();
+        const errorData = await res.json().catch(() => ({}));
         throw new Error(errorData.error || `Gagal menyimpan data (Status: ${res.status})`);
       }
 
-      // Jika sukses, kembali ke halaman tabel pedagang
       router.push("/admin/manajemen-user/pedagang");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Gagal menyimpan data pedagang.");
@@ -138,7 +140,6 @@ export default function TambahPedagangPage() {
                 placeholder="08xxxxxxxxxx"
               />
             </Field>
-
             <Field label="Password Awal" required>
               <input
                 required
@@ -151,72 +152,89 @@ export default function TambahPedagangPage() {
             </Field>
 
             <Field label="NIK" required>
-              <input
-                required
-                maxLength={16}
-                inputMode="numeric"
-                value={values.nik}
-                onChange={(e) => update("nik", e.target.value)}
-                className={inputClass}
-                placeholder="16 digit sesuai KTP"
-              />
+              <div className="relative">
+                <CreditCard className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
+                <input
+                  required
+                  maxLength={16}
+                  inputMode="numeric"
+                  value={values.nik}
+                  onChange={(e) => update("nik", e.target.value.replace(/\D/g, ""))}
+                  className={`${inputClass} pl-9`}
+                  placeholder="16 digit sesuai KTP"
+                />
+              </div>
             </Field>
-            <Field label="Nama Usaha" required>
+            <Field label="Tanggal Lahir" required>
               <input
                 required
-                value={values.namaUsaha}
-                onChange={(e) => update("namaUsaha", e.target.value)}
+                type="date"
+                value={values.tanggalLahir}
+                onChange={(e) => update("tanggalLahir", e.target.value)}
                 className={inputClass}
-                placeholder="Contoh: Kedai Kopi Senja"
               />
             </Field>
 
             <div className="sm:col-span-2">
-              <Field label="Jenis Dagangan" required>
-                <input
+              <Field label="Nama Usaha" required>
+                <div className="relative">
+                  <Tag className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
+                  <input
+                    required
+                    value={values.namaUsaha}
+                    onChange={(e) => update("namaUsaha", e.target.value)}
+                    className={`${inputClass} pl-9`}
+                    placeholder="Contoh: Kedai Kopi Senja"
+                  />
+                </div>
+              </Field>
+            </div>
+
+            <div className="sm:col-span-2">
+              <Field label="Kategori Dagangan" required>
+                <select
                   required
                   value={values.jenisDagangan}
                   onChange={(e) => update("jenisDagangan", e.target.value)}
                   className={inputClass}
-                  placeholder="Contoh: Kopi susu, teh, camilan ringan"
-                />
-              </Field>
-            </div>
-
-            {/* --- TAMBAHAN DROPDOWN PERKIRAAN HARGA --- */}
-            <div className="sm:col-span-2">
-              <Field label="Perkiraan Harga Produk" required>
-                <select
-                  required
-                  value={values.perkiraanHarga}
-                  onChange={(e) => update("perkiraanHarga", e.target.value)}
-                  className={inputClass}
                 >
-                  <option value="">Pilih Kisaran Harga</option>
-                  <option value="Rp5.000 - Rp10.000">Rp5.000 - Rp10.000</option>
-                  <option value="Rp10.000 - Rp15.000">Rp10.000 - Rp15.000</option>
-                  <option value="Rp15.000 - Rp20.000">Rp15.000 - Rp20.000</option>
-                  <option value="Rp20.000 - Rp25.000">Rp20.000 - Rp25.000</option>
-                  <option value="Rp25.000 - Rp30.000">Rp25.000 - Rp30.000</option>
-                  <option value="Rp30.000 - Rp40.000">Rp30.000 - Rp40.000</option>
-                  <option value="Rp40.000 - Rp50.000">Rp40.000 - Rp50.000</option>
-                  <option value="Rp50.000 - Rp75.000">Rp50.000 - Rp75.000</option>
-                  <option value="Rp75.000 - Rp100.000">Rp75.000 - Rp100.000</option>
-                  <option value="> Rp100.000">Di atas Rp100.000</option>
+                  <option value="" disabled>
+                    Pilih Kategori
+                  </option>
+                  <option value="makanan_minuman">Makanan dan Minuman</option>
+                  <option value="bukan_makanan_minuman">Bukan Makanan dan Minuman</option>
                 </select>
               </Field>
             </div>
-            {/* ------------------------------------------------- */}
 
             <div className="sm:col-span-2">
-              <Field label="Alamat" required>
-                <textarea
-                  required
-                  rows={2}
-                  value={values.alamat}
-                  onChange={(e) => update("alamat", e.target.value)}
-                  className={inputClass}
-                />
+              <Field label="Pilihan Lapak" required>
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => update("jenisLapak", "rombong")}
+                    className={`flex flex-col items-center gap-1 py-3 px-2 rounded-lg border transition-colors ${
+                      values.jenisLapak === "rombong"
+                        ? "border-blue-600 bg-blue-50"
+                        : "border-slate-200 hover:bg-slate-50"
+                    }`}
+                  >
+                    <ShoppingCart className="h-5 w-5 text-blue-700" />
+                    <span className="text-sm font-medium text-slate-900">Rombong</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => update("jenisLapak", "meja")}
+                    className={`flex flex-col items-center gap-1 py-3 px-2 rounded-lg border transition-colors ${
+                      values.jenisLapak === "meja"
+                        ? "border-blue-600 bg-blue-50"
+                        : "border-slate-200 hover:bg-slate-50"
+                    }`}
+                  >
+                    <Table2 className="h-5 w-5 text-blue-700" />
+                    <span className="text-sm font-medium text-slate-900">Meja</span>
+                  </button>
+                </div>
               </Field>
             </div>
           </div>
