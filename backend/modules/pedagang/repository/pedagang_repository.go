@@ -18,10 +18,9 @@ func NewPedagangRepository(db *pgxpool.Pool) *PedagangRepository {
 	return &PedagangRepository{db: db}
 }
 
-// CreatePengajuanMandiri bikin baris pedagang_profiles baru dari alur
-// self-service (pedagang daftar sendiri lewat form single-page).
-// alamat & perkiraan_harga sengaja gak diisi (biarin NULL, kolomnya nullable),
-// karena form yang sekarang gak nanya dua hal itu lagi.
+// CreatePengajuanMandiri bikin baris pedagang_profiles baru. Dipakai untuk
+// dua alur: self-service (pedagang daftar sendiri) DAN admin (Tambah Pedagang),
+// karena keduanya insert ke kolom yang sama persis.
 func (r *PedagangRepository) CreatePengajuanMandiri(
 	ctx context.Context,
 	userID, nik, namaLengkap, tanggalLahir, namaUsaha, jenisDagangan, jenisLapak string,
@@ -33,25 +32,6 @@ func (r *PedagangRepository) CreatePengajuanMandiri(
 		 VALUES ($1, $2, $3, $4, $5, $6::jenis_dagangan_enum, $7::jenis_lapak_enum, 'pending')
 		 RETURNING id`,
 		userID, nik, namaLengkap, tanggalLahir, namaUsaha, jenisDagangan, jenisLapak,
-	).Scan(&id)
-	if err != nil {
-		return "", err
-	}
-	return id, nil
-}
-
-// CreatePengajuan dipakai alur ADMIN (CreatePedagangByAdmin) -- belum diubah,
-// masih pakai jenis_dagangan bebas teks & wajib alamat/perkiraan_harga.
-// Catatan: karena jenis_dagangan sekarang enum, kalau admin ngirim nilai di
-// luar 'makanan_minuman'/'bukan_makanan_minuman', ini bakal gagal insert.
-func (r *PedagangRepository) CreatePengajuan(ctx context.Context, userID, nik, namaUsaha, jenisDagangan, perkiraanHarga, alamat string) (string, error) {
-	var id string
-	err := r.db.QueryRow(ctx,
-		`INSERT INTO pedagang_profiles 
-		 (user_id, nik, nama_usaha, jenis_dagangan, perkiraan_harga, alamat, status_verifikasi)
-		 VALUES ($1, $2, $3, $4::jenis_dagangan_enum, $5, $6, 'pending')
-		 RETURNING id`,
-		userID, nik, namaUsaha, jenisDagangan, perkiraanHarga, alamat,
 	).Scan(&id)
 	if err != nil {
 		return "", err
@@ -242,6 +222,38 @@ func (r *PedagangRepository) GetPedagangByID(ctx context.Context, id string) (*e
 	u.StatusVerifikasi = &statusVerifikasi.String
 
 	return &u, nil
+}
+
+// UpdatePedagang meng-update data akun (users) sekaligus profil dagangan
+// (pedagang_profiles) dalam satu transaksi. NIK, email, dan tanggal lahir
+// sengaja gak ikut diupdate di sini -- itu data identitas yang dikunci
+// (disabled) di form edit, konsisten sama halaman Edit Petugas/Superadmin.
+func (r *PedagangRepository) UpdatePedagang(ctx context.Context, id, name, phone, namaUsaha, jenisDagangan, jenisLapak string) error {
+	tx, err := r.db.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback(ctx)
+
+	_, err = tx.Exec(ctx,
+		`UPDATE users SET name = $1, phone = $2, updated_at = NOW() WHERE id = $3 AND deleted_at IS NULL`,
+		name, phone, id,
+	)
+	if err != nil {
+		return err
+	}
+
+	_, err = tx.Exec(ctx,
+		`UPDATE pedagang_profiles 
+		 SET nama_lengkap = $1, nama_usaha = $2, jenis_dagangan = $3::jenis_dagangan_enum, jenis_lapak = $4::jenis_lapak_enum, updated_at = NOW()
+		 WHERE user_id = $5 AND deleted_at IS NULL`,
+		name, namaUsaha, jenisDagangan, jenisLapak, id,
+	)
+	if err != nil {
+		return err
+	}
+
+	return tx.Commit(ctx)
 }
 
 // DeletePedagang soft-delete pedagang

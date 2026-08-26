@@ -407,6 +407,12 @@ func main() {
 		pedagangController.GetPedagangByID,
 	)
 
+	app.Put("/api/admin/users/pedagang/:id",
+		middleware.AuthMiddleware(cfg.JWTSecret),
+		middleware.RoleMiddleware(userRepository, "superadmin"),
+		pedagangController.UpdatePedagangByAdmin,
+	)
+
 	app.Delete("/api/admin/users/pedagang/:id",
 		middleware.AuthMiddleware(cfg.JWTSecret),
 		middleware.RoleMiddleware(userRepository, "superadmin"),

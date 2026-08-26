@@ -2,26 +2,19 @@
 
 import { useState, useEffect, use } from "react";
 import { useRouter } from "next/navigation";
-import { Loader2, ArrowLeft, ShoppingCart, Table2 } from "lucide-react";
+import { Loader2, ArrowLeft } from "lucide-react";
 
-type StallType = "rombong" | "meja" | "";
-
-type EditPedagangValues = {
+type EditSuperadminValues = {
   name: string;
   email: string;
   phone: string;
-  nik: string;
-  tanggalLahir: string;
-  namaUsaha: string;
-  jenisDagangan: string;
-  jenisLapak: StallType;
 };
 
-export default function EditPedagangPage({ params }: { params: Promise<{ id: string }> }) {
+export default function EditSuperadminPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
 
   const router = useRouter();
-  const [values, setValues] = useState<EditPedagangValues | null>(null);
+  const [values, setValues] = useState<EditSuperadminValues | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
@@ -42,9 +35,10 @@ export default function EditPedagangPage({ params }: { params: Promise<{ id: str
         const token = localStorage.getItem("cfd_token");
         if (!token) throw new Error("Token tidak ditemukan, silakan login kembali.");
 
-        const res = await fetch(`http://localhost:8080/api/admin/users/pedagang/${id}`, {
-          headers: { Authorization: `Bearer ${token}` },
-        });
+        const res = await fetch(
+          `${process.env.NEXT_PUBLIC_API_URL}/api/admin/users/superadmin/${id}`,
+          { headers: { Authorization: `Bearer ${token}` } }
+        );
 
         if (!res.ok) {
           const errData = await res.json();
@@ -58,11 +52,6 @@ export default function EditPedagangPage({ params }: { params: Promise<{ id: str
             name: data.name || "",
             email: data.email || "",
             phone: data.phone || "",
-            nik: data.nik || "",
-            tanggalLahir: data.tanggalLahir || "",
-            namaUsaha: data.namaUsaha || "",
-            jenisDagangan: data.jenisDagangan || "",
-            jenisLapak: data.jenisLapak || "",
           });
           setLoading(false);
         }
@@ -81,7 +70,7 @@ export default function EditPedagangPage({ params }: { params: Promise<{ id: str
     };
   }, [id]);
 
-  function update<K extends keyof EditPedagangValues>(key: K, value: EditPedagangValues[K]) {
+  function update<K extends keyof EditSuperadminValues>(key: K, value: EditSuperadminValues[K]) {
     if (!values) return;
     setValues((prev) => (prev ? { ...prev, [key]: value } : null));
   }
@@ -95,7 +84,7 @@ export default function EditPedagangPage({ params }: { params: Promise<{ id: str
       const token = localStorage.getItem("cfd_token");
       if (!token) throw new Error("Token tidak ditemukan");
 
-      const res = await fetch(`http://localhost:8080/api/admin/users/pedagang/${id}`, {
+      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/admin/users/superadmin/${id}`, {
         method: "PUT",
         headers: {
           "Content-Type": "application/json",
@@ -104,9 +93,6 @@ export default function EditPedagangPage({ params }: { params: Promise<{ id: str
         body: JSON.stringify({
           name: values.name,
           phone: values.phone,
-          nama_usaha: values.namaUsaha,
-          jenis_dagangan: values.jenisDagangan,
-          jenis_lapak: values.jenisLapak,
         }),
       });
 
@@ -115,7 +101,7 @@ export default function EditPedagangPage({ params }: { params: Promise<{ id: str
         throw new Error(errData.error || "Gagal menyimpan perubahan");
       }
 
-      router.push("/admin/manajemen-user/pedagang");
+      router.push("/admin/manajemen-user/superadmin");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Gagal menyimpan perubahan.");
     } finally {
@@ -141,7 +127,7 @@ export default function EditPedagangPage({ params }: { params: Promise<{ id: str
         >
           <ArrowLeft className="h-5 w-5" />
         </button>
-        <h1 className="text-2xl font-bold text-slate-900">Edit Pedagang</h1>
+        <h1 className="text-2xl font-bold text-slate-900">Edit Superadmin</h1>
       </div>
 
       <div className="rounded-2xl bg-white p-6 shadow-sm border border-slate-200">
@@ -153,26 +139,11 @@ export default function EditPedagangPage({ params }: { params: Promise<{ id: str
           )}
 
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-            <Field label="NIK">
-              <input
-                disabled
-                value={values.nik}
-                className={`${inputClass} bg-gray-100 cursor-not-allowed opacity-70`}
-              />
-            </Field>
             <Field label="Email">
               <input
                 disabled
                 type="email"
                 value={values.email}
-                className={`${inputClass} bg-gray-100 cursor-not-allowed opacity-70`}
-              />
-            </Field>
-            <Field label="Tanggal Lahir">
-              <input
-                disabled
-                type="date"
-                value={values.tanggalLahir}
                 className={`${inputClass} bg-gray-100 cursor-not-allowed opacity-70`}
               />
             </Field>
@@ -185,6 +156,7 @@ export default function EditPedagangPage({ params }: { params: Promise<{ id: str
                 className={inputClass}
               />
             </Field>
+
             <Field label="No. Telepon" required>
               <input
                 required
@@ -193,62 +165,6 @@ export default function EditPedagangPage({ params }: { params: Promise<{ id: str
                 className={inputClass}
               />
             </Field>
-            <Field label="Nama Usaha" required>
-              <input
-                required
-                value={values.namaUsaha}
-                onChange={(e) => update("namaUsaha", e.target.value)}
-                className={inputClass}
-              />
-            </Field>
-
-            <div className="sm:col-span-2">
-              <Field label="Kategori Dagangan" required>
-                <select
-                  required
-                  value={values.jenisDagangan}
-                  onChange={(e) => update("jenisDagangan", e.target.value)}
-                  className={inputClass}
-                >
-                  <option value="" disabled>
-                    Pilih Kategori
-                  </option>
-                  <option value="makanan_minuman">Makanan dan Minuman</option>
-                  <option value="bukan_makanan_minuman">Bukan Makanan dan Minuman</option>
-                </select>
-              </Field>
-            </div>
-
-            <div className="sm:col-span-2">
-              <Field label="Pilihan Lapak" required>
-                <div className="grid grid-cols-2 gap-2">
-                  <button
-                    type="button"
-                    onClick={() => update("jenisLapak", "rombong")}
-                    className={`flex flex-col items-center gap-1 py-3 px-2 rounded-lg border transition-colors ${
-                      values.jenisLapak === "rombong"
-                        ? "border-blue-600 bg-blue-50"
-                        : "border-slate-200 hover:bg-slate-50"
-                    }`}
-                  >
-                    <ShoppingCart className="h-5 w-5 text-blue-700" />
-                    <span className="text-sm font-medium text-slate-900">Rombong</span>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => update("jenisLapak", "meja")}
-                    className={`flex flex-col items-center gap-1 py-3 px-2 rounded-lg border transition-colors ${
-                      values.jenisLapak === "meja"
-                        ? "border-blue-600 bg-blue-50"
-                        : "border-slate-200 hover:bg-slate-50"
-                    }`}
-                  >
-                    <Table2 className="h-5 w-5 text-blue-700" />
-                    <span className="text-sm font-medium text-slate-900">Meja</span>
-                  </button>
-                </div>
-              </Field>
-            </div>
           </div>
 
           <div className="flex justify-end gap-3 border-t border-slate-100 pt-6 mt-4">

@@ -84,16 +84,11 @@ export default function ManajemenUserSuperadminPage() {
       iconColor: "text-purple-700",
       sublabel: "Punya Akses Penuh",
     },
-    {
-      label: "Ditangguhkan",
-      value: stats.suspended,
-      icon: Ban,
-      iconBg: "bg-white",
-      iconColor: "text-red-600",
-      sublabel: "⚠ Membutuhkan Tinjauan",
-      danger: true,
-    },
   ];
+
+  const handleEditUser = (user: User) => {
+  router.push(`/admin/manajemen-user/superadmin/edit/${user.id}`);
+};
 
   const handleDeleteClick = (user: User) => {
     // Guard sisi UI -- cegah dialog hapus kebuka buat akun sendiri.
@@ -149,8 +144,7 @@ export default function ManajemenUserSuperadminPage() {
         reloadSignal={reloadSignal}
         onAddClick={() => router.push("/admin/manajemen-user/superadmin/tambah")}
         onDeleteUser={handleDeleteClick}
-        // onEditUser sengaja belum dipasang -- halaman edit superadmin
-        // belum dibikin, nyusul di sesi berikutnya.
+        onEditUser={handleEditUser}
       />
 
       <ConfirmDialog

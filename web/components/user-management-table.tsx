@@ -5,7 +5,6 @@ import {
   UserPlus,
   Search,
   SlidersHorizontal,
-  Download,
   ChevronLeft,
   ChevronRight,
   Inbox,
@@ -46,6 +45,15 @@ const avatarPalette = [
   "bg-rose-100 text-rose-700",
 ];
 
+const STATUS_OPTIONS = [
+  { value: "", label: "Semua Status" },
+  { value: "active", label: "Aktif" },
+  { value: "suspended", label: "Ditangguhkan" },
+  { value: "banned", label: "Diblokir" },
+];
+
+const LIMIT = 10;
+
 export function UserManagementTable({
   title,
   subtitle,
@@ -74,9 +82,23 @@ export function UserManagementTable({
   onToggleActive?: (user: User) => Promise<void>;
 }) {
   const [users, setUsers] = useState<User[]>([]);
+  const [searchInput, setSearchInput] = useState("");
   const [search, setSearch] = useState("");
+  const [status, setStatus] = useState("");
+  const [filterOpen, setFilterOpen] = useState(false);
+  const [page, setPage] = useState(1);
   const [loading, setLoading] = useState(true);
   const [totalData, setTotalData] = useState(0);
+
+  // Debounce: tunggu 400ms setelah user berhenti ngetik sebelum nembak fetch,
+  // biar gak fetch tiap 1 huruf diketik.
+  useEffect(() => {
+    const timeout = setTimeout(() => {
+      setSearch(searchInput);
+      setPage(1); // search baru -> balik ke halaman 1
+    }, 400);
+    return () => clearTimeout(timeout);
+  }, [searchInput]);
 
   useEffect(() => {
     let cancelled = false;
@@ -85,7 +107,13 @@ export function UserManagementTable({
       setLoading(true);
       try {
         const token = localStorage.getItem("cfd_token");
-        const params = new URLSearchParams({ search, ...extraParams });
+        const params = new URLSearchParams({
+          search,
+          status,
+          page: String(page),
+          limit: String(LIMIT),
+          ...extraParams,
+        });
         const res = await fetch(
           `${process.env.NEXT_PUBLIC_API_URL}${apiEndpoint}?${params.toString()}`,
           { headers: { Authorization: `Bearer ${token}` } }
@@ -111,7 +139,7 @@ export function UserManagementTable({
       cancelled = true;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [search, apiEndpoint, reloadSignal, JSON.stringify(extraParams)]);
+  }, [search, status, page, apiEndpoint, reloadSignal, JSON.stringify(extraParams)]);
 
   const toggleActive = async (u: User) => {
     setUsers((prev) =>
@@ -131,6 +159,7 @@ export function UserManagementTable({
 
   const hasRowActions = Boolean(onEditUser || onDeleteUser);
   const columnCount = hasRowActions ? 4 : 3;
+  const totalPages = Math.max(1, Math.ceil(totalData / LIMIT));
 
   return (
     <div>
@@ -200,22 +229,49 @@ export function UserManagementTable({
       </div>
 
       {/* Search + filter */}
-      <div className="bg-white border border-slate-200 rounded-xl p-4 flex flex-wrap items-center gap-3 mb-4 shadow-sm">
+      <div className="bg-white border border-slate-200 rounded-xl p-4 flex flex-wrap items-center gap-3 mb-4 shadow-sm relative">
         <div className="relative flex-1 min-w-[220px]">
           <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
           <input
             type="text"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
+            value={searchInput}
+            onChange={(e) => setSearchInput(e.target.value)}
             placeholder={searchPlaceholder}
             className="w-full rounded-lg border border-slate-200 bg-slate-50 pl-10 pr-3 py-3 text-sm text-slate-900 placeholder:text-slate-400 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/15"
           />
         </div>
 
-        <button className="flex items-center gap-2 text-sm font-semibold text-slate-600 border border-slate-200 rounded-lg px-4 py-3 hover:bg-slate-50">
-          <SlidersHorizontal className="w-4 h-4" />
-          Filter
-        </button>
+        <div className="relative">
+          <button
+            onClick={() => setFilterOpen((prev) => !prev)}
+            className="flex items-center gap-2 text-sm font-semibold text-slate-600 border border-slate-200 rounded-lg px-4 py-3 hover:bg-slate-50"
+          >
+            <SlidersHorizontal className="w-4 h-4" />
+            {STATUS_OPTIONS.find((o) => o.value === status)?.label ?? "Filter"}
+          </button>
+
+          {filterOpen && (
+            <div className="absolute right-0 mt-2 w-48 rounded-lg border border-slate-200 bg-white shadow-lg z-10 py-1.5">
+              {STATUS_OPTIONS.map((opt) => (
+                <button
+                  key={opt.value}
+                  onClick={() => {
+                    setStatus(opt.value);
+                    setPage(1);
+                    setFilterOpen(false);
+                  }}
+                  className={`w-full text-left px-4 py-2 text-sm hover:bg-slate-50 ${
+                    status === opt.value
+                      ? "font-semibold text-blue-700"
+                      : "text-slate-600"
+                  }`}
+                >
+                  {opt.label}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
       </div>
 
       {/* Table */}
@@ -335,13 +391,22 @@ export function UserManagementTable({
               : "Tidak ada data"}
           </p>
           <div className="flex items-center gap-1.5 text-sm">
-            <button className="w-8 h-8 flex items-center justify-center rounded-md text-slate-400 hover:bg-slate-100">
+            <button
+              onClick={() => setPage((p) => Math.max(1, p - 1))}
+              disabled={page <= 1}
+              className="w-8 h-8 flex items-center justify-center rounded-md text-slate-400 hover:bg-slate-100 disabled:opacity-40 disabled:hover:bg-transparent"
+            >
               <ChevronLeft className="w-4 h-4" />
             </button>
-            <button className="w-8 h-8 flex items-center justify-center rounded-md bg-blue-900 text-white font-semibold">
-              1
-            </button>
-            <button className="w-8 h-8 flex items-center justify-center rounded-md text-slate-400 hover:bg-slate-100">
+            <span className="w-8 h-8 flex items-center justify-center rounded-md bg-blue-900 text-white font-semibold">
+              {page}
+            </span>
+            <span className="text-slate-400 px-1">/ {totalPages}</span>
+            <button
+              onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+              disabled={page >= totalPages}
+              className="w-8 h-8 flex items-center justify-center rounded-md text-slate-400 hover:bg-slate-100 disabled:opacity-40 disabled:hover:bg-transparent"
+            >
               <ChevronRight className="w-4 h-4" />
             </button>
           </div>

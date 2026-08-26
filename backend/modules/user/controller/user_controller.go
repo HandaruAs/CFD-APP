@@ -2,6 +2,7 @@ package controller
 
 import (
 	"errors"
+	"strconv"
 
 	"cfd-backend/modules/user/entity"
 	"cfd-backend/modules/user/usecase"
@@ -91,8 +92,18 @@ func (ctrl *UserController) ListUsersByRole(c fiber.Ctx) error {
 		})
 	}
 	search := c.Query("search")
+	status := c.Query("status") // "", "active", "suspended", "banned"
 
-	users, total, err := ctrl.userUsecase.ListUsersByRole(c.Context(), roleSlug, search)
+	page, err := strconv.Atoi(c.Query("page", "1"))
+	if err != nil || page < 1 {
+		page = 1
+	}
+	limit, err := strconv.Atoi(c.Query("limit", "10"))
+	if err != nil || limit < 1 {
+		limit = 10
+	}
+
+	users, total, err := ctrl.userUsecase.ListUsersByRole(c.Context(), roleSlug, search, status, page, limit)
 	if err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
 			"error": "Gagal mengambil data user",

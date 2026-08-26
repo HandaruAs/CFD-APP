@@ -8,21 +8,22 @@ import (
 
 type PedagangRepository interface {
 	CreatePengajuanMandiri(ctx context.Context, userID, nik, namaLengkap, tanggalLahir, namaUsaha, jenisDagangan, jenisLapak string) (string, error)
-	CreatePengajuan(ctx context.Context, userID, nik, namaUsaha, jenisDagangan, perkiraanHarga, alamat string) (string, error)
 	GetPengajuanByUserID(ctx context.Context, userID string) (*entity.PengajuanStatus, error)
 	ListPedagang(ctx context.Context) ([]entity.PedagangUserDTO, int, error)
 	GetPedagangStats(ctx context.Context) (entity.PedagangStatsResponse, error)
 	GetPedagangByID(ctx context.Context, id string) (*entity.PedagangUserDTO, error)
+	UpdatePedagang(ctx context.Context, id, name, phone, namaUsaha, jenisDagangan, jenisLapak string) error
 	DeletePedagang(ctx context.Context, id string) error
 }
 
 type PedagangUsecase interface {
 	AjukanUsaha(ctx context.Context, userID string, req *entity.PengajuanUsahaRequest) (string, error)
 	StatusPengajuan(ctx context.Context, userID string) (*entity.PengajuanStatus, error)
-	CreatePengajuanByAdmin(ctx context.Context, userID, nik, namaUsaha, jenisDagangan, perkiraanHarga, alamat string) error
+	CreatePengajuanByAdmin(ctx context.Context, userID, nik, namaLengkap, tanggalLahir, namaUsaha, jenisDagangan, jenisLapak string) error
 	ListPedagangByAdmin(ctx context.Context) ([]entity.PedagangUserDTO, int, error)
 	GetPedagangStats(ctx context.Context) (entity.PedagangStatsResponse, error)
 	GetPedagangByID(ctx context.Context, id string) (*entity.PedagangUserDTO, error)
+	UpdatePedagangByAdmin(ctx context.Context, id, name, phone, namaUsaha, jenisDagangan, jenisLapak string) error
 	DeletePedagangByAdmin(ctx context.Context, id string) error
 }
 
@@ -52,8 +53,12 @@ func (u *pedagangUsecase) StatusPengajuan(ctx context.Context, userID string) (*
 	return u.pedagangRepo.GetPengajuanByUserID(ctx, userID)
 }
 
-func (u *pedagangUsecase) CreatePengajuanByAdmin(ctx context.Context, userID, nik, namaUsaha, jenisDagangan, perkiraanHarga, alamat string) error {
-	_, err := u.pedagangRepo.CreatePengajuan(ctx, userID, nik, namaUsaha, jenisDagangan, perkiraanHarga, alamat)
+// CreatePengajuanByAdmin dulu manggil method INSERT terpisah (CreatePengajuan)
+// yang gak nyimpen tanggal_lahir/jenis_lapak. Sekarang langsung reuse
+// CreatePengajuanMandiri, karena alur admin dan self-service insert ke
+// kolom yang sama persis.
+func (u *pedagangUsecase) CreatePengajuanByAdmin(ctx context.Context, userID, nik, namaLengkap, tanggalLahir, namaUsaha, jenisDagangan, jenisLapak string) error {
+	_, err := u.pedagangRepo.CreatePengajuanMandiri(ctx, userID, nik, namaLengkap, tanggalLahir, namaUsaha, jenisDagangan, jenisLapak)
 	return err
 }
 
@@ -67,6 +72,10 @@ func (u *pedagangUsecase) GetPedagangStats(ctx context.Context) (entity.Pedagang
 
 func (u *pedagangUsecase) GetPedagangByID(ctx context.Context, id string) (*entity.PedagangUserDTO, error) {
 	return u.pedagangRepo.GetPedagangByID(ctx, id)
+}
+
+func (u *pedagangUsecase) UpdatePedagangByAdmin(ctx context.Context, id, name, phone, namaUsaha, jenisDagangan, jenisLapak string) error {
+	return u.pedagangRepo.UpdatePedagang(ctx, id, name, phone, namaUsaha, jenisDagangan, jenisLapak)
 }
 
 func (u *pedagangUsecase) DeletePedagangByAdmin(ctx context.Context, id string) error {

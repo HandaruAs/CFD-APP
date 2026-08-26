@@ -58,15 +58,6 @@ export default function ManajemenUserPetugasPage() {
       iconColor: "text-amber-600",
       sublabel: "Sedang Bertugas",
     },
-    {
-      label: "Ditangguhkan",
-      value: stats.suspended,
-      icon: Ban,
-      iconBg: "bg-white",
-      iconColor: "text-red-600",
-      sublabel: "⚠ Membutuhkan Tinjauan",
-      danger: true,
-    },
   ];
 
   const handleEditUser = (user: User) => {
