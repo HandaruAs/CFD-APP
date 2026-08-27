@@ -43,12 +43,12 @@ async function apiFetch(path: string, options: RequestInit = {}) {
 
 function levelSisa(sisa: number, kuota: number) {
   const rasio = kuota > 0 ? sisa / kuota : 0;
-  if (rasio <= 0) return { label: "Penuh", bg: "bg-error-container/60", text: "text-on-error-container", bar: "bg-error" };
-  if (rasio <= 0.2) return { label: "Hampir Penuh", bg: "bg-tertiary-container/25", text: "text-on-tertiary-container", bar: "bg-tertiary" };
-  return { label: "Tersedia", bg: "bg-secondary-container/40", text: "text-on-secondary-container", bar: "bg-secondary" };
+  if (rasio <= 0) return { label: "Penuh", bg: "bg-error-container/60", text: "text-on-error-container", bar: "bg-error", dot: "bg-error" };
+  if (rasio <= 0.2) return { label: "Hampir Penuh", bg: "bg-tertiary-container/25", text: "text-on-tertiary-container", bar: "bg-tertiary", dot: "bg-tertiary" };
+  return { label: "Tersedia", bg: "bg-secondary-container/40", text: "text-on-secondary-container", bar: "bg-secondary", dot: "bg-secondary" };
 }
 
-// ========== MODAL FORM (MENGIKUTI DESAIN ASLI) ==========
+// ========== MODAL FORM (SESUAI DESAIN JAM OPERASIONAL) ==========
 function ModalForm({
   open,
   onClose,
@@ -89,16 +89,25 @@ function ModalForm({
   if (!open) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-on-surface/40 backdrop-blur-[2px] px-4">
-      <div className="relative w-full max-w-md rounded-xl bg-surface-container-lowest p-lg shadow-2xl">
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-on-surface/40 backdrop-blur-[2px] px-4 animate-in fade-in duration-150"
+      onClick={onClose}
+    >
+      <div
+        className="relative w-full max-w-sm rounded-xl bg-surface-container-lowest p-lg shadow-2xl animate-in zoom-in-95 slide-in-from-bottom-2 duration-150"
+        onClick={(e) => e.stopPropagation()}
+      >
         <button
           type="button"
           onClick={onClose}
+          aria-label="Tutup"
           className="absolute right-3 top-3 rounded-full p-1 text-on-surface-variant hover:bg-surface-container-high"
         >
           <X className="h-4 w-4" strokeWidth={2} />
         </button>
+
         <h3 className="text-title-lg text-on-surface">{title}</h3>
+
         <form onSubmit={(e) => { e.preventDefault(); onSubmit(form); }} className="mt-md space-y-4">
           <div>
             <label className="text-label-sm font-semibold text-on-surface">Kode Jalan</label>
@@ -145,6 +154,7 @@ function ModalForm({
               ))}
             </select>
           </div>
+
           <div className="mt-lg flex justify-end gap-sm">
             <button
               type="button"
@@ -174,22 +184,21 @@ export default function SisaLapakPage() {
   const [loadError, setLoadError] = useState<string | null>(null);
   const [activeKecamatan, setActiveKecamatan] = useState<string | null>(null);
 
-  // CRUD state
   const [modalOpen, setModalOpen] = useState(false);
   const [editingItem, setEditingItem] = useState<any>(null);
   const [instansiList, setInstansiList] = useState<{ id: string; nama: string }[]>([]);
   const [saving, setSaving] = useState(false);
 
-  const loadSisaLapak = async () => {
+  const loadData = async () => {
     try {
-      const res = (await apiFetch("/api/petugas/sisa-lapak")) as KecamatanData[];
+      const res = await apiFetch("/api/petugas/sisa-lapak");
       setData(Array.isArray(res) ? res : []);
       setLoadError(null);
       if (res && Array.isArray(res) && res.length > 0) {
         setActiveKecamatan(res[0].kecamatan);
       }
     } catch (err) {
-      setLoadError(err instanceof Error ? err.message : "gagal memuat data sisa lapak");
+      setLoadError(err instanceof Error ? err.message : "gagal memuat data");
     } finally {
       setIsLoading(false);
     }
@@ -205,7 +214,7 @@ export default function SisaLapakPage() {
   };
 
   useEffect(() => {
-    loadSisaLapak();
+    loadData();
     fetchInstansi();
   }, []);
 
@@ -221,7 +230,7 @@ export default function SisaLapakPage() {
           instansi_id: form.instansi_id,
         }),
       });
-      await loadSisaLapak();
+      await loadData();
       setModalOpen(false);
     } catch (err) {
       alert(err instanceof Error ? err.message : "Gagal menambahkan");
@@ -241,7 +250,7 @@ export default function SisaLapakPage() {
           kapasitas: form.kapasitas,
         }),
       });
-      await loadSisaLapak();
+      await loadData();
       setModalOpen(false);
       setEditingItem(null);
     } catch (err) {
@@ -255,23 +264,11 @@ export default function SisaLapakPage() {
     if (!confirm(`Hapus jalan "${nama}"?`)) return;
     try {
       await apiFetch(`/api/petugas/sisa-lapak/${id}`, { method: "DELETE" });
-      await loadSisaLapak();
+      await loadData();
     } catch (err) {
       alert(err instanceof Error ? err.message : "Gagal menghapus");
     }
   };
-
-  const totalRingkasan = useMemo(() => {
-    let kuota = 0,
-      terisi = 0;
-    for (const k of data) {
-      for (const j of k.jalan) {
-        kuota += j.kuota || 0;
-        terisi += j.terisi || 0;
-      }
-    }
-    return { kuota, terisi, sisa: kuota - terisi };
-  }, [data]);
 
   if (isLoading) {
     return (
@@ -281,25 +278,33 @@ export default function SisaLapakPage() {
     );
   }
 
-  if (loadError || !data) {
+  if (loadError) {
     return (
       <div className="rounded-lg border border-error-container bg-error-container/20 p-lg text-on-error-container">
-        Gagal memuat data sisa lapak: {loadError ?? "data tidak ditemukan"}
+        Gagal memuat data: {loadError}
       </div>
     );
   }
 
-  const dataAktif = data.find((k) => k.kecamatan === activeKecamatan) ?? data[0];
+  const totalKuota = data.reduce((acc, k) => acc + k.jalan.reduce((s, j) => s + j.kuota, 0), 0);
+  const totalTerisi = data.reduce((acc, k) => acc + k.jalan.reduce((s, j) => s + j.terisi, 0), 0);
+  const sisaTotal = totalKuota - totalTerisi;
 
   return (
     <div className="flex flex-col gap-lg">
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex flex-wrap items-start justify-between gap-md">
         <div>
           <h2 className="text-headline-lg text-on-surface">Sisa Lapak</h2>
           <p className="mt-xs max-w-2xl text-body-md text-on-surface-variant">
             Lihat dan kelola kuota lapak per kecamatan & jalan CFD Surabaya.
           </p>
+          {data.length > 0 && (
+            <p className="mt-xs text-label-sm text-on-surface-variant">
+              {data.length} kecamatan &middot;{" "}
+              {data.reduce((acc, k) => acc + k.jalan.length, 0)} jalan terpantau
+            </p>
+          )}
         </div>
         <button
           onClick={() => { setEditingItem(null); setModalOpen(true); }}
@@ -318,32 +323,32 @@ export default function SisaLapakPage() {
         <>
           {/* Ringkasan total */}
           <div className="grid grid-cols-1 gap-md sm:grid-cols-3">
-            <div className="rounded-xl border border-outline-variant bg-surface-container-lowest p-lg">
+            <div className="rounded-xl border border-outline-variant bg-surface-container-lowest p-lg transition-shadow hover:shadow-md">
               <div className="flex items-center justify-between">
                 <span className="text-label-sm text-on-surface-variant">Total Kuota Lapak</span>
                 <span className="flex h-8 w-8 items-center justify-center rounded-full bg-primary/10">
                   <Store className="h-4 w-4 text-primary" strokeWidth={2} />
                 </span>
               </div>
-              <p className="mt-xs text-title-lg font-semibold text-on-surface">{totalRingkasan.kuota}</p>
+              <p className="mt-xs text-title-lg font-semibold text-on-surface">{totalKuota}</p>
             </div>
-            <div className="rounded-xl border border-outline-variant bg-surface-container-lowest p-lg">
+            <div className="rounded-xl border border-outline-variant bg-surface-container-lowest p-lg transition-shadow hover:shadow-md">
               <div className="flex items-center justify-between">
                 <span className="text-label-sm text-on-surface-variant">Sudah Terisi</span>
                 <span className="flex h-8 w-8 items-center justify-center rounded-full bg-secondary-container/30">
                   <PackageCheck className="h-4 w-4 text-secondary" strokeWidth={2} />
                 </span>
               </div>
-              <p className="mt-xs text-title-lg font-semibold text-on-surface">{totalRingkasan.terisi}</p>
+              <p className="mt-xs text-title-lg font-semibold text-on-surface">{totalTerisi}</p>
             </div>
-            <div className="rounded-xl border border-outline-variant bg-surface-container-lowest p-lg">
+            <div className="rounded-xl border border-outline-variant bg-surface-container-lowest p-lg transition-shadow hover:shadow-md">
               <div className="flex items-center justify-between">
                 <span className="text-label-sm text-on-surface-variant">Sisa Lapak</span>
                 <span className="flex h-8 w-8 items-center justify-center rounded-full bg-tertiary-container/25">
                   <PackageX className="h-4 w-4 text-tertiary" strokeWidth={2} />
                 </span>
               </div>
-              <p className="mt-xs text-title-lg font-semibold text-on-surface">{totalRingkasan.sisa}</p>
+              <p className="mt-xs text-title-lg font-semibold text-on-surface">{sisaTotal}</p>
             </div>
           </div>
 
@@ -368,7 +373,7 @@ export default function SisaLapakPage() {
 
           {/* Daftar jalan di kecamatan aktif */}
           <div className="grid grid-cols-1 gap-md sm:grid-cols-2">
-            {dataAktif?.jalan.map((j) => {
+            {data.find((k) => k.kecamatan === activeKecamatan)?.jalan.map((j) => {
               const sisa = j.kuota - j.terisi;
               const level = levelSisa(sisa, j.kuota);
               const persentase = j.kuota > 0 ? Math.min(100, Math.round((j.terisi / j.kuota) * 100)) : 0;
@@ -378,10 +383,14 @@ export default function SisaLapakPage() {
                   key={j.id}
                   className="rounded-xl border border-outline-variant bg-surface-container-lowest p-lg transition-shadow hover:shadow-md"
                 >
-                  <div className="flex flex-wrap items-center justify-between gap-sm">
-                    <h3 className="text-title-md text-on-surface">{j.nama}</h3>
+                  <div className="flex flex-wrap items-start justify-between gap-sm">
+                    <div>
+                      <h3 className="text-title-md text-on-surface">{j.nama}</h3>
+                      <span className="text-label-sm text-on-surface-variant">{j.kode_jalan}</span>
+                    </div>
                     <div className="flex items-center gap-1">
                       <span className={`inline-flex items-center gap-xs rounded-full px-sm py-1 text-label-sm ${level.bg} ${level.text}`}>
+                        <span className={`h-1.5 w-1.5 rounded-full ${level.dot}`} />
                         {level.label}
                       </span>
                       <button
@@ -423,7 +432,7 @@ export default function SisaLapakPage() {
               );
             })}
 
-            {dataAktif?.jalan.length === 0 && (
+            {data.find((k) => k.kecamatan === activeKecamatan)?.jalan.length === 0 && (
               <p className="col-span-full py-md text-center text-body-md text-on-surface-variant">
                 Belum ada data jalan untuk kecamatan ini.
               </p>
@@ -432,7 +441,7 @@ export default function SisaLapakPage() {
         </>
       )}
 
-      {/* Modal Form */}
+      {/* Modal Form - DILETAKKAN DI PALING BAWAH */}
       <ModalForm
         open={modalOpen}
         onClose={() => { setModalOpen(false); setEditingItem(null); }}
