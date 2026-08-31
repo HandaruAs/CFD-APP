@@ -39,6 +39,24 @@ func (r *PedagangRepository) CreatePengajuanMandiri(
 	return id, nil
 }
 
+// GetStatusPendaftaran ngecek apakah pendaftaran usaha lagi dibuka petugas
+// (is_open), dan kalau jam_buka_pendaftaran/jam_tutup_pendaftaran di-set,
+// apakah sekarang masih dalam rentang itu. Kalau salah satu jamnya NULL,
+// berarti gak ada batasan jam (cuma is_open yang dicek).
+func (r *PedagangRepository) GetStatusPendaftaran(ctx context.Context) (isOpen bool, dalamJam bool, err error) {
+	err = r.db.QueryRow(ctx, `
+		SELECT is_open,
+		       (jam_buka_pendaftaran IS NULL OR jam_tutup_pendaftaran IS NULL
+		        OR CURRENT_TIME BETWEEN jam_buka_pendaftaran AND jam_tutup_pendaftaran) AS dalam_jam
+		FROM pengaturan_pendaftaran
+		LIMIT 1
+	`).Scan(&isOpen, &dalamJam)
+	if err != nil {
+		return false, false, err
+	}
+	return isOpen, dalamJam, nil
+}
+
 // GetPengajuanByUserID dipakai buat nampilin status pengajuan
 func (r *PedagangRepository) GetPengajuanByUserID(ctx context.Context, userID string) (*entity.PengajuanStatus, error) {
 	var p entity.PengajuanStatus

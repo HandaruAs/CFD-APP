@@ -12,17 +12,13 @@ import {
   LockOpen,
   Check,
   AlertTriangle,
-  Timer,
   Loader2,
   X,
   Info,
   Edit,
   MapPin,
   Store,
-  PackageCheck,
-  PackageX,
 } from "lucide-react";
-import { inputClass } from "@/components/form-field";
 
 // ========== TYPES ==========
 type StatusRiwayat = "normal" | "diperpanjang" | "diakhiri-awal";
@@ -44,6 +40,12 @@ type SesiAktif = {
   totalMenit: number;
 };
 type StatusOperasional = {
+  // NOTE: nama field "pendaftaran" ini kontrak API dari backend
+  // (StatusOperasionalResponse.Pendaftaran, json:"pendaftaran") -- SENGAJA
+  // gak diubah biar gak perlu ubah backend lagi. Tapi secara fungsi,
+  // field ini sekarang ngontrol jendela waktu CHECK-IN pedagang (ambil
+  // nomor stand), BUKAN pendaftaran akun/data diri. Pendaftaran akun
+  // sekarang gak dibatasi jam sama sekali.
   pendaftaran: {
     isOpen: boolean;
     linkPendaftaran: string | null;
@@ -200,10 +202,18 @@ export default function JamOperasionalPage() {
   const [jamSelesaiInput, setJamSelesaiInput] = useState("11:00");
   const [editMode, setEditMode] = useState(false);
 
-  const [pendaftaranJamBuka, setPendaftaranJamBuka] = useState("00:00");
-  const [pendaftaranJamTutup, setPendaftaranJamTutup] = useState("23:59");
-  const [isTogglingPendaftaran, setIsTogglingPendaftaran] = useState(false);
-  const [isSavingPendaftaran, setIsSavingPendaftaran] = useState(false);
+  // ===== TOGGLE SESI CFD (buka / akhiri) =====
+  // Gabungan dari "Buka Sesi Sekarang" + "Akhiri Sesi Lebih Awal" jadi satu
+  // toggle, persis pola yang sama dengan toggle Check-in Pedagang di bawah.
+  const [isTogglingSesi, setIsTogglingSesi] = useState(false);
+
+  // "checkIn*" di sini map ke field API "pendaftaran" (lihat catatan di
+  // tipe StatusOperasional di atas) -- ini jendela waktu buat pedagang
+  // check-in / ambil nomor stand, bukan buat isi form pendaftaran akun.
+  const [checkInJamBuka, setCheckInJamBuka] = useState("00:00");
+  const [checkInJamTutup, setCheckInJamTutup] = useState("23:59");
+  const [isTogglingCheckIn, setIsTogglingCheckIn] = useState(false);
+  const [isSavingCheckIn, setIsSavingCheckIn] = useState(false);
 
   // ===== STATE UNTUK SISA LAPAK (BARU) =====
   const [lapakData, setLapakData] = useState<KecamatanData[]>([]);
@@ -222,7 +232,7 @@ export default function JamOperasionalPage() {
   const isSunday = today.getDay() === 0;
   const isFriday = today.getDay() === 5;
   const sesiSudahAda = status?.sesi != null;
-  const [pendaftaranSudahDiubahHariIni, setPendaftaranSudahDiubahHariIni] = useState(false);
+  const [checkInSudahDiubahHariIni, setCheckInSudahDiubahHariIni] = useState(false);
 
   const showToast = (message: string, type: "success" | "error" = "success") => {
     setToast({ message, type });
@@ -240,12 +250,12 @@ export default function JamOperasionalPage() {
         setJamSelesaiInput(data.sesi.jamSelesaiRencana.slice(0, 5));
       }
       if (data.pendaftaran.jamBuka) {
-        setPendaftaranJamBuka(data.pendaftaran.jamBuka.slice(0, 5));
+        setCheckInJamBuka(data.pendaftaran.jamBuka.slice(0, 5));
       }
       if (data.pendaftaran.jamTutup) {
-        setPendaftaranJamTutup(data.pendaftaran.jamTutup.slice(0, 5));
+        setCheckInJamTutup(data.pendaftaran.jamTutup.slice(0, 5));
       }
-      setPendaftaranSudahDiubahHariIni(false);
+      setCheckInSudahDiubahHariIni(false);
     } catch (err) {
       setLoadError(err instanceof Error ? err.message : "gagal memuat data");
     } finally {
@@ -268,6 +278,7 @@ export default function JamOperasionalPage() {
   };
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     loadStatus();
     loadSisaLapak();
     const interval = setInterval(() => {
@@ -277,7 +288,7 @@ export default function JamOperasionalPage() {
     return () => clearInterval(interval);
   }, []);
 
-  // ===== HANDLER SESI =====
+  // ===== HANDLER SESI CFD =====
   const handleSimpanPerubahan = async () => {
     setConfirmDialog({
       title: "Konfirmasi Perubahan",
@@ -303,30 +314,46 @@ export default function JamOperasionalPage() {
     });
   };
 
-  const handleAkhiriSesi = async () => {
+  // Toggle buka/akhiri sesi CFD sekarang juga -- gabungan handleBukaSesiManual
+  // + handleAkhiriSesi versi lama, dipicu dari satu tombol yang sama seperti
+  // toggle Check-in Pedagang.
+  const handleToggleSesi = async () => {
+    const newState = !sesiSedangAktif; // true = mau buka sesi, false = mau akhiri sesi
+
     setConfirmDialog({
-      title: "Akhiri Sesi Lebih Awal",
-      message: "Yakin mau akhiri sesi CFD hari ini lebih awal? Tindakan ini tidak bisa dibatalkan.",
-      confirmLabel: "Ya, Akhiri Sesi",
-      danger: true,
+      title: newState ? "Buka Sesi Sekarang" : "Akhiri Sesi Lebih Awal",
+      message: newState
+        ? "Ini akan langsung mengaktifkan sesi CFD hari ini sampai jam 23:59, tanpa menunggu jadwal otomatis. Cocok untuk testing atau situasi darurat. Lanjutkan?"
+        : "Yakin mau akhiri sesi CFD hari ini lebih awal? Tindakan ini tidak bisa dibatalkan.",
+      confirmLabel: newState ? "Ya, Buka Sekarang" : "Ya, Akhiri Sesi",
+      danger: !newState,
       onConfirm: async () => {
         setConfirmDialog(null);
-        setActionLoading("akhiri");
+        setIsTogglingSesi(true);
         try {
-          await apiFetch("/api/petugas/jam-operasional/sesi/akhiri", { method: "PATCH" });
-          showToast("✅ Sesi CFD berhasil diakhiri lebih awal", "success");
+          await apiFetch(
+            newState
+              ? "/api/petugas/jam-operasional/sesi/buka"
+              : "/api/petugas/jam-operasional/sesi/akhiri",
+            { method: "PATCH" }
+          );
+          showToast(`✅ Sesi CFD berhasil ${newState ? "dibuka" : "diakhiri"}`, "success");
+          if (newState) setEditMode(false);
           await loadStatus();
         } catch (err) {
-          showToast(err instanceof Error ? err.message : "gagal mengakhiri sesi", "error");
+          showToast(
+            err instanceof Error ? err.message : `gagal ${newState ? "membuka" : "mengakhiri"} sesi`,
+            "error"
+          );
         } finally {
-          setActionLoading(null);
+          setIsTogglingSesi(false);
         }
       },
     });
   };
 
-  // ===== HANDLER PENDAFTARAN =====
-  const handleTogglePendaftaran = async () => {
+  // ===== HANDLER CHECK-IN PEDAGANG =====
+  const handleToggleCheckIn = async () => {
     if (!status) return;
     const newState = !status.pendaftaran.isOpen;
     const jamTutupDisplay = status.pendaftaran.jamTutup
@@ -334,55 +361,55 @@ export default function JamOperasionalPage() {
       : "";
 
     setConfirmDialog({
-      title: `Konfirmasi ${newState ? "Buka" : "Tutup"} Pendaftaran`,
+      title: `Konfirmasi ${newState ? "Buka" : "Tutup"} Check-in`,
       message: newState
-        ? "Apakah Anda yakin ingin membuka pendaftaran pedagang?"
-        : `Apakah Anda yakin ingin menutup pendaftaran pedagang${jamTutupDisplay}?`,
+        ? "Apakah Anda yakin ingin membuka check-in pedagang?"
+        : `Apakah Anda yakin ingin menutup check-in pedagang${jamTutupDisplay}?`,
       confirmLabel: `Ya, ${newState ? "Buka" : "Tutup"}`,
       danger: !newState,
       onConfirm: async () => {
         setConfirmDialog(null);
-        setIsTogglingPendaftaran(true);
+        setIsTogglingCheckIn(true);
         try {
           await apiFetch("/api/petugas/jam-operasional/pendaftaran", {
             method: "PATCH",
             body: JSON.stringify({ isOpen: newState }),
           });
-          showToast(`Pendaftaran ${newState ? "dibuka" : "ditutup"} ✅`, "success");
+          showToast(`Check-in ${newState ? "dibuka" : "ditutup"} ✅`, "success");
           await loadStatus();
         } catch (err) {
-          showToast(err instanceof Error ? err.message : "Gagal mengubah status pendaftaran", "error");
+          showToast(err instanceof Error ? err.message : "Gagal mengubah status check-in", "error");
         } finally {
-          setIsTogglingPendaftaran(false);
+          setIsTogglingCheckIn(false);
         }
       },
     });
   };
 
-  const handleSimpanPendaftaran = async () => {
+  const handleSimpanCheckIn = async () => {
     if (!status) return;
     setConfirmDialog({
-      title: "Konfirmasi Perubahan Pendaftaran",
-      message: "Apakah Anda yakin dengan perubahan pengaturan pendaftaran ini?",
+      title: "Konfirmasi Perubahan Check-in",
+      message: "Apakah Anda yakin dengan perubahan pengaturan check-in ini?",
       confirmLabel: "Ya, Simpan",
       onConfirm: async () => {
         setConfirmDialog(null);
-        setIsSavingPendaftaran(true);
+        setIsSavingCheckIn(true);
         try {
           await apiFetch("/api/petugas/jam-operasional/pendaftaran", {
             method: "PATCH",
             body: JSON.stringify({
               isOpen: status.pendaftaran.isOpen,
-              jamBuka: pendaftaranJamBuka,
-              jamTutup: pendaftaranJamTutup,
+              jamBuka: checkInJamBuka,
+              jamTutup: checkInJamTutup,
             }),
           });
-          showToast("✅ Pengaturan pendaftaran berhasil disimpan", "success");
+          showToast("✅ Pengaturan check-in berhasil disimpan", "success");
           await loadStatus();
         } catch (err) {
-          showToast(err instanceof Error ? err.message : "Gagal menyimpan pengaturan pendaftaran", "error");
+          showToast(err instanceof Error ? err.message : "Gagal menyimpan pengaturan check-in", "error");
         } finally {
-          setIsSavingPendaftaran(false);
+          setIsSavingCheckIn(false);
         }
       },
     });
@@ -414,7 +441,7 @@ export default function JamOperasionalPage() {
     : isSunday
     ? "✅ Jadwal Minggu ini sudah diatur, tidak bisa diubah lagi"
     : "💡 Klik 'Edit Kembali' untuk mengoreksi jam jika terjadi kesalahan.";
-  const canEditPendaftaran = !(isFriday && pendaftaranSudahDiubahHariIni);
+  const canEditCheckIn = !(isFriday && checkInSudahDiubahHariIni);
 
   // ===== SISA LAPAK =====
   const totalKuota = lapakData.reduce((acc, k) => {
@@ -444,7 +471,7 @@ export default function JamOperasionalPage() {
       <div>
         <h2 className="text-headline-lg text-on-surface">Jam Operasional</h2>
         <p className="mt-xs max-w-2xl text-body-md text-on-surface-variant">
-          Atur jam mulai & selesai CFD. Pada hari Minggu hanya bisa disimpan sekali. Kelola pendaftaran pedagang secara terpisah.
+          Atur jam mulai & selesai CFD. Pada hari Minggu hanya bisa disimpan sekali. Kelola check-in pedagang secara terpisah.
         </p>
       </div>
 
@@ -530,6 +557,33 @@ export default function JamOperasionalPage() {
               {actionLoading === "simpan" ? "Menyimpan..." : "Simpan Perubahan"}
             </button>
 
+            {/* Toggle Buka/Akhiri Sesi -- gabungan dari 2 tombol lama */}
+            <button
+              type="button"
+              onClick={handleToggleSesi}
+              disabled={isTogglingSesi || actionLoading !== null}
+              className={`flex items-center gap-sm rounded-md px-lg py-sm text-label-md transition-all hover:shadow-md disabled:opacity-60 ${
+                sesiSedangAktif
+                  ? "bg-error-container/60 text-on-error-container hover:bg-error-container"
+                  : "bg-secondary-container/40 text-on-secondary-container hover:bg-secondary-container"
+              }`}
+            >
+              {isTogglingSesi ? (
+                <Loader2 className="h-4 w-4 animate-spin" strokeWidth={2} />
+              ) : sesiSedangAktif ? (
+                <CircleX className="h-[18px] w-[18px]" strokeWidth={2} />
+              ) : (
+                <LockOpen className="h-[18px] w-[18px]" strokeWidth={2} />
+              )}
+              {isTogglingSesi
+                ? sesiSedangAktif
+                  ? "Mengakhiri..."
+                  : "Membuka..."
+                : sesiSedangAktif
+                ? "Akhiri Sesi Sekarang"
+                : "Buka Sesi Sekarang"}
+            </button>
+
             {showEditButton && (
               <button
                 type="button"
@@ -545,23 +599,11 @@ export default function JamOperasionalPage() {
                 {editMode ? "Batalkan Edit" : "Edit Kembali"}
               </button>
             )}
-
-            {sesiSedangAktif && (
-              <button
-                type="button"
-                onClick={handleAkhiriSesi}
-                disabled={actionLoading !== null}
-                className="flex items-center gap-sm rounded-md bg-error-container/60 px-lg py-sm text-label-md text-on-error-container transition-all hover:bg-error-container hover:shadow-md disabled:opacity-60"
-              >
-                <CircleX className="h-[18px] w-[18px]" strokeWidth={2} />
-                {actionLoading === "akhiri" ? "Mengakhiri..." : "Akhiri Sesi Lebih Awal"}
-              </button>
-            )}
           </div>
 
-          {/* ===== PENDAFTARAN ===== */}
+          {/* ===== CHECK-IN PEDAGANG ===== */}
           <div className="mt-lg border-t border-outline-variant pt-md">
-            <h4 className="text-title-md text-on-surface">Pengaturan Pendaftaran Pedagang</h4>
+            <h4 className="text-title-md text-on-surface">Pengaturan Check-in Pedagang</h4>
             <div className="mt-sm flex flex-wrap items-center justify-between gap-sm rounded-lg border border-outline-variant bg-surface-container-lowest p-md">
               <div className="flex items-center gap-sm">
                 {status.pendaftaran.isOpen ? (
@@ -588,25 +630,25 @@ export default function JamOperasionalPage() {
               </div>
               <button
                 type="button"
-                onClick={handleTogglePendaftaran}
-                disabled={isTogglingPendaftaran}
+                onClick={handleToggleCheckIn}
+                disabled={isTogglingCheckIn}
                 className={`flex items-center gap-sm rounded-md px-md py-sm text-label-md transition-all hover:shadow-md disabled:opacity-60 ${
                   status.pendaftaran.isOpen
                     ? "bg-error-container/60 text-on-error-container hover:bg-error-container"
                     : "bg-secondary-container/40 text-on-secondary-container hover:bg-secondary-container"
                 }`}
               >
-                {isTogglingPendaftaran ? (
+                {isTogglingCheckIn ? (
                   <Loader2 className="h-4 w-4 animate-spin" strokeWidth={2} />
                 ) : status.pendaftaran.isOpen ? (
                   <>
                     <Lock className="h-4 w-4" strokeWidth={2} />
-                    Tutup Pendaftaran
+                    Tutup Check-in
                   </>
                 ) : (
                   <>
                     <LockOpen className="h-4 w-4" strokeWidth={2} />
-                    Buka Pendaftaran
+                    Buka Check-in
                   </>
                 )}
               </button>
@@ -618,12 +660,12 @@ export default function JamOperasionalPage() {
                   <Clock className="h-[18px] w-[18px]" strokeWidth={2} />
                 </span>
                 <div className="flex-1">
-                  <p className="text-label-sm uppercase tracking-wide text-on-surface-variant">Jam Buka Pendaftaran</p>
+                  <p className="text-label-sm uppercase tracking-wide text-on-surface-variant">Jam Buka Check-in</p>
                   <input
                     type="time"
-                    value={pendaftaranJamBuka}
-                    onChange={(e) => setPendaftaranJamBuka(e.target.value)}
-                    disabled={!canEditPendaftaran}
+                    value={checkInJamBuka}
+                    onChange={(e) => setCheckInJamBuka(e.target.value)}
+                    disabled={!canEditCheckIn}
                     onKeyDown={(e) => e.preventDefault()}
                     className="w-full bg-transparent text-title-lg text-on-surface outline-none disabled:opacity-50"
                   />
@@ -634,12 +676,12 @@ export default function JamOperasionalPage() {
                   <Hourglass className="h-[18px] w-[18px]" strokeWidth={2} />
                 </span>
                 <div className="flex-1">
-                  <p className="text-label-sm uppercase tracking-wide text-on-surface-variant">Jam Tutup Pendaftaran</p>
+                  <p className="text-label-sm uppercase tracking-wide text-on-surface-variant">Jam Tutup Check-in</p>
                   <input
                     type="time"
-                    value={pendaftaranJamTutup}
-                    onChange={(e) => setPendaftaranJamTutup(e.target.value)}
-                    disabled={!canEditPendaftaran}
+                    value={checkInJamTutup}
+                    onChange={(e) => setCheckInJamTutup(e.target.value)}
+                    disabled={!canEditCheckIn}
                     onKeyDown={(e) => e.preventDefault()}
                     className="w-full bg-transparent text-title-lg text-on-surface outline-none disabled:opacity-50"
                   />
@@ -647,26 +689,26 @@ export default function JamOperasionalPage() {
               </div>
             </div>
 
-            {isFriday && pendaftaranSudahDiubahHariIni && (
+            {isFriday && checkInSudahDiubahHariIni && (
               <div className="mt-sm flex items-center gap-sm rounded-lg bg-surface-container-high px-md py-sm text-label-sm text-on-surface-variant">
                 <Info className="h-4 w-4" strokeWidth={2} />
-                Pengaturan pendaftaran sudah diubah hari ini (hanya sekali pada hari Jumat)
+                Pengaturan check-in sudah diubah hari ini (hanya sekali pada hari Jumat)
               </div>
             )}
 
             <div className="mt-sm flex justify-end">
               <button
                 type="button"
-                onClick={handleSimpanPendaftaran}
-                disabled={!canEditPendaftaran || isSavingPendaftaran}
+                onClick={handleSimpanCheckIn}
+                disabled={!canEditCheckIn || isSavingCheckIn}
                 className="flex items-center gap-sm rounded-md bg-secondary px-lg py-sm text-label-md text-on-secondary transition-all hover:bg-secondary-container hover:shadow-md disabled:opacity-60"
               >
-                {isSavingPendaftaran ? (
+                {isSavingCheckIn ? (
                   <Loader2 className="h-4 w-4 animate-spin" strokeWidth={2} />
                 ) : (
                   <CalendarCheck2 className="h-[18px] w-[18px]" strokeWidth={2} />
                 )}
-                {isSavingPendaftaran ? "Menyimpan..." : "Simpan Pengaturan Pendaftaran"}
+                {isSavingCheckIn ? "Menyimpan..." : "Simpan Pengaturan Check-in"}
               </button>
             </div>
           </div>

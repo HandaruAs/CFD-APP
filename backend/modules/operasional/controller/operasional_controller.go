@@ -2,6 +2,7 @@ package controller
 
 import (
 	"errors"
+	"log"
 
 	"cfd-backend/modules/operasional/entity"
 	"cfd-backend/modules/operasional/usecase"
@@ -28,6 +29,7 @@ func getUserID(c fiber.Ctx) (string, error) {
 func (ctrl *OperasionalController) GetStatusOperasional(c fiber.Ctx) error {
 	status, err := ctrl.operasionalUsecase.GetStatusOperasional(c.Context())
 	if err != nil {
+		log.Printf("DEBUG GetStatusOperasional error: %v", err) // ← tambahin ini
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
 			"error": "gagal mengambil status operasional",
 		})
@@ -62,6 +64,30 @@ func (ctrl *OperasionalController) SimpanSesi(c fiber.Ctx) error {
 	}
 	return c.Status(fiber.StatusOK).JSON(fiber.Map{
 		"message": "jam sesi berhasil disimpan",
+		"sesi":    sesi,
+	})
+}
+
+func (ctrl *OperasionalController) BukaSesiManual(c fiber.Ctx) error {
+	userID, err := getUserID(c)
+	if err != nil {
+		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{
+			"error": err.Error(),
+		})
+	}
+
+	sesi, err := ctrl.operasionalUsecase.BukaSesiManual(c.Context(), userID)
+	if err != nil {
+		status := fiber.StatusBadRequest
+		if errors.Is(err, usecase.ErrSesiSudahDiatur) {
+			status = fiber.StatusConflict
+		}
+		return c.Status(status).JSON(fiber.Map{
+			"error": err.Error(),
+		})
+	}
+	return c.Status(fiber.StatusOK).JSON(fiber.Map{
+		"message": "sesi CFD berhasil dibuka",
 		"sesi":    sesi,
 	})
 }

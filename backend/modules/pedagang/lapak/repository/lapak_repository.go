@@ -3,6 +3,7 @@ package repository
 import (
 	"context"
 	"errors"
+	"fmt"
 	"time"
 
 	"cfd-backend/modules/pedagang/lapak/entity"
@@ -13,6 +14,8 @@ import (
 
 var (
 	ErrTidakAdaSesiAktif      = errors.New("tidak ada sesi CFD yang aktif sekarang")
+	ErrCheckInDitutup         = errors.New("check-in pedagang sedang ditutup oleh petugas")
+	ErrDiluarJamCheckIn       = errors.New("saat ini di luar jam check-in yang ditentukan petugas")
 	ErrLapakPenuh             = errors.New("lapak di jalan ini sudah penuh")
 	ErrSudahKlaim             = errors.New("kamu sudah klaim lapak di sesi ini")
 	ErrPedagangTidakDitemukan = errors.New("profil pedagang tidak ditemukan")
@@ -26,13 +29,21 @@ func NewLapakRepository(db *pgxpool.Pool) *LapakRepository {
 	return &LapakRepository{db: db}
 }
 
-// GetActiveSessionID ambil sesi CFD yang lagi is_active = true.
-// Kalau gak ada, artinya belum ada sesi yang dibuka petugas hari ini.
+// GetActiveSessionID ambil ID sesi CFD hari ini (dibutuhin buat foreign key
+// di lapak_klaim/jalan_kapasitas_sesi -- klaim harus nempel ke sesi yang
+// mana). Sesi HARUS ada dulu (petugas udah bikin jadwal), tapi kelayakan
+// check-in-nya (boleh klaim nomor stand sekarang atau belum) ditentuin oleh
+// Pengaturan Check-in Pedagang (pengaturan_pendaftaran.is_open +
+// jam_buka_pendaftaran/jam_tutup_pendaftaran) -- BUKAN dari jam_mulai/
+// jam_selesai di cfd_sessions. Itu urusan beda: jam_mulai/jam_selesai
+// cfd_sessions nentuin kapan PETUGAS boleh scan QR buat verifikasi
+// kehadiran fisik pedagang (lihat modules/petugas/scan-qr), yang jatuhnya
+// belakangan setelah pedagang check-in dan dapet nomor stand.
 func (r *LapakRepository) GetActiveSessionID(ctx context.Context) (string, error) {
 	var id string
 	err := r.db.QueryRow(ctx,
 		`SELECT id FROM cfd_sessions
-		 WHERE is_active = true AND deleted_at IS NULL
+		 WHERE is_active = true AND deleted_at IS NULL AND tanggal = CURRENT_DATE
 		 ORDER BY created_at DESC
 		 LIMIT 1`,
 	).Scan(&id)
@@ -42,7 +53,44 @@ func (r *LapakRepository) GetActiveSessionID(ctx context.Context) (string, error
 		}
 		return "", err
 	}
-	return id, nil
+
+	isOpen, jamBuka, jamTutup, err := r.getStatusCheckIn(ctx)
+	if err != nil {
+		return "", err
+	}
+	if !isOpen {
+		return "", ErrCheckInDitutup
+	}
+
+	now := time.Now().Format("15:04:05")
+if jamBuka != nil && now < *jamBuka {
+	return "", fmt.Errorf("%w: check-in baru dibuka jam %s", ErrDiluarJamCheckIn, formatJamSingkat(*jamBuka))
+}
+if jamTutup != nil && now >= *jamTutup {
+	return "", fmt.Errorf("%w: check-in sudah ditutup sejak jam %s", ErrDiluarJamCheckIn, formatJamSingkat(*jamTutup))
+}
+
+return id, nil
+}
+
+func formatJamSingkat(jam string) string {
+	if len(jam) >= 5 {
+		return jam[:5]
+	}
+	return jam
+}
+
+// getStatusCheckIn baca Pengaturan Check-in Pedagang (tabel yang sama
+// yang dulu dipakai buat gate pendaftaran -- pengaturan_pendaftaran).
+// jam_buka/jam_tutup nullable: kalau NULL berarti gak ada batas jam,
+// cuma is_open doang yang ngontrol.
+func (r *LapakRepository) getStatusCheckIn(ctx context.Context) (isOpen bool, jamBuka, jamTutup *string, err error) {
+	err = r.db.QueryRow(ctx,
+		`SELECT is_open, jam_buka_pendaftaran::text, jam_tutup_pendaftaran::text
+		 FROM pengaturan_pendaftaran
+		 LIMIT 1`,
+	).Scan(&isOpen, &jamBuka, &jamTutup)
+	return isOpen, jamBuka, jamTutup, err
 }
 
 // GetPedagangProfileIDByUserID nerjemahin user_id (dari token JWT) ke
