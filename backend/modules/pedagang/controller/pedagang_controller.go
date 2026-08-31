@@ -63,6 +63,17 @@ func (ctrl *PedagangController) AjukanUsaha(c fiber.Ctx) error {
 
 	pengajuanID, err := ctrl.pedagangUsecase.AjukanUsaha(c.Context(), userID, &req)
 	if err != nil {
+		switch {
+		case errors.Is(err, usecase.ErrPendaftaranDitutup):
+			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{
+				"error": err.Error(),
+			})
+		case errors.Is(err, usecase.ErrDiluarJamPendaftaran):
+			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{
+				"error": err.Error(),
+			})
+		}
+
 		var pgErr *pgconn.PgError
 		if errors.As(err, &pgErr) && pgErr.Code == "23505" {
 			if pgErr.ConstraintName == "pedagang_profiles_user_id_key" {
@@ -245,5 +256,18 @@ func (ctrl *PedagangController) DeletePedagangByAdmin(c fiber.Ctx) error {
 
 	return c.Status(fiber.StatusOK).JSON(fiber.Map{
 		"message": "Pedagang berhasil dihapus",
+	})
+}
+
+func (ctrl *PedagangController) CekStatusPendaftaran(c fiber.Ctx) error {
+	isOpen, dalamJam, err := ctrl.pedagangUsecase.CekStatusPendaftaran(c.Context())
+	if err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"error": "gagal mengambil status pendaftaran",
+		})
+	}
+	return c.Status(fiber.StatusOK).JSON(fiber.Map{
+		"is_open":   isOpen,
+		"dalam_jam": dalamJam,
 	})
 }

@@ -2,12 +2,19 @@ package usecase
 
 import (
 	"context"
+	"errors"
 
 	"cfd-backend/modules/pedagang/entity"
 )
 
+var (
+	ErrPendaftaranDitutup   = errors.New("pendaftaran pedagang sedang ditutup, cek lagi nanti")
+	ErrDiluarJamPendaftaran = errors.New("saat ini di luar jam pendaftaran yang ditentukan petugas")
+)
+
 type PedagangRepository interface {
 	CreatePengajuanMandiri(ctx context.Context, userID, nik, namaLengkap, tanggalLahir, namaUsaha, jenisDagangan, jenisLapak string) (string, error)
+	GetStatusPendaftaran(ctx context.Context) (isOpen bool, dalamJam bool, err error)
 	GetPengajuanByUserID(ctx context.Context, userID string) (*entity.PengajuanStatus, error)
 	ListPedagang(ctx context.Context) ([]entity.PedagangUserDTO, int, error)
 	GetPedagangStats(ctx context.Context) (entity.PedagangStatsResponse, error)
@@ -18,6 +25,7 @@ type PedagangRepository interface {
 
 type PedagangUsecase interface {
 	AjukanUsaha(ctx context.Context, userID string, req *entity.PengajuanUsahaRequest) (string, error)
+	CekStatusPendaftaran(ctx context.Context) (isOpen bool, dalamJam bool, err error) 
 	StatusPengajuan(ctx context.Context, userID string) (*entity.PengajuanStatus, error)
 	CreatePengajuanByAdmin(ctx context.Context, userID, nik, namaLengkap, tanggalLahir, namaUsaha, jenisDagangan, jenisLapak string) error
 	ListPedagangByAdmin(ctx context.Context) ([]entity.PedagangUserDTO, int, error)
@@ -35,7 +43,9 @@ func NewPedagangUsecase(pedagangRepo PedagangRepository) PedagangUsecase {
 	return &pedagangUsecase{pedagangRepo: pedagangRepo}
 }
 
-// AjukanUsaha dipakai alur self-service (pedagang daftar sendiri).
+// AjukanUsaha dipakai alur self-service (pedagang daftar sendiri). Cuma
+// bisa jalan kalau petugas lagi buka pendaftaran (is_open) DAN sekarang
+// masih dalam rentang jam_buka_pendaftaran-jam_tutup_pendaftaran (kalau di-set).
 func (u *pedagangUsecase) AjukanUsaha(ctx context.Context, userID string, req *entity.PengajuanUsahaRequest) (string, error) {
 	return u.pedagangRepo.CreatePengajuanMandiri(
 		ctx,
@@ -56,7 +66,8 @@ func (u *pedagangUsecase) StatusPengajuan(ctx context.Context, userID string) (*
 // CreatePengajuanByAdmin dulu manggil method INSERT terpisah (CreatePengajuan)
 // yang gak nyimpen tanggal_lahir/jenis_lapak. Sekarang langsung reuse
 // CreatePengajuanMandiri, karena alur admin dan self-service insert ke
-// kolom yang sama persis.
+// kolom yang sama persis. Sengaja TIDAK dicek ke GetStatusPendaftaran --
+// petugas/superadmin harus tetap bisa nambahin pedagang manual kapan aja.
 func (u *pedagangUsecase) CreatePengajuanByAdmin(ctx context.Context, userID, nik, namaLengkap, tanggalLahir, namaUsaha, jenisDagangan, jenisLapak string) error {
 	_, err := u.pedagangRepo.CreatePengajuanMandiri(ctx, userID, nik, namaLengkap, tanggalLahir, namaUsaha, jenisDagangan, jenisLapak)
 	return err
@@ -80,4 +91,8 @@ func (u *pedagangUsecase) UpdatePedagangByAdmin(ctx context.Context, id, name, p
 
 func (u *pedagangUsecase) DeletePedagangByAdmin(ctx context.Context, id string) error {
 	return u.pedagangRepo.DeletePedagang(ctx, id)
+}
+
+func (u *pedagangUsecase) CekStatusPendaftaran(ctx context.Context) (bool, bool, error) {
+	return u.pedagangRepo.GetStatusPendaftaran(ctx)
 }

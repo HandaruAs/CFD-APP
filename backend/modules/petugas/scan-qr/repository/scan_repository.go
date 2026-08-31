@@ -11,6 +11,7 @@ import (
 
 type ScanRepository interface {
     GetPedagangByID(ctx context.Context, id string) (*entity.PedagangProfile, error)
+    GetPedagangProfileIDByUserID(ctx context.Context, userID string) (string, error)
     CreateKehadiran(ctx context.Context, kehadiran *entity.KehadiranPedagang) error
     GetKehadiranByPedagangAndSession(ctx context.Context, pedagangID, sessionID string) (*entity.KehadiranPedagang, error)
     GetRiwayatScanHariIni(ctx context.Context, petugasID string, tanggal time.Time) ([]entity.KehadiranWithPedagang, error)
@@ -150,10 +151,12 @@ func (r *scanRepository) GetActiveSessionToday(ctx context.Context, t time.Time)
             AND status = 'aktif'
             AND is_active = true
             AND deleted_at IS NULL
+            AND jam_mulai <= $2
+            AND jam_selesai > $2
         LIMIT 1
     `
     var session entity.CfdSession
-    err := r.db.QueryRow(ctx, query, t.Format("2006-01-02")).Scan(
+    err := r.db.QueryRow(ctx, query, t.Format("2006-01-02"), t.Format("15:04:05")).Scan(
         &session.ID,
         &session.NamaSesi,
         &session.Tanggal,
@@ -174,4 +177,19 @@ func (r *scanRepository) GetActiveSessionToday(ctx context.Context, t time.Time)
         return nil, err
     }
     return &session, nil
+}
+
+func (r *scanRepository) GetPedagangProfileIDByUserID(ctx context.Context, userID string) (string, error) {
+	var id string
+	err := r.db.QueryRow(ctx,
+		`SELECT id FROM pedagang_profiles WHERE user_id = $1 AND deleted_at IS NULL`,
+		userID,
+	).Scan(&id)
+	if err == pgx.ErrNoRows {
+		return "", nil
+	}
+	if err != nil {
+		return "", err
+	}
+	return id, nil
 }

@@ -19,6 +19,9 @@ import (
 	// Modul Repository - Lapak
 	lapakRepo "cfd-backend/modules/pedagang/lapak/repository"
 
+	// Modul Repository - Checkout
+	checkoutRepo "cfd-backend/modules/pedagang/checkout/repository"
+
 	// Modul Repository - Scan QR
 	scanRepo "cfd-backend/modules/petugas/scan-qr/repository"
 
@@ -38,6 +41,9 @@ import (
 	// Modul Usecase - Lapak
 	lapakUsecase "cfd-backend/modules/pedagang/lapak/usecase"
 
+	// Modul Usecase - Checkout
+	checkoutUsecase "cfd-backend/modules/pedagang/checkout/usecase"
+
 	// Modul Usecase - Scan QR
 	scanUsecase "cfd-backend/modules/petugas/scan-qr/usecase"
 
@@ -56,6 +62,9 @@ import (
 
 	// Modul Controller - Lapak
 	lapakController "cfd-backend/modules/pedagang/lapak/controller"
+
+	// Modul Controller - Checkout
+	checkoutController "cfd-backend/modules/pedagang/checkout/controller"
 
 	// Modul Controller - Scan QR
 	scanController "cfd-backend/modules/petugas/scan-qr/controller"
@@ -90,6 +99,9 @@ func main() {
 	// 1a. Repository Lapak
 	lapakRepository := lapakRepo.NewLapakRepository(db)
 
+	// 1a-2. Repository Checkout
+	checkoutRepository := checkoutRepo.NewCheckoutRepository(db)
+
 	// 1b. Repository Scan QR
 	scanRepository := scanRepo.NewScanRepository(db)
 
@@ -111,6 +123,9 @@ func main() {
 	// 2a. Usecase Lapak
 	lapakUsecase := lapakUsecase.NewLapakUsecase(lapakRepository)
 
+	// 2a-2. Usecase Checkout
+	checkoutUsecase := checkoutUsecase.NewCheckoutUsecase(checkoutRepository)
+
 	// 2b. Usecase Scan QR
 	scanUsecase := scanUsecase.NewScanUsecase(scanRepository)
 
@@ -131,6 +146,9 @@ func main() {
 
 	// 3a. Controller Lapak
 	lapakController := lapakController.NewLapakController(lapakUsecase)
+
+	// 3a-2. Controller Checkout
+	checkoutController := checkoutController.NewCheckoutController(checkoutUsecase)
 
 	// 3b. Controller Scan QR
 	scanController := scanController.NewScanController(scanUsecase)
@@ -290,6 +308,12 @@ func main() {
 		operasionalController.SimpanSesi,
 	)
 
+	app.Patch("/api/petugas/jam-operasional/sesi/buka",
+	middleware.AuthMiddleware(cfg.JWTSecret),
+	middleware.PermissionMiddleware(permissionRepository, "jadwal.manage"),
+	operasionalController.BukaSesiManual,
+	)
+
 	app.Patch("/api/petugas/jam-operasional/sesi/akhiri",
 		middleware.AuthMiddleware(cfg.JWTSecret),
 		middleware.PermissionMiddleware(permissionRepository, "jadwal.manage"),
@@ -421,6 +445,25 @@ func main() {
 		middleware.AuthMiddleware(cfg.JWTSecret),
 		middleware.RoleMiddleware(userRepository, "pedagang"),
 		lapakController.GetStatus,
+	)
+
+	// 12b. Checkout (cek-out akhir sesi + input omset)
+	app.Get("/api/pedagang/checkout",
+		middleware.AuthMiddleware(cfg.JWTSecret),
+		middleware.RoleMiddleware(userRepository, "pedagang"),
+		checkoutController.GetDataCheckout,
+	)
+
+	app.Post("/api/pedagang/checkout",
+		middleware.AuthMiddleware(cfg.JWTSecret),
+		middleware.RoleMiddleware(userRepository, "pedagang"),
+		checkoutController.SubmitCheckout,
+	)
+
+	app.Get("/api/pedagang/check-in/status",
+	middleware.AuthMiddleware(cfg.JWTSecret),
+	middleware.RoleMiddleware(userRepository, "pedagang"),
+	scanController.GetStatusCheckIn,
 	)
 
 	// ============================================================

@@ -96,3 +96,18 @@ func (c *ScanController) GetRiwayatScan(ctx fiber.Ctx) error {
 
     return ctx.Status(fiber.StatusOK).JSON(resp)
 }
+
+// GetStatusCheckIn - GET /api/pedagang/check-in/status
+func (c *ScanController) GetStatusCheckIn(ctx fiber.Ctx) error {
+	userID, ok := ctx.Locals("user_id").(string)
+	if !ok {
+		return ctx.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "unauthorized"})
+	}
+
+	resp, err := c.scanUsecase.GetStatusCheckIn(ctx.Context(), userID)
+	if err != nil {
+		return ctx.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": err.Error()})
+	}
+
+	return ctx.Status(fiber.StatusOK).JSON(resp)
+}

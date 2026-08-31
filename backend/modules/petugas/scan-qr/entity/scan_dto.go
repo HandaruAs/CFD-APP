@@ -55,3 +55,8 @@ type RiwayatScanResponse struct {
     Riwayat []RiwayatScanItem `json:"riwayat"`
     Total   int               `json:"total"`
 }
+
+type StatusCheckInResponse struct {
+	SudahCheckIn bool       `json:"sudah_check_in"`
+	CheckInAt    *time.Time `json:"check_in_at,omitempty"`
+}

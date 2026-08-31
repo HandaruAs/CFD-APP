@@ -35,6 +35,8 @@ type ClaimLapakResponse struct {
 // klaim, atau langsung nampilin nomor lapak yang udah didapet.
 type StatusLapakResponse struct {
 	SudahKlaim    bool       `json:"sudah_klaim"`
+	SesiAktif     bool       `json:"sesi_aktif"`
+	PesanSesi     *string    `json:"pesan_sesi,omitempty"`
 	NomorLapak    *string    `json:"nomor_lapak,omitempty"`
 	NamaJalan     *string    `json:"nama_jalan,omitempty"`
 	NamaKecamatan *string    `json:"nama_kecamatan,omitempty"`

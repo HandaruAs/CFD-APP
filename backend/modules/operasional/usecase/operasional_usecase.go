@@ -19,6 +19,7 @@ var (
 type OperasionalRepository interface {
 	GetSesiHariIni(ctx context.Context) (*entity.Sesi, error)
 	UpsertSesiHariIni(ctx context.Context, jamMulai, jamSelesai string, createdBy *string) (*entity.Sesi, error)
+	BukaSesiManual(ctx context.Context, jamMulai string, createdBy *string) (*entity.Sesi, error)
 	UpdateSesi(ctx context.Context, id, jamMulai, jamSelesai string, updatedBy *string) (*entity.Sesi, error)
 	AkhiriSesiLebihAwal(ctx context.Context, id string) (*entity.Sesi, error)
 	ListRiwayat(ctx context.Context, limit int) ([]entity.Sesi, error)
@@ -33,6 +34,7 @@ type OperasionalRepository interface {
 type OperasionalUsecase interface {
 	GetStatusOperasional(ctx context.Context) (*entity.StatusOperasionalResponse, error)
 	SimpanSesi(ctx context.Context, userID string, req *entity.UpdateSesiRequest) (*entity.SesiAktifDTO, error)
+	BukaSesiManual(ctx context.Context, userID string) (*entity.SesiAktifDTO, error)
 	AkhiriSesiLebihAwal(ctx context.Context) (*entity.SesiAktifDTO, error)
 	UpdatePendaftaran(ctx context.Context, userID string, req *entity.UpdatePendaftaranRequest) error
 	ListJadwalMingguan(ctx context.Context) ([]entity.JadwalMingguanDTO, error)
@@ -215,6 +217,26 @@ func (u *operasionalUsecase) SimpanSesi(ctx context.Context, userID string, req 
 
 	// Insert baru
 	sesi, err := u.repo.UpsertSesiHariIni(ctx, req.JamMulai, req.JamSelesaiRencana, &userID)
+	if err != nil {
+		return nil, err
+	}
+	return toSesiAktifDTO(sesi)
+}
+
+// BukaSesiManual: buka sesi CFD langsung sekarang tanpa perlu isi jam,
+// dipakai buat testing atau situasi darurat. Sesi aktif sampai 23:59:59
+// hari ini (bisa diakhiri lebih awal lewat AkhiriSesiLebihAwal).
+func (u *operasionalUsecase) BukaSesiManual(ctx context.Context, userID string) (*entity.SesiAktifDTO, error) {
+	existing, err := u.repo.GetSesiHariIni(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if existing != nil {
+		return nil, ErrSesiSudahDiatur
+	}
+
+	jamMulai := time.Now().Format("15:04:05")
+	sesi, err := u.repo.BukaSesiManual(ctx, jamMulai, &userID)
 	if err != nil {
 		return nil, err
 	}

@@ -74,6 +74,21 @@ func (r *OperasionalRepository) UpsertSesiHariIni(ctx context.Context, jamMulai,
 	return scanSesi(row)
 }
 
+// BukaSesiManual: buka sesi baru langsung sekarang, jam selesai default
+// 23:59:59 hari ini. Dipakai buat toggle "Buka Sesi Sekarang" di petugas.
+func (r *OperasionalRepository) BukaSesiManual(ctx context.Context, jamMulai string, createdBy *string) (*entity.Sesi, error) {
+	namaSesi := "CFD " + time.Now().Format("02 January 2006")
+
+	row := r.db.QueryRow(ctx, `
+		INSERT INTO cfd_sessions (
+			nama_sesi, tanggal, jam_mulai, jam_selesai, status, created_by, is_active
+		) VALUES ($1, CURRENT_DATE, $2, '23:59:59', 'aktif', $3, true)
+		RETURNING `+sesiColumns,
+		namaSesi, jamMulai, createdBy,
+	)
+	return scanSesi(row)
+}
+
 // UpdateSesi: update jam mulai & selesai untuk sesi yang sudah ada (hanya jika is_active = true)
 func (r *OperasionalRepository) UpdateSesi(ctx context.Context, id, jamMulai, jamSelesai string, updatedBy *string) (*entity.Sesi, error) {
 	row := r.db.QueryRow(ctx, `

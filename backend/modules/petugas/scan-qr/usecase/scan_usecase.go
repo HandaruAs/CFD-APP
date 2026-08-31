@@ -14,6 +14,7 @@ type ScanUsecase interface {
     VerifyQRCode(ctx context.Context, qrCode string, petugasID string) (*entity.VerifyQRResponse, error)
     CheckInPedagang(ctx context.Context, pedagangID, petugasID, catatan string) (*entity.CheckInResponse, error)
     GetRiwayatScan(ctx context.Context, petugasID string) (*entity.RiwayatScanResponse, error)
+    GetStatusCheckIn(ctx context.Context, userID string) (*entity.StatusCheckInResponse, error)
 }
 
 type scanUsecase struct {
@@ -204,4 +205,35 @@ func splitName(name string) []string {
         parts = append(parts, current)
     }
     return parts
+}
+
+func (u *scanUsecase) GetStatusCheckIn(ctx context.Context, userID string) (*entity.StatusCheckInResponse, error) {
+	pedagangID, err := u.repo.GetPedagangProfileIDByUserID(ctx, userID)
+	if err != nil {
+		return nil, err
+	}
+	if pedagangID == "" {
+		return &entity.StatusCheckInResponse{SudahCheckIn: false}, nil
+	}
+
+	session, err := u.repo.GetActiveSessionToday(ctx, time.Now())
+	if err != nil {
+		return nil, err
+	}
+	if session == nil {
+		return &entity.StatusCheckInResponse{SudahCheckIn: false}, nil
+	}
+
+	kehadiran, err := u.repo.GetKehadiranByPedagangAndSession(ctx, pedagangID, session.ID)
+	if err != nil {
+		return nil, err
+	}
+	if kehadiran == nil {
+		return &entity.StatusCheckInResponse{SudahCheckIn: false}, nil
+	}
+
+	return &entity.StatusCheckInResponse{
+		SudahCheckIn: true,
+		CheckInAt:    &kehadiran.CheckInAt,
+	}, nil
 }

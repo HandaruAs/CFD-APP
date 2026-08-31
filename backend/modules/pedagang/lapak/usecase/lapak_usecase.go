@@ -2,9 +2,11 @@ package usecase
 
 import (
 	"context"
+	"errors"
 	"time"
 
 	"cfd-backend/modules/pedagang/lapak/entity"
+	"cfd-backend/modules/pedagang/lapak/repository"
 )
 
 type LapakRepository interface {
@@ -66,9 +68,26 @@ func (u *lapakUsecase) ClaimLapak(ctx context.Context, userID, jalanID string) (
 	}, nil
 }
 
+// GetStatus dipakai frontend buat 2 hal sekaligus: (1) nentuin apakah form
+// klaim boleh ditampilin sama sekali (SesiAktif), dan (2) kalau boleh, apakah
+// pedagang ini udah pernah klaim (SudahKlaim). Kalau sesi belum aktif (belum
+// dibuka petugas / belum masuk jam / udah lewat jam), ini TETAP return 200
+// dengan SesiAktif: false + pesan alasannya -- bukan error, biar frontend
+// gampang nampilin banner tanpa perlu parsing error response.
 func (u *lapakUsecase) GetStatus(ctx context.Context, userID string) (*entity.StatusLapakResponse, error) {
 	sessionID, err := u.repo.GetActiveSessionID(ctx)
 	if err != nil {
+		switch {
+		case errors.Is(err, repository.ErrTidakAdaSesiAktif),
+			errors.Is(err, repository.ErrCheckInDitutup),
+			errors.Is(err, repository.ErrDiluarJamCheckIn):
+			pesan := err.Error()
+			return &entity.StatusLapakResponse{
+				SudahKlaim: false,
+				SesiAktif:  false,
+				PesanSesi:  &pesan,
+			}, nil
+		}
 		return nil, err
 	}
 
@@ -83,11 +102,12 @@ func (u *lapakUsecase) GetStatus(ctx context.Context, userID string) (*entity.St
 	}
 
 	if !found {
-		return &entity.StatusLapakResponse{SudahKlaim: false}, nil
+		return &entity.StatusLapakResponse{SudahKlaim: false, SesiAktif: true}, nil
 	}
 
 	return &entity.StatusLapakResponse{
 		SudahKlaim:    true,
+		SesiAktif:     true,
 		NomorLapak:    &nomorLapak,
 		NamaJalan:     &namaJalan,
 		NamaKecamatan: &namaKecamatan,
