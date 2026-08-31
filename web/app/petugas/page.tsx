@@ -8,6 +8,7 @@ import {
   FileText,
   ChevronRight,
   Sparkles,
+  MapPin,
 } from "lucide-react";
 
 type MenuItem = {
@@ -44,6 +45,14 @@ const MENU_ITEMS: MenuItem[] = [
     href: "/petugas/laporan",
     icon: FileText,
     color: "bg-tertiary-container",
+    badge: "Lihat Data",
+  },
+  {
+    title: "Sisa Lapak",
+    description: "Cek sisa lapak yang masih tersedia per kecamatan & jalan",
+    href: "/petugas/sisa-lapak",
+    icon: MapPin,
+    color: "bg-secondary",
     badge: "Lihat Data",
   },
 ];

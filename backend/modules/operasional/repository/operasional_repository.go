@@ -2,6 +2,8 @@ package repository
 
 import (
 	"context"
+	"errors"
+	"time"
 
 	"cfd-backend/modules/operasional/entity"
 
@@ -17,108 +19,86 @@ func NewOperasionalRepository(db *pgxpool.Pool) *OperasionalRepository {
 	return &OperasionalRepository{db: db}
 }
 
-// kolom jam_mulai / jam_selesai_rencana / jam_selesai_aktual di database
-// bertipe TIME dan tanggal bertipe DATE -- di-cast ::text di query biar
-// bisa langsung di-Scan ke field string di entity.Sesi (sesuai komentar
-// yang kamu tulis sendiri di sesi.go: "format 2006-01-02" / "15:04:05").
+// kolom disesuaikan dengan struktur migrasi 26
 const sesiColumns = `
-	id, tanggal::text, jam_mulai::text, jam_selesai_rencana::text,
-	jam_selesai_aktual::text, status, created_by, created_at, updated_at
+	id, nama_sesi, tanggal::text, jam_mulai::text, jam_selesai::text,
+	jam_selesai_aktual::text, status, created_by, is_active, created_at, updated_at
 `
 
 func scanSesi(row pgx.Row) (*entity.Sesi, error) {
 	var s entity.Sesi
 	err := row.Scan(
-		&s.ID, &s.Tanggal, &s.JamMulai, &s.JamSelesaiRencana,
-		&s.JamSelesaiAktual, &s.Status, &s.CreatedBy, &s.CreatedAt, &s.UpdatedAt,
+		&s.ID, &s.NamaSesi, &s.Tanggal, &s.JamMulai, &s.JamSelesaiRencana,
+		&s.JamSelesaiAktual, &s.Status, &s.CreatedBy, &s.IsActive,
+		&s.CreatedAt, &s.UpdatedAt,
 	)
 	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, nil
+		}
 		return nil, err
 	}
 	return &s, nil
 }
 
-// GetSesiHariIni ambil baris cfd_sessions buat tanggal hari ini (server).
-// Balikin (nil, nil) kalau memang belum ada sesi yang diatur hari ini --
-// itu BUKAN error, cuma artinya petugas belum pernah "Simpan Perubahan".
+// GetSesiHariIni ambil sesi yang aktif hari ini (is_active = true)
 func (r *OperasionalRepository) GetSesiHariIni(ctx context.Context) (*entity.Sesi, error) {
 	row := r.db.QueryRow(ctx, `
 		SELECT `+sesiColumns+`
 		FROM cfd_sessions
-		WHERE tanggal = CURRENT_DATE AND deleted_at IS NULL
+		WHERE tanggal = CURRENT_DATE AND is_active = true AND deleted_at IS NULL
 	`)
-
-	s, err := scanSesi(row)
-	if err != nil {
-		if err == pgx.ErrNoRows {
-			return nil, nil
-		}
-		return nil, err
-	}
-	return s, nil
-}
-
-// UpsertSesiHariIni bikin baris sesi hari ini kalau belum ada, atau update
-// jam_mulai/jam_selesai_rencana-nya kalau sudah ada (dipakai tombol
-// "Simpan Perubahan"). Manfaatin unique index partial
-// idx_cfd_sessions_tanggal_active dari migration 019 sebagai target
-// ON CONFLICT.
-//
-// Status ikut di-reset jadi 'berlangsung' setiap kali baris sudah ada --
-// KECUALI kalau statusnya lagi 'diperpanjang', itu dibiarin biar histori
-// "sesi ini pernah diperpanjang" tetap kecatat di Riwayat Operasional.
-// Efeknya: kalau sesi hari ini sudah 'diakhiri_awal'/'selesai_normal',
-// petugas simpan jam baru lewat "Simpan Perubahan" = sesinya "dibuka
-// ulang" jadi berlangsung lagi (dianggap koreksi, bukan sesi baru).
-func (r *OperasionalRepository) UpsertSesiHariIni(ctx context.Context, jamMulai, jamSelesaiRencana string, createdBy *string) (*entity.Sesi, error) {
-	row := r.db.QueryRow(ctx, `
-		INSERT INTO cfd_sessions (tanggal, jam_mulai, jam_selesai_rencana, status, created_by)
-		VALUES (CURRENT_DATE, $1, $2, 'berlangsung', $3)
-		ON CONFLICT (tanggal) WHERE deleted_at IS NULL
-		DO UPDATE SET
-			jam_mulai = EXCLUDED.jam_mulai,
-			jam_selesai_rencana = EXCLUDED.jam_selesai_rencana,
-			status = CASE
-				WHEN cfd_sessions.status = 'diperpanjang' THEN cfd_sessions.status
-				ELSE 'berlangsung'
-			END,
-			jam_selesai_aktual = NULL,
-			updated_at = now()
-		RETURNING `+sesiColumns,
-		jamMulai, jamSelesaiRencana, createdBy,
-	)
-
 	return scanSesi(row)
 }
 
-// AkhiriSesiLebihAwal dipakai tombol "Akhiri Sesi Lebih Awal". Boleh
-// dipanggil selama sesinya masih aktif (jam_selesai_aktual IS NULL),
-// nggak peduli status-nya 'berlangsung' atau 'diperpanjang'.
+// UpsertSesiHariIni: buat sesi baru (insert) jika belum ada, tolak jika sudah ada
+func (r *OperasionalRepository) UpsertSesiHariIni(ctx context.Context, jamMulai, jamSelesai string, createdBy *string) (*entity.Sesi, error) {
+	existing, err := r.GetSesiHariIni(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if existing != nil {
+		return nil, errors.New("sesi hari ini sudah diatur, tidak bisa diubah")
+	}
+
+	// Generate nama sesi otomatis
+	namaSesi := "CFD " + time.Now().Format("02 January 2006")
+
+	row := r.db.QueryRow(ctx, `
+		INSERT INTO cfd_sessions (
+			nama_sesi, tanggal, jam_mulai, jam_selesai, status, created_by, is_active
+		) VALUES ($1, CURRENT_DATE, $2, $3, 'aktif', $4, true)
+		RETURNING `+sesiColumns,
+		namaSesi, jamMulai, jamSelesai, createdBy,
+	)
+	return scanSesi(row)
+}
+
+// UpdateSesi: update jam mulai & selesai untuk sesi yang sudah ada (hanya jika is_active = true)
+func (r *OperasionalRepository) UpdateSesi(ctx context.Context, id, jamMulai, jamSelesai string, updatedBy *string) (*entity.Sesi, error) {
+	row := r.db.QueryRow(ctx, `
+		UPDATE cfd_sessions
+		SET jam_mulai = $1, jam_selesai = $2, updated_at = now()
+		WHERE id = $3 AND deleted_at IS NULL AND is_active = true
+		RETURNING `+sesiColumns,
+		jamMulai, jamSelesai, id,
+	)
+	return scanSesi(row)
+}
+
+// AkhiriSesiLebihAwal: set status 'ditutup' dan jam_selesai_aktual = CURRENT_TIME
 func (r *OperasionalRepository) AkhiriSesiLebihAwal(ctx context.Context, id string) (*entity.Sesi, error) {
 	row := r.db.QueryRow(ctx, `
 		UPDATE cfd_sessions
-		SET status = 'diakhiri_awal', jam_selesai_aktual = CURRENT_TIME, updated_at = now()
-		WHERE id = $1 AND deleted_at IS NULL AND jam_selesai_aktual IS NULL
+		SET status = 'ditutup', jam_selesai_aktual = CURRENT_TIME, is_active = false, updated_at = now()
+		WHERE id = $1 AND deleted_at IS NULL AND is_active = true
 		RETURNING `+sesiColumns,
 		id,
 	)
-
-	s, err := scanSesi(row)
-	if err != nil {
-		if err == pgx.ErrNoRows {
-			return nil, nil // id salah, atau sesinya udah nggak aktif
-		}
-		return nil, err
-	}
-	return s, nil
+	return scanSesi(row)
 }
 
-// --- Dipakai background job (scheduler) buat auto mulai/selesaiin sesi ---
-
-// GetJadwalHariIni ambil jadwal mingguan yang AKTIF buat hari tertentu
-// (dari entity.HariDariWeekday(time.Now().Weekday())). Balikin (nil, nil)
-// kalau nggak ada jadwal CFD buat hari itu (atau jadwalnya lagi
-// dinonaktifkan) -- itu bukan error, artinya memang bukan hari CFD.
+// ---- Jadwal Mingguan ----
 func (r *OperasionalRepository) GetJadwalHariIni(ctx context.Context, hari entity.Hari) (*entity.JadwalMingguan, error) {
 	var j entity.JadwalMingguan
 	err := r.db.QueryRow(ctx, `
@@ -127,7 +107,7 @@ func (r *OperasionalRepository) GetJadwalHariIni(ctx context.Context, hari entit
 		WHERE hari = $1 AND is_active = true
 	`, hari).Scan(&j.ID, &j.Hari, &j.JamMulai, &j.JamSelesaiRencana, &j.IsActive, &j.UpdatedBy, &j.CreatedAt, &j.UpdatedAt)
 	if err != nil {
-		if err == pgx.ErrNoRows {
+		if errors.Is(err, pgx.ErrNoRows) {
 			return nil, nil
 		}
 		return nil, err
@@ -135,33 +115,17 @@ func (r *OperasionalRepository) GetJadwalHariIni(ctx context.Context, hari entit
 	return &j, nil
 }
 
-// AutoSelesaikanSesi dipanggil scheduler buat nutup sesi begitu waktu
-// server udah lewat jam_selesai_rencana-nya. Status TETAP 'diperpanjang'
-// kalau memang lagi diperpanjang (biar riwayatnya jujur "pernah
-// diperpanjang"), selain itu jadi 'selesai_normal'.
-func (r *OperasionalRepository) AutoSelesaikanSesi(ctx context.Context, id, jamSelesaiRencana string) (*entity.Sesi, error) {
+func (r *OperasionalRepository) AutoSelesaikanSesi(ctx context.Context, id, jamSelesai string) (*entity.Sesi, error) {
 	row := r.db.QueryRow(ctx, `
 		UPDATE cfd_sessions
-		SET
-			status = CASE WHEN status = 'diperpanjang' THEN status ELSE 'selesai_normal' END,
-			jam_selesai_aktual = $1,
-			updated_at = now()
-		WHERE id = $2 AND deleted_at IS NULL AND jam_selesai_aktual IS NULL
+		SET status = 'selesai', jam_selesai_aktual = $1, is_active = false, updated_at = now()
+		WHERE id = $2 AND deleted_at IS NULL AND is_active = true
 		RETURNING `+sesiColumns,
-		jamSelesaiRencana, id,
+		jamSelesai, id,
 	)
-
-	s, err := scanSesi(row)
-	if err != nil {
-		if err == pgx.ErrNoRows {
-			return nil, nil
-		}
-		return nil, err
-	}
-	return s, nil
+	return scanSesi(row)
 }
 
-// UpdateJadwalMingguan upsert (by hari) template jadwal mingguan.
 func (r *OperasionalRepository) UpdateJadwalMingguan(ctx context.Context, hari entity.Hari, jamMulai, jamSelesaiRencana string, isActive bool, updatedBy *string) (*entity.JadwalMingguan, error) {
 	var j entity.JadwalMingguan
 	err := r.db.QueryRow(ctx, `
@@ -183,8 +147,6 @@ func (r *OperasionalRepository) UpdateJadwalMingguan(ctx context.Context, hari e
 	return &j, nil
 }
 
-// ListJadwalMingguan ambil semua baris jadwal mingguan (buat ditampilin
-// di halaman pengaturan, kalau nanti dibikin).
 func (r *OperasionalRepository) ListJadwalMingguan(ctx context.Context) ([]entity.JadwalMingguan, error) {
 	rows, err := r.db.Query(ctx, `
 		SELECT id, hari, jam_mulai::text, jam_selesai_rencana::text, is_active, updated_by, created_at, updated_at
@@ -212,37 +174,39 @@ func (r *OperasionalRepository) ListJadwalMingguan(ctx context.Context) ([]entit
 	return list, rows.Err()
 }
 
-// PerpanjangSesi ganti jam_selesai_rencana ke jam yang lebih lambat dan
-// set status jadi 'diperpanjang'. jam_selesai_aktual IS NULL dipakai
-// sebagai penanda "sesi ini masih aktif" (bukan status-nya) -- jadi boleh
-// dipanggil berkali-kali dalam sehari selama sesinya belum ditutup.
-func (r *OperasionalRepository) PerpanjangSesi(ctx context.Context, id, jamSelesaiBaru string) (*entity.Sesi, error) {
-	row := r.db.QueryRow(ctx, `
-		UPDATE cfd_sessions
-		SET jam_selesai_rencana = $1, status = 'diperpanjang', updated_at = now()
-		WHERE id = $2 AND deleted_at IS NULL AND jam_selesai_aktual IS NULL
-		RETURNING `+sesiColumns,
-		jamSelesaiBaru, id,
-	)
-
-	s, err := scanSesi(row)
+// ---- Pendaftaran ----
+func (r *OperasionalRepository) GetPengaturanPendaftaran(ctx context.Context) (*entity.PengaturanPendaftaran, error) {
+	var p entity.PengaturanPendaftaran
+	err := r.db.QueryRow(ctx, `
+		SELECT id, is_open, link_pendaftaran, jam_buka_pendaftaran::text, jam_tutup_pendaftaran::text, updated_by, updated_at
+		FROM pengaturan_pendaftaran
+		LIMIT 1
+	`).Scan(&p.ID, &p.IsOpen, &p.LinkPendaftaran, &p.JamBuka, &p.JamTutup, &p.UpdatedBy, &p.UpdatedAt)
 	if err != nil {
-		if err == pgx.ErrNoRows {
-			return nil, nil // id salah, atau sesinya udah berakhir
-		}
 		return nil, err
 	}
-	return s, nil
+	return &p, nil
 }
 
-// ListRiwayat ambil sesi-sesi yang SUDAH selesai (bukan yang masih
-// 'berlangsung' hari ini), buat tabel "Riwayat Operasional". Diurutin
-// dari yang paling baru.
+func (r *OperasionalRepository) UpdatePengaturanPendaftaran(ctx context.Context, isOpen bool, jamBuka, jamTutup *string, link *string, updatedBy *string) error {
+	_, err := r.db.Exec(ctx, `
+		UPDATE pengaturan_pendaftaran
+		SET is_open = $1,
+			jam_buka_pendaftaran = $2,
+			jam_tutup_pendaftaran = $3,
+			link_pendaftaran = $4,
+			updated_by = $5,
+			updated_at = now()
+	`, isOpen, jamBuka, jamTutup, link, updatedBy)
+	return err
+}
+
+// ListRiwayat: ambil sesi yang sudah selesai (status 'selesai' atau 'ditutup' atau 'dibatalkan')
 func (r *OperasionalRepository) ListRiwayat(ctx context.Context, limit int) ([]entity.Sesi, error) {
 	rows, err := r.db.Query(ctx, `
 		SELECT `+sesiColumns+`
 		FROM cfd_sessions
-		WHERE deleted_at IS NULL AND status != 'berlangsung'
+		WHERE deleted_at IS NULL AND status IN ('selesai', 'ditutup', 'dibatalkan')
 		ORDER BY tanggal DESC, jam_mulai DESC
 		LIMIT $1
 	`, limit)
@@ -260,28 +224,4 @@ func (r *OperasionalRepository) ListRiwayat(ctx context.Context, limit int) ([]e
 		list = append(list, *s)
 	}
 	return list, rows.Err()
-}
-
-// GetPengaturanPendaftaran ambil baris settings (cuma ada 1 baris di tabel).
-func (r *OperasionalRepository) GetPengaturanPendaftaran(ctx context.Context) (*entity.PengaturanPendaftaran, error) {
-	var p entity.PengaturanPendaftaran
-	err := r.db.QueryRow(ctx, `
-		SELECT id, is_open, link_pendaftaran, updated_by, updated_at
-		FROM pengaturan_pendaftaran
-		LIMIT 1
-	`).Scan(&p.ID, &p.IsOpen, &p.LinkPendaftaran, &p.UpdatedBy, &p.UpdatedAt)
-	if err != nil {
-		return nil, err
-	}
-	return &p, nil
-}
-
-// UpdatePengaturanPendaftaran toggle buka/tutup. Nggak perlu WHERE id=...
-// soalnya tabel ini emang didesain cuma 1 baris (lihat migration 019).
-func (r *OperasionalRepository) UpdatePengaturanPendaftaran(ctx context.Context, isOpen bool, updatedBy *string) error {
-	_, err := r.db.Exec(ctx, `
-		UPDATE pengaturan_pendaftaran
-		SET is_open = $1, updated_by = $2, updated_at = now()
-	`, isOpen, updatedBy)
-	return err
 }

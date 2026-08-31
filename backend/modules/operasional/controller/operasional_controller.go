@@ -17,8 +17,6 @@ func NewOperasionalController(operasionalUsecase usecase.OperasionalUsecase) *Op
 	return &OperasionalController{operasionalUsecase: operasionalUsecase}
 }
 
-// getUserID ambil user_id dari JWT (di-set sama AuthMiddleware ke c.Locals),
-// dipakai buat isi created_by / updated_by.
 func getUserID(c fiber.Ctx) (string, error) {
 	userID, exists := c.Locals("user_id").(string)
 	if !exists || userID == "" {
@@ -27,9 +25,6 @@ func getUserID(c fiber.Ctx) (string, error) {
 	return userID, nil
 }
 
-// GetStatusOperasional menangani GET /api/petugas/jam-operasional
-// Balikin status pendaftaran + sesi hari ini + riwayat sekaligus, biar
-// halaman FE cuma butuh 1 kali fetch pas mount.
 func (ctrl *OperasionalController) GetStatusOperasional(c fiber.Ctx) error {
 	status, err := ctrl.operasionalUsecase.GetStatusOperasional(c.Context())
 	if err != nil {
@@ -40,9 +35,6 @@ func (ctrl *OperasionalController) GetStatusOperasional(c fiber.Ctx) error {
 	return c.Status(fiber.StatusOK).JSON(status)
 }
 
-// SimpanSesi menangani PATCH /api/petugas/jam-operasional/sesi
-// (tombol "Simpan Perubahan"). Kalau sesi hari ini belum ada, otomatis
-// dibikinkan (upsert) -- petugas nggak perlu tombol "mulai sesi" terpisah.
 func (ctrl *OperasionalController) SimpanSesi(c fiber.Ctx) error {
 	var req entity.UpdateSesiRequest
 	if err := c.Bind().Body(&req); err != nil {
@@ -60,53 +52,20 @@ func (ctrl *OperasionalController) SimpanSesi(c fiber.Ctx) error {
 
 	sesi, err := ctrl.operasionalUsecase.SimpanSesi(c.Context(), userID, &req)
 	if err != nil {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
-			"error": "gagal menyimpan jam sesi: " + err.Error(),
+		status := fiber.StatusBadRequest
+		if errors.Is(err, usecase.ErrSesiSudahDiatur) {
+			status = fiber.StatusConflict
+		}
+		return c.Status(status).JSON(fiber.Map{
+			"error": err.Error(),
 		})
 	}
-
 	return c.Status(fiber.StatusOK).JSON(fiber.Map{
 		"message": "jam sesi berhasil disimpan",
 		"sesi":    sesi,
 	})
 }
 
-// PerpanjangSesi menangani PATCH /api/petugas/jam-operasional/sesi/perpanjang
-// (tombol "Perpanjang Sesi"). Beda dari SimpanSesi: cuma boleh majuin jam
-// selesai, dan otomatis nyetel status jadi 'diperpanjang'.
-func (ctrl *OperasionalController) PerpanjangSesi(c fiber.Ctx) error {
-	var req entity.PerpanjangSesiRequest
-	if err := c.Bind().Body(&req); err != nil {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
-			"error": err.Error(),
-		})
-	}
-
-	sesi, err := ctrl.operasionalUsecase.PerpanjangSesi(c.Context(), &req)
-	if err != nil {
-		if errors.Is(err, usecase.ErrSesiTidakBisaDiperpanjang) {
-			return c.Status(fiber.StatusConflict).JSON(fiber.Map{
-				"error": err.Error(),
-			})
-		}
-		if errors.Is(err, usecase.ErrJamPerpanjangTidakValid) {
-			return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
-				"error": err.Error(),
-			})
-		}
-		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
-			"error": "gagal memperpanjang sesi",
-		})
-	}
-
-	return c.Status(fiber.StatusOK).JSON(fiber.Map{
-		"message": "sesi CFD berhasil diperpanjang",
-		"sesi":    sesi,
-	})
-}
-
-// AkhiriSesiLebihAwal menangani PATCH /api/petugas/jam-operasional/sesi/akhiri
-// (tombol "Akhiri Sesi Lebih Awal").
 func (ctrl *OperasionalController) AkhiriSesiLebihAwal(c fiber.Ctx) error {
 	sesi, err := ctrl.operasionalUsecase.AkhiriSesiLebihAwal(c.Context())
 	if err != nil {
@@ -119,15 +78,12 @@ func (ctrl *OperasionalController) AkhiriSesiLebihAwal(c fiber.Ctx) error {
 			"error": "gagal mengakhiri sesi",
 		})
 	}
-
 	return c.Status(fiber.StatusOK).JSON(fiber.Map{
 		"message": "sesi CFD berhasil diakhiri lebih awal",
 		"sesi":    sesi,
 	})
 }
 
-// UpdatePendaftaran menangani PATCH /api/petugas/jam-operasional/pendaftaran
-// (tombol "Buka Pendaftaran" / "Tutup Pendaftaran").
 func (ctrl *OperasionalController) UpdatePendaftaran(c fiber.Ctx) error {
 	var req entity.UpdatePendaftaranRequest
 	if err := c.Bind().Body(&req); err != nil {
@@ -143,26 +99,16 @@ func (ctrl *OperasionalController) UpdatePendaftaran(c fiber.Ctx) error {
 		})
 	}
 
-	if err := ctrl.operasionalUsecase.UpdatePendaftaran(c.Context(), userID, req.IsOpen); err != nil {
-		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
-			"error": "gagal mengubah status pendaftaran",
+	if err := ctrl.operasionalUsecase.UpdatePendaftaran(c.Context(), userID, &req); err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"error": err.Error(),
 		})
 	}
-
-	message := "pendaftaran pedagang berhasil ditutup"
-	if req.IsOpen {
-		message = "pendaftaran pedagang berhasil dibuka"
-	}
-
 	return c.Status(fiber.StatusOK).JSON(fiber.Map{
-		"message": message,
-		"isOpen":  req.IsOpen,
+		"message": "pengaturan pendaftaran berhasil diperbarui",
 	})
 }
 
-// GetJadwalMingguan menangani GET /api/petugas/jam-operasional/jadwal-mingguan
-// Balikin template jadwal CFD per hari -- ini yang dipakai background job
-// buat auto mulai/selesaiin sesi (lihat usecase.TickJadwalOtomatis).
 func (ctrl *OperasionalController) GetJadwalMingguan(c fiber.Ctx) error {
 	list, err := ctrl.operasionalUsecase.ListJadwalMingguan(c.Context())
 	if err != nil {
@@ -173,10 +119,6 @@ func (ctrl *OperasionalController) GetJadwalMingguan(c fiber.Ctx) error {
 	return c.Status(fiber.StatusOK).JSON(fiber.Map{"jadwal": list})
 }
 
-// UpdateJadwalMingguan menangani PATCH /api/petugas/jam-operasional/jadwal-mingguan
-// Upsert (by hari) template jadwal CFD -- misal ubah dari "Minggu
-// 06:00-11:00" jadi jam lain, atau matiin sementara (isActive: false)
-// kalau minggu ini CFD-nya libur.
 func (ctrl *OperasionalController) UpdateJadwalMingguan(c fiber.Ctx) error {
 	var req entity.UpdateJadwalMingguanRequest
 	if err := c.Bind().Body(&req); err != nil {
@@ -198,7 +140,6 @@ func (ctrl *OperasionalController) UpdateJadwalMingguan(c fiber.Ctx) error {
 			"error": "gagal menyimpan jadwal mingguan: " + err.Error(),
 		})
 	}
-
 	return c.Status(fiber.StatusOK).JSON(fiber.Map{
 		"message": "jadwal mingguan berhasil disimpan",
 		"jadwal":  jadwal,
