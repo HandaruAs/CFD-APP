@@ -97,6 +97,11 @@ export default function PilihLokasiStanPage() {
   // ---- Status klaim lapak (cek dulu apakah udah pernah klaim) ----
   const [checkingStatus, setCheckingStatus] = useState(true);
 
+  // ---- Status sesi CFD (apakah petugas udah buka jam operasional
+  // DAN waktu sekarang beneran ada di rentang jam_mulai-jam_selesai) ----
+  const [sesiAktif, setSesiAktif] = useState(true); // optimistic default, biar gak flash banner pas awal load
+  const [pesanSesi, setPesanSesi] = useState<string | null>(null);
+
   // ---- Kecamatan & jalan ----
   const [kecamatanList, setKecamatanList] = useState<Kecamatan[]>([]);
   const [loadingKecamatan, setLoadingKecamatan] = useState(true);
@@ -153,7 +158,7 @@ export default function PilihLokasiStanPage() {
     fetchDataPendaftar();
   }, []);
 
-  // ---- Cek apakah udah pernah klaim lapak di sesi ini ----
+  // ---- Cek apakah udah pernah klaim lapak, sekaligus status sesi CFD ----
   useEffect(() => {
     async function fetchStatus() {
       try {
@@ -165,6 +170,8 @@ export default function PilihLokasiStanPage() {
           return;
         }
         const data = await res.json();
+        setSesiAktif(Boolean(data.sesi_aktif));
+        setPesanSesi(data.pesan_sesi ?? null);
         if (data.sudah_klaim) {
           setHasil({
             nomorStand: data.nomor_lapak ?? "-",
@@ -242,6 +249,40 @@ export default function PilihLokasiStanPage() {
       cancelled = true;
     };
   }, [kecamatanId]);
+
+  // ---- Polling status check-in setelah QR ditampilkan ----
+  // Begitu pedagang dapet nomor stand (hasil != null), kita mulai nanya
+  // ke backend tiap 5 detik: "udah di-scan petugas belum?". Begitu udah,
+  // langsung redirect ke halaman cek-out -- pedagang gak perlu refresh
+  // manual atau nunggu-nungguin layar.
+  useEffect(() => {
+    if (!hasil) return;
+
+    let cancelled = false;
+
+    async function checkStatus() {
+      try {
+        const res = await fetch(apiUrl("/api/pedagang/check-in/status"), {
+          headers: authHeaders(),
+        });
+        if (!res.ok) return;
+        const data = await res.json();
+        if (!cancelled && data.sudah_check_in) {
+          router.push("/pedagang/CekOut");
+        }
+      } catch {
+        // gagal fetch -- coba lagi di polling berikutnya, gak perlu nampilin error
+      }
+    }
+
+    checkStatus(); // cek langsung sekali begitu QR muncul, jangan nunggu 5 detik pertama
+    const interval = setInterval(checkStatus, 5000);
+
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
+    };
+  }, [hasil, router]);
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
@@ -480,8 +521,28 @@ export default function PilihLokasiStanPage() {
           </div>
         )}
 
+        {/* ================= BELUM ADA SESI AKTIF ================= */}
+        {!hasil && !isLoadingAwal && !sesiAktif && (
+          <div className="w-full bg-white rounded-2xl border border-[#e7e8f1] shadow-[0_2px_8px_-2px_rgba(23,29,64,0.06)] p-8 flex flex-col items-center text-center gap-3">
+            <div className="w-14 h-14 rounded-2xl bg-[#fdecec] flex items-center justify-center">
+              <AlertTriangle size={28} className="text-[#ba1a1a]" />
+            </div>
+            <h3 className="text-[16px] font-bold text-[#1a1d29]">Belum Bisa Check-in</h3>
+            <p className="text-[13px] text-[#767884] max-w-[360px]">
+              {pesanSesi ?? "Sesi CFD hari ini belum dibuka oleh petugas."}
+            </p>
+            <button
+              type="button"
+              onClick={handleBack}
+              className="mt-2 h-9 px-6 bg-[#00288e] text-white text-[12.5px] font-medium rounded-lg hover:bg-[#173bab] active:scale-[0.98] transition-all"
+            >
+              Kembali
+            </button>
+          </div>
+        )}
+
         {/* ================= FORM PILIH LOKASI ================= */}
-        {!hasil && !isLoadingAwal && (
+        {!hasil && !isLoadingAwal && sesiAktif && (
           <form onSubmit={handleSubmit} className="flex flex-col gap-4">
             {/* Lokasi Penempatan */}
             <section className="w-full bg-white rounded-2xl border border-[#e7e8f1] shadow-[0_2px_8px_-2px_rgba(23,29,64,0.06)] p-5">

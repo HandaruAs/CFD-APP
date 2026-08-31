@@ -37,9 +37,18 @@ func (ctrl *LapakController) ListJalan(c fiber.Ctx) error {
 
 	list, err := ctrl.usecase.ListJalan(c.Context(), kecamatanID)
 	if err != nil {
-		if errors.Is(err, repository.ErrTidakAdaSesiAktif) {
+		switch {
+		case errors.Is(err, repository.ErrTidakAdaSesiAktif):
 			return c.Status(fiber.StatusConflict).JSON(fiber.Map{
 				"error": "belum ada sesi CFD yang dibuka petugas hari ini",
+			})
+		case errors.Is(err, repository.ErrCheckInDitutup):
+			return c.Status(fiber.StatusConflict).JSON(fiber.Map{
+				"error": "check-in pedagang sedang ditutup oleh petugas",
+			})
+		case errors.Is(err, repository.ErrDiluarJamCheckIn):
+			return c.Status(fiber.StatusConflict).JSON(fiber.Map{
+				"error": "saat ini di luar jam check-in yang ditentukan petugas",
 			})
 		}
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
@@ -72,6 +81,10 @@ func (ctrl *LapakController) ClaimLapak(c fiber.Ctx) error {
 		switch {
 		case errors.Is(err, repository.ErrTidakAdaSesiAktif):
 			return c.Status(fiber.StatusConflict).JSON(fiber.Map{"error": "belum ada sesi CFD yang dibuka petugas hari ini"})
+		case errors.Is(err, repository.ErrCheckInDitutup):
+			return c.Status(fiber.StatusConflict).JSON(fiber.Map{"error": "check-in pedagang sedang ditutup oleh petugas"})
+		case errors.Is(err, repository.ErrDiluarJamCheckIn):
+			return c.Status(fiber.StatusConflict).JSON(fiber.Map{"error": "saat ini di luar jam check-in yang ditentukan petugas"})
 		case errors.Is(err, repository.ErrLapakPenuh):
 			return c.Status(fiber.StatusConflict).JSON(fiber.Map{"error": "lapak di jalan ini sudah penuh, coba jalan lain"})
 		case errors.Is(err, repository.ErrSudahKlaim):
@@ -94,9 +107,6 @@ func (ctrl *LapakController) GetStatus(c fiber.Ctx) error {
 
 	status, err := ctrl.usecase.GetStatus(c.Context(), userID)
 	if err != nil {
-		if errors.Is(err, repository.ErrTidakAdaSesiAktif) {
-			return c.Status(fiber.StatusOK).JSON(fiber.Map{"sudah_klaim": false})
-		}
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "gagal mengambil status"})
 	}
 

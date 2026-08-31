@@ -1,49 +1,223 @@
 "use client";
 
-import { Store, Wallet, MapPin, User } from "lucide-react";
-import { useState } from "react";
+import { Store, Wallet, MapPin, User, Loader2, CheckCircle2, AlertTriangle } from "lucide-react";
+import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
+
+interface DataCheckout {
+  kecamatan: string;
+  namaJalan: string;
+  nomorStan: string;
+  nik: string;
+  namaLengkap: string;
+  tanggalLahir: string;
+  namaUsaha: string;
+  kategoriUsaha: string;
+  jenisLapak: string;
+  sudahCheckIn: boolean;
+  sudahCheckOut: boolean;
+  omset?: number;
+}
+
+const EMPTY_DATA: DataCheckout = {
+  kecamatan: "",
+  namaJalan: "",
+  nomorStan: "",
+  nik: "",
+  namaLengkap: "",
+  tanggalLahir: "",
+  namaUsaha: "",
+  kategoriUsaha: "",
+  jenisLapak: "",
+  sudahCheckIn: false,
+  sudahCheckOut: false,
+};
+
+const KATEGORI_LABEL: Record<string, string> = {
+  makanan_minuman: "Makanan dan Minuman",
+  bukan_makanan_minuman: "Bukan Makanan dan Minuman",
+};
+
+const LAPAK_LABEL: Record<string, string> = {
+  rombong: "Rombong",
+  meja: "Meja",
+};
 
 export default function MerchantCheckoutPage() {
-  // Data akan diisi oleh backend nantinya
-  const [dataPedagang] = useState({
-    kecamatan: "",
-    namaJalan: "",
-    nomorStan: "",
-    nik: "",
-    namaLengkap: "",
-    tanggalLahir: "",
-    namaUsaha: "",
-    kategoriUsaha: "",
-    jenisLapak: "",
-  });
+  const router = useRouter();
 
-  const [formData, setFormData] = useState({
-    omset: "",
-  });
+  const [dataPedagang, setDataPedagang] = useState<DataCheckout>(EMPTY_DATA);
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
-  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const { name, value } = e.target;
+  const [omset, setOmset] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+  const [submitError, setSubmitError] = useState<string | null>(null);
+  const [submitted, setSubmitted] = useState(false);
 
-    // 1. Hapus semua karakter selain angka (hapus titik dari format sebelumnya)
-    const cleanValue = value.replace(/[^0-9]/g, "");
+  // Ambil data checkout (lokasi lapak, data diri, data usaha, status
+  // check-in/check-out) dari backend begitu halaman dibuka.
+  useEffect(() => {
+    async function fetchDataCheckout() {
+      const token = localStorage.getItem("cfd_token");
+      const baseUrl = process.env.NEXT_PUBLIC_API_URL;
 
-    // 2. Format angka menjadi ribuan dengan titik (contoh: 50000 -> 50.000)
+      if (!token || !baseUrl) {
+        setLoadError("Sesi login tidak ditemukan, silakan login ulang.");
+        setLoading(false);
+        return;
+      }
+
+      try {
+        const res = await fetch(`${baseUrl}/api/pedagang/checkout`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        const json = await res.json();
+
+        if (!res.ok) {
+          setLoadError(json?.error ?? "Gagal mengambil data checkout.");
+          setLoading(false);
+          return;
+        }
+
+        setDataPedagang({
+          kecamatan: json.kecamatan ?? "",
+          namaJalan: json.namaJalan ?? "",
+          nomorStan: json.nomorStan ?? "",
+          nik: json.nik ?? "",
+          namaLengkap: json.namaLengkap ?? "",
+          tanggalLahir: json.tanggalLahir ?? "",
+          namaUsaha: json.namaUsaha ?? "",
+          kategoriUsaha: json.kategoriUsaha ?? "",
+          jenisLapak: json.jenisLapak ?? "",
+          sudahCheckIn: !!json.sudahCheckIn,
+          sudahCheckOut: !!json.sudahCheckOut,
+          omset: json.omset,
+        });
+
+        if (json.sudahCheckOut) {
+          setSubmitted(true);
+        }
+      } catch {
+        setLoadError("Gagal terhubung ke server. Cek koneksi internet kamu.");
+      } finally {
+        setLoading(false);
+      }
+    }
+
+    fetchDataCheckout();
+  }, []);
+
+  const handleOmsetChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const cleanValue = e.target.value.replace(/[^0-9]/g, "");
     const formattedValue = cleanValue ? Number(cleanValue).toLocaleString("id-ID") : "";
-
-    setFormData((prev) => ({
-      ...prev,
-      [name]: formattedValue,
-    }));
+    setOmset(formattedValue);
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    const dataLengkap = {
-      ...dataPedagang,
-      ...formData,
-    };
-    console.log("Data Lengkap:", dataLengkap);
+    setSubmitError(null);
+
+    const omsetNumber = Number(omset.replace(/\./g, ""));
+    if (!omsetNumber || omsetNumber <= 0) {
+      setSubmitError("Isi total omset hari ini terlebih dahulu.");
+      return;
+    }
+
+    const token = localStorage.getItem("cfd_token");
+    const baseUrl = process.env.NEXT_PUBLIC_API_URL;
+    if (!token || !baseUrl) {
+      setSubmitError("Sesi login tidak ditemukan, silakan login ulang.");
+      return;
+    }
+
+    setSubmitting(true);
+    try {
+      const res = await fetch(`${baseUrl}/api/pedagang/checkout`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ omset: omsetNumber }),
+      });
+      const json = await res.json();
+
+      if (!res.ok) {
+        setSubmitError(json?.error ?? "Gagal menyimpan cek-out.");
+        setSubmitting(false);
+        return;
+      }
+
+      setSubmitted(true);
+    } catch {
+      setSubmitError("Gagal terhubung ke server. Cek koneksi internet kamu.");
+    } finally {
+      setSubmitting(false);
+    }
   };
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-[#f8f9ff] flex items-center justify-center">
+        <div className="flex flex-col items-center gap-3 text-[#5b5e6d]">
+          <Loader2 className="w-6 h-6 animate-spin text-[#00288e]" />
+          <p className="text-sm">Memuat data checkout...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (loadError) {
+    return (
+      <div className="min-h-screen bg-[#f8f9ff] flex items-center justify-center p-4">
+        <div className="max-w-[420px] w-full bg-white rounded-xl border border-[#E2E8F0] shadow-sm p-6 text-center flex flex-col items-center gap-3">
+          <AlertTriangle className="w-8 h-8 text-amber-500" />
+          <p className="text-sm text-[#0b1c30]">{loadError}</p>
+          <button
+            onClick={() => router.push("/pedagang/profil")}
+            className="mt-2 h-9 px-5 rounded-full text-sm font-medium text-white bg-[#00288e] hover:bg-[#1e40af] transition-colors"
+          >
+            Kembali
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  if (submitted) {
+    return (
+      <div className="min-h-screen bg-[#f8f9ff] flex items-center justify-center p-4">
+        <div className="max-w-[420px] w-full bg-white rounded-xl border border-[#E2E8F0] shadow-sm p-6 text-center flex flex-col items-center gap-3">
+          <CheckCircle2 className="w-10 h-10 text-emerald-600" />
+          <h2 className="font-semibold text-[#0b1c30] text-lg">Cek-out Berhasil</h2>
+          <p className="text-sm text-[#5b5e6d]">
+            Terima kasih sudah berjualan hari ini di {dataPedagang.namaJalan || "lapak kamu"}.
+          </p>
+          <button
+            onClick={() => router.push("/pedagang/profil")}
+            className="mt-2 h-9 px-5 rounded-full text-sm font-medium text-white bg-[#00288e] hover:bg-[#1e40af] transition-colors"
+          >
+            Kembali ke Profil
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  if (!dataPedagang.sudahCheckIn) {
+    return (
+      <div className="min-h-screen bg-[#f8f9ff] flex items-center justify-center p-4">
+        <div className="max-w-[420px] w-full bg-white rounded-xl border border-[#E2E8F0] shadow-sm p-6 text-center flex flex-col items-center gap-3">
+          <AlertTriangle className="w-8 h-8 text-amber-500" />
+          <p className="text-sm text-[#0b1c30]">
+            Kamu belum check-in hari ini. Minta petugas untuk scan QR kamu terlebih dahulu
+            sebelum bisa cek-out.
+          </p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-[#f8f9ff] text-[#0b1c30] font-sans flex flex-col">
@@ -58,7 +232,7 @@ export default function MerchantCheckoutPage() {
           </div>
         </div>
       </header>
-      
+
       <main className="flex-1 overflow-y-auto p-4 md:p-6 flex justify-center bg-[#f8f9ff]">
         <form onSubmit={handleSubmit} className="w-full max-w-[600px] flex flex-col gap-4">
           {/* Detail Lokasi */}
@@ -178,7 +352,7 @@ export default function MerchantCheckoutPage() {
                 </label>
                 <input
                   type="text"
-                  value={dataPedagang.kategoriUsaha}
+                  value={KATEGORI_LABEL[dataPedagang.kategoriUsaha] ?? dataPedagang.kategoriUsaha}
                   readOnly
                   placeholder="-"
                   className="w-full h-9 px-3 rounded-lg border border-[#c9d6f5] bg-[#eaf0ff] text-sm cursor-not-allowed"
@@ -190,7 +364,7 @@ export default function MerchantCheckoutPage() {
                 </label>
                 <div className="h-9 px-3 rounded-lg border border-[#c9d6f5] bg-[#eaf0ff] flex items-center">
                   <span className="inline-flex items-center px-2.5 py-0.5 rounded-full bg-[#d1fae5] text-[#047857] text-xs font-semibold">
-                    {dataPedagang.jenisLapak || "-"}
+                    {LAPAK_LABEL[dataPedagang.jenisLapak] ?? (dataPedagang.jenisLapak || "-")}
                   </span>
                 </div>
               </div>
@@ -215,13 +389,15 @@ export default function MerchantCheckoutPage() {
                   id="omset"
                   name="omset"
                   type="text"
-                  value={formData.omset}
-                  onChange={handleChange}
+                  value={omset}
+                  onChange={handleOmsetChange}
                   placeholder="Contoh: 500.000"
                   className="w-full h-10 pl-9 pr-3 rounded-lg border border-[#CBD5E1] bg-white text-sm focus:outline-none focus:border-[#00288e] focus:ring-2 focus:ring-[#00288e]/15 transition-colors"
                 />
               </div>
-              {/* Bagian checkbox telah dihapus */}
+              {submitError && (
+                <p className="text-xs text-red-600 mt-1">{submitError}</p>
+              )}
             </div>
           </div>
 
@@ -229,14 +405,17 @@ export default function MerchantCheckoutPage() {
           <div className="flex justify-end gap-3 pt-2">
             <button
               type="button"
+              onClick={() => router.back()}
               className="h-10 px-6 rounded-full text-sm font-medium text-[#00288e] border border-[#00288e] bg-white hover:bg-[#eff4ff] transition-colors focus:outline-none focus:ring-2 focus:ring-[#00288e] focus:ring-offset-2"
             >
               Batal
             </button>
             <button
               type="submit"
-              className="h-10 px-6 rounded-full text-sm font-medium text-white bg-[#00288e] hover:bg-[#1e40af] transition-colors shadow-sm focus:outline-none focus:ring-2 focus:ring-[#00288e] focus:ring-offset-2"
+              disabled={submitting}
+              className="h-10 px-6 rounded-full text-sm font-medium text-white bg-[#00288e] hover:bg-[#1e40af] transition-colors shadow-sm focus:outline-none focus:ring-2 focus:ring-[#00288e] focus:ring-offset-2 disabled:opacity-60 disabled:cursor-not-allowed inline-flex items-center gap-2"
             >
+              {submitting && <Loader2 className="w-4 h-4 animate-spin" />}
               Cek-out
             </button>
           </div>
