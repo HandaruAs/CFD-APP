@@ -9,7 +9,7 @@ import (
 type Repository interface {
 	GetSisaLapak(ctx context.Context) ([]entity.KecamatanData, error)
 	CreateJalan(ctx context.Context, kodeJalan, namaJalan string, kapasitas int, instansiID string) error
-	UpdateJalan(ctx context.Context, id, namaJalan string, kapasitas int) error
+	UpdateJalan(ctx context.Context, id, kodeJalan, namaJalan string, kapasitas int) error
 	DeleteJalan(ctx context.Context, id string) error
 	InstansiExists(ctx context.Context, id string) (bool, error)
 	GetAllInstansi(ctx context.Context) ([]entity.InstansiData, error)
@@ -40,7 +40,7 @@ func (u *Usecase) CreateJalan(ctx context.Context, req *entity.CreateJalanReques
 }
 
 func (u *Usecase) UpdateJalan(ctx context.Context, id string, req *entity.UpdateJalanRequest) error {
-	return u.repo.UpdateJalan(ctx, id, req.NamaJalan, req.Kapasitas)
+	return u.repo.UpdateJalan(ctx, id, req.KodeJalan, req.NamaJalan, req.Kapasitas)
 }
 
 func (u *Usecase) DeleteJalan(ctx context.Context, id string) error {

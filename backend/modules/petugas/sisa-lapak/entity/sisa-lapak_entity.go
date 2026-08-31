@@ -27,6 +27,7 @@ type CreateJalanRequest struct {
 }
 
 type UpdateJalanRequest struct {
+	KodeJalan string `json:"kode_jalan" validate:"required"`
 	NamaJalan string `json:"nama_jalan" validate:"required"`
 	Kapasitas int    `json:"kapasitas" validate:"required,gt=0"`
 }
