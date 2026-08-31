@@ -359,6 +359,30 @@ func main() {
 		sisaLapakController.GetSisaLapak,
 	)
 
+	app.Get("/api/petugas/sisa-lapak/instansi",
+		middleware.AuthMiddleware(cfg.JWTSecret),
+		middleware.PermissionMiddleware(permissionRepository, "pedagang.read"),
+		sisaLapakController.GetInstansi,
+	)
+
+	app.Post("/api/petugas/sisa-lapak",
+		middleware.AuthMiddleware(cfg.JWTSecret),
+		middleware.PermissionMiddleware(permissionRepository, "pedagang.read"),
+		sisaLapakController.CreateJalan,
+	)
+
+	app.Put("/api/petugas/sisa-lapak/:id",
+		middleware.AuthMiddleware(cfg.JWTSecret),
+		middleware.PermissionMiddleware(permissionRepository, "pedagang.read"),
+		sisaLapakController.UpdateJalan,
+	)
+
+	app.Delete("/api/petugas/sisa-lapak/:id",
+		middleware.AuthMiddleware(cfg.JWTSecret),
+		middleware.PermissionMiddleware(permissionRepository, "pedagang.read"),
+		sisaLapakController.DeleteJalan,
+	)
+
 	// ============================================================
 	// 13. ENDPOINT PEDAGANG
 	// ============================================================
