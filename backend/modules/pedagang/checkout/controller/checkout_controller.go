@@ -36,6 +36,8 @@ func (ctrl *CheckoutController) GetDataCheckout(c fiber.Ctx) error {
 			return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": err.Error()})
 		case errors.Is(err, repository.ErrTidakAdaSesiAktif):
 			return c.Status(fiber.StatusConflict).JSON(fiber.Map{"error": err.Error()})
+		case errors.Is(err, repository.ErrSesiBelumSelesai):
+			return c.Status(fiber.StatusConflict).JSON(fiber.Map{"error": err.Error()})
 		default:
 			return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
 				"error": "gagal mengambil data checkout",
@@ -72,6 +74,8 @@ func (ctrl *CheckoutController) SubmitCheckout(c fiber.Ctx) error {
 		case errors.Is(err, repository.ErrPedagangTidakDitemukan):
 			return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": err.Error()})
 		case errors.Is(err, repository.ErrTidakAdaSesiAktif):
+			return c.Status(fiber.StatusConflict).JSON(fiber.Map{"error": err.Error()})
+		case errors.Is(err, repository.ErrSesiBelumSelesai):
 			return c.Status(fiber.StatusConflict).JSON(fiber.Map{"error": err.Error()})
 		case errors.Is(err, repository.ErrBelumCheckIn):
 			return c.Status(fiber.StatusConflict).JSON(fiber.Map{"error": err.Error()})

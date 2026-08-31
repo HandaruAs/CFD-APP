@@ -14,6 +14,7 @@ import (
 var (
 	ErrPedagangTidakDitemukan = errors.New("profil pedagang tidak ditemukan")
 	ErrTidakAdaSesiAktif      = errors.New("tidak ada sesi CFD yang aktif sekarang")
+	ErrSesiBelumSelesai      = errors.New("sesi CFD masih berlangsung, check-out baru bisa dilakukan setelah sesi berakhir")
 	ErrBelumCheckIn           = errors.New("kamu belum check-in, minta petugas untuk scan QR dulu")
 	ErrSudahCheckOut          = errors.New("kamu sudah cek-out di sesi ini")
 )
@@ -45,24 +46,34 @@ func (r *CheckoutRepository) GetPedagangProfileIDByUserID(ctx context.Context, u
 	return id, nil
 }
 
-// GetActiveSessionID ambil ID sesi CFD hari ini. Sengaja gak ngecek jam
-// buka/tutup check-in di sini (beda dari modules/pedagang/lapak) karena
-// checkout itu aksi di PENGHUJUNG acara, bukan di awal -- pedagang harus
-// tetap bisa checkout walau jendela "check-in nomor stand" udah lewat.
+// GetActiveSessionID ambil ID sesi CFD hari ini buat keperluan checkout.
+// Beda dari modules/pedagang/lapak (yang ngeblok check-in SEBELUM sesi
+// mulai/di luar jam check-in), checkout justru harus diblok SELAMA sesi
+// masih berlangsung -- baru boleh setelah sesi itu berakhir (baik karena
+// waktu emang udah lewat jam_selesai, ATAUPUN petugas udah manual
+// "Akhiri Sesi Lebih Awal", yang keduanya bikin is_active jadi false).
 func (r *CheckoutRepository) GetActiveSessionID(ctx context.Context) (string, error) {
-	var id string
+	var id, jamSelesai string
+	var isActive bool
 	err := r.db.QueryRow(ctx,
-		`SELECT id FROM cfd_sessions
-		 WHERE is_active = true AND deleted_at IS NULL AND tanggal = CURRENT_DATE
+		`SELECT id, jam_selesai::text, is_active FROM cfd_sessions
+		 WHERE tanggal = CURRENT_DATE AND deleted_at IS NULL
 		 ORDER BY created_at DESC
 		 LIMIT 1`,
-	).Scan(&id)
+	).Scan(&id, &jamSelesai, &isActive)
 	if err != nil {
 		if err == pgx.ErrNoRows {
 			return "", ErrTidakAdaSesiAktif
 		}
 		return "", err
 	}
+
+	now := time.Now().Format("15:04:05")
+	sesiMasihBerlangsung := isActive && now < jamSelesai
+	if sesiMasihBerlangsung {
+		return "", ErrSesiBelumSelesai
+	}
+
 	return id, nil
 }
 
