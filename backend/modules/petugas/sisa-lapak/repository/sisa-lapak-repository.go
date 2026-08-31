@@ -19,8 +19,10 @@ func NewRepository(db *pgxpool.Pool) *Repository {
 
 // GetSisaLapak ambil data kuota + terisi + id & kode_jalan
 func (r *Repository) GetSisaLapak(ctx context.Context) ([]entity.KecamatanData, error) {
-	// Cari sesi aktif hari ini
-	var sessionID string
+	// Cari sesi aktif hari ini. Kalau tidak ada, sessionID tetap nil (NULL)
+	// -- JANGAN pakai string kosong "" karena kolom session_id bertipe UUID,
+	// dan "" bukan UUID yang valid (bikin error "invalid input syntax for type uuid").
+	var sessionID *string
 	err := r.db.QueryRow(ctx, `
 		SELECT id FROM cfd_sessions
 		WHERE tanggal = CURRENT_DATE AND is_active = true AND deleted_at IS NULL
@@ -126,20 +128,22 @@ func (r *Repository) DeleteJalan(ctx context.Context, id string) error {
 	return err
 }
 
-// GetInstansiByNama mencari instansi berdasarkan nama_unit
-func (r *Repository) GetInstansiByNama(ctx context.Context, namaUnit string) (string, error) {
-	var id string
+// InstansiExists cek apakah instansi dengan id tersebut ada & belum dihapus
+func (r *Repository) InstansiExists(ctx context.Context, id string) (bool, error) {
+	var exists bool
 	err := r.db.QueryRow(ctx, `
-		SELECT id FROM master_instansi
-		WHERE nama_unit = $1 AND deleted_at IS NULL
-	`, namaUnit).Scan(&id)
+		SELECT EXISTS(
+			SELECT 1 FROM master_instansi
+			WHERE id = $1 AND deleted_at IS NULL
+		)
+	`, id).Scan(&exists)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
-			return "", nil
+			return false, nil
 		}
-		return "", err
+		return false, err
 	}
-	return id, nil
+	return exists, nil
 }
 
 // GetAllInstansi ambil semua instansi

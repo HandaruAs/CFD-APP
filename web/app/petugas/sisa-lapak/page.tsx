@@ -2,6 +2,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { createPortal } from "react-dom";
 import { MapPin, Store, PackageCheck, PackageX, Loader2, Plus, Pencil, Trash2, X } from "lucide-react";
 
 // ========== TYPES ==========
@@ -69,7 +70,7 @@ function ModalForm({
   const [form, setForm] = useState({
     kode_jalan: "",
     nama_jalan: "",
-    kapasitas: 0,
+    kapasitas: "" as string,
     instansi_id: "",
   });
 
@@ -78,23 +79,26 @@ function ModalForm({
       setForm({
         kode_jalan: initialData.kode_jalan || "",
         nama_jalan: initialData.nama_jalan || "",
-        kapasitas: initialData.kapasitas || 0,
+        kapasitas: initialData.kapasitas != null ? String(initialData.kapasitas) : "",
         instansi_id: initialData.instansi_id || "",
       });
     } else {
-      setForm({ kode_jalan: "", nama_jalan: "", kapasitas: 0, instansi_id: "" });
+      setForm({ kode_jalan: "", nama_jalan: "", kapasitas: "", instansi_id: "" });
     }
   }, [initialData, open]);
 
-  if (!open) return null;
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => setMounted(true), []);
 
-  return (
+  if (!open || !mounted) return null;
+
+  return createPortal(
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-on-surface/40 backdrop-blur-[2px] px-4 animate-in fade-in duration-150"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-on-surface/40 backdrop-blur-[2px] px-4 py-8 animate-in fade-in duration-150 overflow-y-auto"
       onClick={onClose}
     >
       <div
-        className="relative w-full max-w-sm rounded-xl bg-surface-container-lowest p-lg shadow-2xl animate-in zoom-in-95 slide-in-from-bottom-2 duration-150"
+        className="relative w-full max-w-[28rem] rounded-xl bg-surface-container-lowest p-lg shadow-2xl animate-in zoom-in-95 slide-in-from-bottom-2 duration-150 my-auto"
         onClick={(e) => e.stopPropagation()}
       >
         <button
@@ -108,7 +112,13 @@ function ModalForm({
 
         <h3 className="text-title-lg text-on-surface">{title}</h3>
 
-        <form onSubmit={(e) => { e.preventDefault(); onSubmit(form); }} className="mt-md space-y-4">
+        <form
+          onSubmit={(e) => {
+            e.preventDefault();
+            onSubmit({ ...form, kapasitas: parseInt(form.kapasitas, 10) || 0 });
+          }}
+          className="mt-md space-y-4"
+        >
           <div>
             <label className="text-label-sm font-semibold text-on-surface">Kode Jalan</label>
             <input
@@ -135,9 +145,16 @@ function ModalForm({
               required
               type="number"
               min="1"
+              inputMode="numeric"
               value={form.kapasitas}
-              onChange={(e) => setForm({ ...form, kapasitas: parseInt(e.target.value) || 0 })}
+              onChange={(e) => {
+                const v = e.target.value;
+                if (v === "" || /^\d+$/.test(v)) {
+                  setForm({ ...form, kapasitas: v });
+                }
+              }}
               className="h-11 w-full rounded-lg border border-outline bg-surface-container-lowest px-md text-body-md text-on-surface outline-none placeholder:text-on-surface-variant/70 focus:border-primary focus:ring-2 focus:ring-primary/20"
+              placeholder="Contoh: 20"
             />
           </div>
           <div>
@@ -173,7 +190,8 @@ function ModalForm({
           </div>
         </form>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }
 

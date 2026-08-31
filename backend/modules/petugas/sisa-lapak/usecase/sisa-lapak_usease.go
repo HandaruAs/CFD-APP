@@ -11,7 +11,7 @@ type Repository interface {
 	CreateJalan(ctx context.Context, kodeJalan, namaJalan string, kapasitas int, instansiID string) error
 	UpdateJalan(ctx context.Context, id, namaJalan string, kapasitas int) error
 	DeleteJalan(ctx context.Context, id string) error
-	GetInstansiByNama(ctx context.Context, namaUnit string) (string, error)
+	InstansiExists(ctx context.Context, id string) (bool, error)
 	GetAllInstansi(ctx context.Context) ([]entity.InstansiData, error)
 }
 
@@ -28,15 +28,15 @@ func (u *Usecase) GetSisaLapak(ctx context.Context) ([]entity.KecamatanData, err
 }
 
 func (u *Usecase) CreateJalan(ctx context.Context, req *entity.CreateJalanRequest) error {
-	// Cek instansi
-	instansiID, err := u.repo.GetInstansiByNama(ctx, req.InstansiID)
+	// Cek instansi berdasarkan ID yang dikirim dari dropdown web
+	ada, err := u.repo.InstansiExists(ctx, req.InstansiID)
 	if err != nil {
 		return err
 	}
-	if instansiID == "" {
+	if !ada {
 		return errors.New("kecamatan tidak ditemukan")
 	}
-	return u.repo.CreateJalan(ctx, req.KodeJalan, req.NamaJalan, req.Kapasitas, instansiID)
+	return u.repo.CreateJalan(ctx, req.KodeJalan, req.NamaJalan, req.Kapasitas, req.InstansiID)
 }
 
 func (u *Usecase) UpdateJalan(ctx context.Context, id string, req *entity.UpdateJalanRequest) error {
