@@ -7,14 +7,6 @@ import { motion, AnimatePresence } from "framer-motion";
 import { LogOut, Store, ChevronDown } from "lucide-react";
 import { getMyMenus, resolveMenuIcon, type MenuNode } from "@/lib/menu";
 
-function isNodeActive(item: MenuNode, pathname: string): boolean {
-  const selfActive =
-    !!item.route &&
-    (pathname === item.route || pathname.startsWith(`${item.route}/`));
-  if (selfActive) return true;
-  return item.children.some((child) => isNodeActive(child, pathname));
-}
-
 // Parents that should be open by default because the current URL is
 // inside one of their children — purely derived from menus + pathname,
 // no state/effect needed for this part.
@@ -39,21 +31,52 @@ function getAutoOpenIds(nodes: MenuNode[], pathname: string): Set<string> {
   return result;
 }
 
+// ✅ FIX: kumpulkan semua route dari seluruh menu (termasuk children),
+// dipakai untuk mencari route paling spesifik yang cocok dengan pathname.
+function flattenRoutes(nodes: MenuNode[]): string[] {
+  const routes: string[] = [];
+  const walk = (list: MenuNode[]) => {
+    for (const node of list) {
+      if (node.route) routes.push(node.route);
+      if (node.children.length > 0) walk(node.children);
+    }
+  };
+  walk(nodes);
+  return routes;
+}
+
+// ✅ FIX: sebelumnya setiap menu yang route-nya adalah prefix dari pathname
+// ikut dianggap "active" (contoh: Dashboard = "/pedagang" akan selalu aktif
+// juga di "/pedagang/profil" karena startsWith cocok). Sekarang kita cari
+// route yang PALING SPESIFIK (paling panjang) yang match, dan hanya itu
+// yang boleh dianggap active.
+function getBestMatchRoute(allRoutes: string[], pathname: string): string | null {
+  const matches = allRoutes.filter(
+    (r) => pathname === r || pathname.startsWith(`${r}/`)
+  );
+  if (matches.length === 0) return null;
+  return matches.reduce((a, b) => (b.length > a.length ? b : a));
+}
+
 function MenuLink({
   item,
   pathname,
+  bestMatchRoute,
   isOpen,
   onToggle,
 }: {
   item: MenuNode;
   pathname: string;
+  bestMatchRoute: string | null;
   isOpen: (id: string) => boolean;
   onToggle: (id: string) => void;
 }) {
   const Icon = resolveMenuIcon(item.icon);
-  const isActive =
-    !!item.route &&
-    (pathname === item.route || pathname.startsWith(`${item.route}/`));
+
+  // ✅ FIX: active hanya kalau route item ini adalah yang paling spesifik
+  // yang cocok, bukan sekadar prefix match.
+  const isActive = !!item.route && item.route === bestMatchRoute;
+
   const hasChildren = item.children.length > 0;
   const open = isOpen(item.id);
 
@@ -84,7 +107,6 @@ function MenuLink({
         <Icon className="h-[18px] w-[18px]" strokeWidth={2} />
       </span>
 
-      {/* ✅ PERBAIKAN: truncate → whitespace-normal break-words */}
       <span
         className={`relative z-10 flex-1 text-left whitespace-normal break-words transition-all duration-200 ${
           isActive
@@ -122,7 +144,6 @@ function MenuLink({
             {/* eslint-disable-next-line react-hooks/static-components */}
             <Icon className="h-[18px] w-[18px]" strokeWidth={2} />
           </span>
-          {/* ✅ PERBAIKAN: truncate → whitespace-normal break-words */}
           <span className="whitespace-normal break-words font-medium">{item.name}</span>
         </span>
       )}
@@ -141,6 +162,7 @@ function MenuLink({
                 key={child.id}
                 item={child}
                 pathname={pathname}
+                bestMatchRoute={bestMatchRoute}
                 isOpen={isOpen}
                 onToggle={onToggle}
               />
@@ -173,6 +195,13 @@ export function Sidebar() {
 
   const autoOpenIds = useMemo(
     () => getAutoOpenIds(menus, pathname),
+    [menus, pathname]
+  );
+
+  // ✅ FIX: hitung sekali route paling spesifik yang cocok dengan pathname
+  // saat ini, dipakai semua MenuLink untuk menentukan siapa yang benar-benar aktif.
+  const bestMatchRoute = useMemo(
+    () => getBestMatchRoute(flattenRoutes(menus), pathname),
     [menus, pathname]
   );
 
@@ -233,6 +262,7 @@ export function Sidebar() {
                 key={item.id}
                 item={item}
                 pathname={pathname}
+                bestMatchRoute={bestMatchRoute}
                 isOpen={isOpen}
                 onToggle={handleToggle}
               />
