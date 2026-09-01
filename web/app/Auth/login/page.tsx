@@ -64,6 +64,23 @@ function LoginForm() {
   return (
     <div className="min-h-screen w-full flex items-center justify-center bg-gradient-to-b from-[#EAF0FB] via-[#F3F0FA] to-[#EEF1FA] px-4 py-12">
       <div className="w-full max-w-sm">
+        {/* Link kembali ke landing page */}
+        <Link
+          href="/"
+          className="inline-flex items-center gap-1.5 text-sm font-medium text-[#2563EB] hover:text-[#1D4ED8] mb-6"
+        >
+          <svg viewBox="0 0 24 24" fill="none" width="14" height="14">
+            <path
+              d="M19 12H5M5 12L11 6M5 12L11 18"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            />
+          </svg>
+          Kembali ke Beranda
+        </Link>
+
         {/* Heading */}
         <div className="text-center mb-8">
           <h1 className="text-2xl font-bold text-[#0B1B3A]">

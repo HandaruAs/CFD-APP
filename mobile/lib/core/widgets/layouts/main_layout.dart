@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:mobile/features/menu/data/datasources/menu_remote_datasource.dart';
 import 'package:mobile/core/models/menu_model.dart';
-// Import halaman-halaman yang akan dinavigasi di sini
-import 'package:mobile/features/pedagang/presentation/pages/pedagang_dashboard.dart';
+import 'package:mobile/features/pedagang/presentation/pages/pendaftaran_screen.dart';
+import 'package:mobile/features/pedagang/presentation/pages/status_verifikasi_screen.dart';
 
 class MainLayout extends StatefulWidget {
   final Widget body; // Halaman yang dibungkus (misal: HomeScreen)
@@ -120,20 +120,37 @@ class _MainLayoutState extends State<MainLayout> {
   }
 
   // --- Fungsi Navigasi ---
+  //
+  // CATATAN PATH: ini harus persis sama kayak kolom `route` di tabel
+  // `menus` backend (bukan tebakan). Yang udah dikonfirmasi dari seed
+  // migrasi:
+  //   - Dashboard            -> /pedagang            (belum ada halamannya)
+  //   - Pendaftaran          -> /pedagang/pendaftaran
+  //   - Status Verifikasi    -> /pedagang/status-verifikasi
+  //   - Jadwal & Lokasi      -> /pedagang/jadwal-lokasi   (belum dikerjain)
+  //   - Profil Usaha         -> /pedagang/profil          (belum dikerjain)
+  // Menu "Check-in/out" yang kamu tambahin manual di superadmin BELUM
+  // masuk sini -- isi case-nya begitu kamu dapet route persisnya.
   void _navigateTo(BuildContext context, String path) {
-    print("Navigasi ke $path");
-
     switch (path) {
-      case '/pedagang/dashboard':
+      case '/pedagang/pendaftaran':
         Navigator.push(
           context,
-          MaterialPageRoute(builder: (context) => const PedagangDashboard()),
+          MaterialPageRoute(builder: (context) => const PendaftaranScreen()),
         );
         break;
 
-      // Tambahkan case lain di sini seiring kamu membuat halaman baru
-      // case '/pedagang/pengajuan':
-      //   Navigator.push(context, MaterialPageRoute(builder: (context) => const PedagangPengajuanScreen()));
+      case '/pedagang/status-verifikasi':
+        Navigator.push(
+          context,
+          MaterialPageRoute(builder: (context) => const StatusVerifikasiScreen()),
+        );
+        break;
+
+      // Tambahkan case lain di sini seiring kamu membuat halaman baru,
+      // misal:
+      // case '/pedagang/jadwal-lokasi':
+      //   Navigator.push(context, MaterialPageRoute(builder: (context) => const LapakScreen()));
       //   break;
 
       default:
