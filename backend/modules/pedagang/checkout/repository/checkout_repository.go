@@ -14,6 +14,7 @@ import (
 var (
 	ErrPedagangTidakDitemukan = errors.New("profil pedagang tidak ditemukan")
 	ErrTidakAdaSesiAktif      = errors.New("tidak ada sesi CFD yang aktif sekarang")
+	ErrSesiBelumSelesai      = errors.New("sesi CFD masih berlangsung, check-out baru bisa dilakukan setelah sesi berakhir")
 	ErrBelumCheckIn           = errors.New("kamu belum check-in, minta petugas untuk scan QR dulu")
 	ErrSudahCheckOut          = errors.New("kamu sudah cek-out di sesi ini")
 )
@@ -45,15 +46,48 @@ func (r *CheckoutRepository) GetPedagangProfileIDByUserID(ctx context.Context, u
 	return id, nil
 }
 
-// GetActiveSessionID ambil ID sesi CFD hari ini. Sengaja gak ngecek jam
-// buka/tutup check-in di sini (beda dari modules/pedagang/lapak) karena
-// checkout itu aksi di PENGHUJUNG acara, bukan di awal -- pedagang harus
-// tetap bisa checkout walau jendela "check-in nomor stand" udah lewat.
+// GetActiveSessionID ambil ID sesi CFD hari ini buat keperluan checkout.
+// Beda dari modules/pedagang/lapak (yang ngeblok check-in SEBELUM sesi
+// mulai/di luar jam check-in), checkout justru harus diblok SELAMA sesi
+// masih berlangsung -- baru boleh setelah sesi itu berakhir (baik karena
+// waktu emang udah lewat jam_selesai, ATAUPUN petugas udah manual
+// "Akhiri Sesi Lebih Awal", yang keduanya bikin is_active jadi false).
 func (r *CheckoutRepository) GetActiveSessionID(ctx context.Context) (string, error) {
+	var id, jamSelesai string
+	var isActive bool
+	err := r.db.QueryRow(ctx,
+		`SELECT id, jam_selesai::text, is_active FROM cfd_sessions
+		 WHERE tanggal = CURRENT_DATE AND deleted_at IS NULL
+		 ORDER BY created_at DESC
+		 LIMIT 1`,
+	).Scan(&id, &jamSelesai, &isActive)
+	if err != nil {
+		if err == pgx.ErrNoRows {
+			return "", ErrTidakAdaSesiAktif
+		}
+		return "", err
+	}
+
+	now := time.Now().Format("15:04:05")
+	sesiMasihBerlangsung := isActive && now < jamSelesai
+	if sesiMasihBerlangsung {
+		return "", ErrSesiBelumSelesai
+	}
+
+	return id, nil
+}
+
+// GetTodaySessionID ambil ID sesi CFD hari ini TANPA mensyaratkan sesinya
+// udah selesai. Dipakai buat GetDataCheckout (nampilin halaman cek-out),
+// yang mestinya boleh dibuka kapan aja setelah check-in -- termasuk pas
+// sesi masih berlangsung, biar pedagang bisa liat hitung mundur. Beda
+// dengan GetActiveSessionID di bawah, yang tetap jadi penjaga terakhir
+// buat SubmitCheckout.
+func (r *CheckoutRepository) GetTodaySessionID(ctx context.Context) (string, error) {
 	var id string
 	err := r.db.QueryRow(ctx,
 		`SELECT id FROM cfd_sessions
-		 WHERE is_active = true AND deleted_at IS NULL AND tanggal = CURRENT_DATE
+		 WHERE tanggal = CURRENT_DATE AND deleted_at IS NULL
 		 ORDER BY created_at DESC
 		 LIMIT 1`,
 	).Scan(&id)
@@ -74,6 +108,8 @@ func (r *CheckoutRepository) GetDataCheckout(ctx context.Context, pedagangID, se
 	var omset *int64
 	var checkInAt *time.Time
 	var checkOutAt *time.Time
+	var jamSelesaiStr *string
+	var sesiIsActive *bool
 
 	err := r.db.QueryRow(ctx, `
 		SELECT
@@ -88,7 +124,9 @@ func (r *CheckoutRepository) GetDataCheckout(ctx context.Context, pedagangID, se
 			COALESCE(pp.jenis_lapak::text, ''),
 			kp.check_in_at,
 			kp.check_out_at,
-			kp.omset
+			kp.omset,
+			cs.jam_selesai::text,
+			cs.is_active
 		FROM pedagang_profiles pp
 		LEFT JOIN lapak_klaim lk
 		       ON lk.pedagang_id = pp.id AND lk.session_id = $2
@@ -100,6 +138,8 @@ func (r *CheckoutRepository) GetDataCheckout(ctx context.Context, pedagangID, se
 		       ON mi.id = ji.instansi_id AND mi.nama_unit = 'Kecamatan'
 		LEFT JOIN kehadiran_pedagang kp
 		       ON kp.pedagang_id = pp.id AND kp.session_id = $2 AND kp.deleted_at IS NULL
+		LEFT JOIN cfd_sessions cs
+		       ON cs.id = $2
 		WHERE pp.id = $1
 		`, pedagangID, sessionID,
 	).Scan(
@@ -107,6 +147,7 @@ func (r *CheckoutRepository) GetDataCheckout(ctx context.Context, pedagangID, se
 		&d.NIK, &d.NamaLengkap, &d.TanggalLahir,
 		&d.NamaUsaha, &d.KategoriUsaha, &d.JenisLapak,
 		&checkInAt, &checkOutAt, &omset,
+		&jamSelesaiStr, &sesiIsActive,
 	)
 	if err != nil {
 		if err == pgx.ErrNoRows {
@@ -118,6 +159,27 @@ func (r *CheckoutRepository) GetDataCheckout(ctx context.Context, pedagangID, se
 	d.SudahCheckIn = checkInAt != nil
 	d.SudahCheckOut = checkOutAt != nil
 	d.Omset = omset
+
+	// Gabungin tanggal hari ini + jam_selesai jadi 1 timestamp lengkap,
+	// biar frontend gak perlu nebak-nebak tanggalnya sendiri. SesiSudahSelesai
+	// jadi acuan utama buat nge-enable tombol cek-out di frontend.
+	if jamSelesaiStr != nil {
+		now := time.Now()
+		if jamSelesai, parseErr := time.ParseInLocation("15:04:05", *jamSelesaiStr, now.Location()); parseErr == nil {
+			selesai := time.Date(now.Year(), now.Month(), now.Day(),
+				jamSelesai.Hour(), jamSelesai.Minute(), jamSelesai.Second(), 0, now.Location())
+			d.JamSelesaiSesi = &selesai
+
+			isActive := sesiIsActive != nil && *sesiIsActive
+			d.SesiSudahSelesai = !isActive || !now.Before(selesai)
+		}
+	} else {
+		// Gak ada sesi/jam_selesai yang ketemu (mustinya jarang terjadi
+		// karena sessionID selalu dari sesi hari ini) -- anggap sudah
+		// selesai daripada nge-block cek-out tanpa alasan jelas ke user.
+		d.SesiSudahSelesai = true
+	}
+
 	return &d, nil
 }
 

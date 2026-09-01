@@ -46,30 +46,15 @@ function LoginForm() {
 
       const role = data.user?.role;
 
-      if (role === "pedagang") {
-        try {
-          const pengajuanRes = await fetch(
-            `${process.env.NEXT_PUBLIC_API_URL}/api/pedagang/pengajuan`,
-            { headers: { Authorization: `Bearer ${data.token}` } }
-          );
-          const pengajuanData = await pengajuanRes.json();
-
-          if (pengajuanRes.ok && pengajuanData.has_pengajuan === false) {
-            window.location.href = "/pedagang/pendaftaran";
-          } else {
-            window.location.href = "/pedagang/status-verifikasi";
-          }
-        } catch {
-          window.location.href = "/pedagang/status-verifikasi";
-        }
-        return;
-      }
-
+      // Pedagang selalu diarahkan ke halaman pendaftaran setelah login --
+      // gak perlu cek has_pengajuan lagi (status-verifikasi udah gak
+      // dipakai), dan pendaftaran sendiri emang gak dibatasi jam/status apapun.
       const dashboardByRole: Record<string, string> = {
+        pedagang: "/pedagang/pendaftaran",
         petugas: "/petugas",
         superadmin: "/admin",
       };
-      window.location.href = dashboardByRole[role] ?? "/pedagang/status-verifikasi";
+      window.location.href = dashboardByRole[role] ?? "/pedagang/pendaftaran";
     } catch {
       setError("Tidak bisa terhubung ke server. Periksa koneksi kamu.");
       setLoading(false);

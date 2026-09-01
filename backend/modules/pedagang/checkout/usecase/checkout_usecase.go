@@ -10,6 +10,7 @@ import (
 type CheckoutRepository interface {
 	GetPedagangProfileIDByUserID(ctx context.Context, userID string) (string, error)
 	GetActiveSessionID(ctx context.Context) (string, error)
+	GetTodaySessionID(ctx context.Context) (string, error)
 	GetDataCheckout(ctx context.Context, pedagangID, sessionID string) (*entity.DataCheckoutResponse, error)
 	SubmitCheckout(ctx context.Context, pedagangID, sessionID string, omset int64) (time.Time, error)
 }
@@ -33,7 +34,7 @@ func (u *checkoutUsecase) GetDataCheckout(ctx context.Context, userID string) (*
 		return nil, err
 	}
 
-	sessionID, err := u.repo.GetActiveSessionID(ctx)
+	sessionID, err := u.repo.GetTodaySessionID(ctx)
 	if err != nil {
 		return nil, err
 	}

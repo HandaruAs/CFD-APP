@@ -19,6 +19,16 @@ type DataCheckoutResponse struct {
 	SudahCheckIn  bool   `json:"sudahCheckIn"`
 	SudahCheckOut bool   `json:"sudahCheckOut"`
 	Omset         *int64 `json:"omset,omitempty"`
+
+	// JamSelesaiSesi = jam selesai sesi CFD hari ini (tanggal hari ini +
+	// cfd_sessions.jam_selesai), dikirim sebagai timestamp lengkap (bukan
+	// cuma "17:00:00") biar aman di-parse `new Date(...)` di frontend
+	// tanpa ambigu. Nil kalau sesi hari ini gak ketemu jam_selesai-nya.
+	JamSelesaiSesi *time.Time `json:"jamSelesaiSesi,omitempty"`
+	// SesiSudahSelesai = sumber kebenaran boleh/tidaknya cek-out sekarang.
+	// Frontend sebaiknya pakai field ini buat nyalain tombol submit,
+	// BUKAN ngitung sendiri dari jam client (bisa beda sama jam server).
+	SesiSudahSelesai bool `json:"sesiSudahSelesai"`
 }
 
 type SubmitCheckoutRequest struct {

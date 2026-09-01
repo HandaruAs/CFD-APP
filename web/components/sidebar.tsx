@@ -7,6 +7,25 @@ import { motion, AnimatePresence } from "framer-motion";
 import { LogOut, Store, ChevronDown } from "lucide-react";
 import { getMyMenus, resolveMenuIcon, type MenuNode } from "@/lib/menu";
 
+// Beberapa halaman itu secara fungsi satu alur/menu yang sama, tapi
+// route/foldernya kepisah di Next.js (contoh: check-in di
+// /pedagang/nomer-stand, check-out di /pedagang/CekOut). Data menu dari
+// backend cuma nyimpen SATU route per item, jadi kita alias-in di sini
+// biar highlight menu tetap nyala di kedua halaman itu, tanpa perlu ubah
+// skema tabel menus di backend.
+const ROUTE_ALIASES: Record<string, string[]> = {
+  "/pedagang/nomer-stand": ["/pedagang/CekOut"],
+};
+
+function matchesRoute(route: string, pathname: string): boolean {
+  if (pathname === route || pathname.startsWith(`${route}/`)) return true;
+  const aliases = ROUTE_ALIASES[route];
+  if (!aliases) return false;
+  return aliases.some(
+    (alias) => pathname === alias || pathname.startsWith(`${alias}/`)
+  );
+}
+
 // Parents that should be open by default because the current URL is
 // inside one of their children — purely derived from menus + pathname,
 // no state/effect needed for this part.
@@ -17,9 +36,7 @@ function getAutoOpenIds(nodes: MenuNode[], pathname: string): Set<string> {
     for (const node of list) {
       const childActive =
         node.children.length > 0 ? markIfActive(node.children) : false;
-      const selfActive =
-        !!node.route &&
-        (pathname === node.route || pathname.startsWith(`${node.route}/`));
+      const selfActive = !!node.route && matchesRoute(node.route, pathname);
       if (childActive || selfActive) {
         if (node.children.length > 0) result.add(node.id);
         anyActive = true;
@@ -49,11 +66,10 @@ function flattenRoutes(nodes: MenuNode[]): string[] {
 // ikut dianggap "active" (contoh: Dashboard = "/pedagang" akan selalu aktif
 // juga di "/pedagang/profil" karena startsWith cocok). Sekarang kita cari
 // route yang PALING SPESIFIK (paling panjang) yang match, dan hanya itu
-// yang boleh dianggap active.
+// yang boleh dianggap active. Match sekarang juga lewat ROUTE_ALIASES di
+// atas (buat kasus check-in/check-out yang kepisah folder).
 function getBestMatchRoute(allRoutes: string[], pathname: string): string | null {
-  const matches = allRoutes.filter(
-    (r) => pathname === r || pathname.startsWith(`${r}/`)
-  );
+  const matches = allRoutes.filter((r) => matchesRoute(r, pathname));
   if (matches.length === 0) return null;
   return matches.reduce((a, b) => (b.length > a.length ? b : a));
 }
