@@ -73,8 +73,8 @@ func formatDurasi(totalMenit int) string {
 
 // Ubah map riwayatLabel untuk status baru
 var riwayatLabel = map[string]string{
-	"selesai":   "normal",
-	"ditutup":   "diakhiri-awal",
+	"selesai":    "normal",
+	"ditutup":    "diakhiri-awal",
 	"dibatalkan": "normal",
 	// 'aktif' tidak masuk riwayat
 }
@@ -133,6 +133,7 @@ func toRiwayatDTO(s entity.Sesi) entity.RiwayatSesiDTO {
 		status = "normal"
 	}
 	return entity.RiwayatSesiDTO{
+		ID:         s.ID,
 		Tanggal:    s.Tanggal,
 		JamMulai:   s.JamMulai,
 		JamSelesai: jamSelesai,

@@ -23,6 +23,7 @@ import {
 // ========== TYPES ==========
 type StatusRiwayat = "normal" | "diperpanjang" | "diakhiri-awal";
 type Riwayat = {
+  id: string;
   tanggal: string;
   jamMulai: string;
   jamSelesai: string;
@@ -785,26 +786,26 @@ export default function JamOperasionalPage() {
                 </tr>
               )}
               {status.riwayat.map((row) => {
-                const style = STATUS_STYLE[row.status];
-                const Icon = style.icon;
-                return (
-                  <tr
-                    key={row.tanggal + row.jamMulai}
-                    className="border-b border-outline-variant last:border-0 hover:bg-surface-container-low/50 transition-colors"
-                  >
-                    <td className="px-sm py-sm text-body-md text-on-surface">{row.tanggal}</td>
-                    <td className="px-sm py-sm text-body-md text-on-surface-variant">{formatWaktuTabel(row.jamMulai)}</td>
-                    <td className="px-sm py-sm text-body-md text-on-surface-variant">{formatWaktuTabel(row.jamSelesai)}</td>
-                    <td className="px-sm py-sm text-body-md text-on-surface-variant">{row.durasi}</td>
-                    <td className="px-sm py-sm">
-                      <span className={`inline-flex items-center gap-xs rounded-full px-sm py-1 text-label-sm ${style.bg} ${style.text}`}>
-                        <Icon className="h-3 w-3" strokeWidth={2.5} />
-                        {style.label}
-                      </span>
-                    </td>
-                  </tr>
-                );
-              })}
+            const style = STATUS_STYLE[row.status];
+            const Icon = style.icon;
+            return (
+              <tr
+                key={row.id}
+                className="border-b border-outline-variant last:border-0 hover:bg-surface-container-low/50 transition-colors"
+              >
+                <td className="px-sm py-sm text-body-md text-on-surface">{row.tanggal}</td>
+                <td className="px-sm py-sm text-body-md text-on-surface-variant">{formatWaktuTabel(row.jamMulai)}</td>
+                <td className="px-sm py-sm text-body-md text-on-surface-variant">{formatWaktuTabel(row.jamSelesai)}</td>
+                <td className="px-sm py-sm text-body-md text-on-surface-variant">{row.durasi}</td>
+                <td className="px-sm py-sm">
+                  <span className={`inline-flex items-center gap-xs rounded-full px-sm py-1 text-label-sm ${style.bg} ${style.text}`}>
+                    <Icon className="h-3 w-3" strokeWidth={2.5} />
+                    {style.label}
+                  </span>
+                </td>
+              </tr>
+              );
+            })}
             </tbody>
           </table>
         </div>
