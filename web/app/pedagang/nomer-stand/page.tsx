@@ -12,6 +12,7 @@ import {
   QrCode,
   AlertTriangle,
   Inbox,
+  Clock,
 } from "lucide-react";
 
 interface DataPendaftar {
@@ -72,9 +73,6 @@ function authHeaders(): HeadersInit {
   return { Authorization: `Bearer ${token ?? ""}` };
 }
 
-// QR code-nya di-generate di frontend, isinya cuma pedagang_profiles.id --
-// itu yang dicari backend (scan_usecase.go -> VerifyQRCode -> GetPedagangByID)
-// pas petugas scan. Nggak butuh endpoint generate QR di backend.
 function qrCodeUrl(pedagangId: string) {
   return `https://api.qrserver.com/v1/create-qr-code/?size=240x240&data=${encodeURIComponent(
     pedagangId
@@ -84,25 +82,18 @@ function qrCodeUrl(pedagangId: string) {
 export default function PilihLokasiStanPage() {
   const router = useRouter();
 
-  // ---- Data pendaftar (dari pengajuan usaha) ----
   const [dataPendaftar, setDataPendaftar] = useState<DataPendaftar>(EMPTY_DATA_PENDAFTAR);
   const [checkingPendaftar, setCheckingPendaftar] = useState(true);
   const [sudahDaftar, setSudahDaftar] = useState(false);
-
-  // ID pedagang_profiles -- ini isi kode QR-nya. Diambil dari endpoint
-  // yang sama dengan data pendaftar, disimpan terpisah biar nggak nunggu
-  // urutan effect lain buat nge-render QR-nya.
   const [pedagangId, setPedagangId] = useState("");
 
-  // ---- Status klaim lapak (cek dulu apakah udah pernah klaim) ----
   const [checkingStatus, setCheckingStatus] = useState(true);
+  // sesiKlaimDibuka = apakah sesi WAR/klaim nomor stand lagi dibuka
+  // petugas. Ini BUKAN status check-in (scan QR) -- itu tahap lain yang
+  // terjadi belakangan, setelah pedagang sudah punya nomor stand.
+  const [sesiKlaimDibuka, setSesiKlaimDibuka] = useState(true);
+  const [pesanSesiKlaim, setPesanSesiKlaim] = useState<string | null>(null);
 
-  // ---- Status sesi CFD (apakah petugas udah buka jam operasional
-  // DAN waktu sekarang beneran ada di rentang jam_mulai-jam_selesai) ----
-  const [sesiAktif, setSesiAktif] = useState(true); // optimistic default, biar gak flash banner pas awal load
-  const [pesanSesi, setPesanSesi] = useState<string | null>(null);
-
-  // ---- Kecamatan & jalan ----
   const [kecamatanList, setKecamatanList] = useState<Kecamatan[]>([]);
   const [loadingKecamatan, setLoadingKecamatan] = useState(true);
   const [kecamatanId, setKecamatanId] = useState("");
@@ -115,7 +106,6 @@ export default function PilihLokasiStanPage() {
   const [error, setError] = useState<string | null>(null);
   const [hasil, setHasil] = useState<HasilAlokasi | null>(null);
 
-  // ---- Ambil data pendaftar ----
   useEffect(() => {
     async function fetchDataPendaftar() {
       try {
@@ -158,7 +148,6 @@ export default function PilihLokasiStanPage() {
     fetchDataPendaftar();
   }, []);
 
-  // ---- Cek apakah udah pernah klaim lapak, sekaligus status sesi CFD ----
   useEffect(() => {
     async function fetchStatus() {
       try {
@@ -170,8 +159,8 @@ export default function PilihLokasiStanPage() {
           return;
         }
         const data = await res.json();
-        setSesiAktif(Boolean(data.sesi_aktif));
-        setPesanSesi(data.pesan_sesi ?? null);
+        setSesiKlaimDibuka(Boolean(data.sesi_aktif));
+        setPesanSesiKlaim(data.pesan_sesi ?? null);
         if (data.sudah_klaim) {
           setHasil({
             nomorStand: data.nomor_lapak ?? "-",
@@ -180,7 +169,7 @@ export default function PilihLokasiStanPage() {
           });
         }
       } catch {
-        // gagal fetch -- biarin user isi form seperti biasa
+        // biarin user isi form seperti biasa
       } finally {
         setCheckingStatus(false);
       }
@@ -188,7 +177,6 @@ export default function PilihLokasiStanPage() {
     fetchStatus();
   }, []);
 
-  // ---- Ambil daftar kecamatan ----
   useEffect(() => {
     async function fetchKecamatan() {
       try {
@@ -210,7 +198,6 @@ export default function PilihLokasiStanPage() {
     fetchKecamatan();
   }, []);
 
-  // ---- Ambil daftar jalan begitu kecamatan dipilih ----
   useEffect(() => {
     if (!kecamatanId) return;
 
@@ -250,11 +237,6 @@ export default function PilihLokasiStanPage() {
     };
   }, [kecamatanId]);
 
-  // ---- Polling status check-in setelah QR ditampilkan ----
-  // Begitu pedagang dapet nomor stand (hasil != null), kita mulai nanya
-  // ke backend tiap 5 detik: "udah di-scan petugas belum?". Begitu udah,
-  // langsung redirect ke halaman cek-out -- pedagang gak perlu refresh
-  // manual atau nunggu-nungguin layar.
   useEffect(() => {
     if (!hasil) return;
 
@@ -271,11 +253,11 @@ export default function PilihLokasiStanPage() {
           router.push("/pedagang/CekOut");
         }
       } catch {
-        // gagal fetch -- coba lagi di polling berikutnya, gak perlu nampilin error
+        // coba lagi di polling berikutnya
       }
     }
 
-    checkStatus(); // cek langsung sekali begitu QR muncul, jangan nunggu 5 detik pertama
+    checkStatus();
     const interval = setInterval(checkStatus, 5000);
 
     return () => {
@@ -336,7 +318,6 @@ export default function PilihLokasiStanPage() {
   return (
     <main className="w-full min-h-screen flex items-start justify-center px-4 py-10 bg-[#f6f7fb]">
       <div className="w-full max-w-[720px]">
-        {/* Header */}
         <div className="mb-5">
           <div className="flex items-center gap-3 mb-1">
             <button
@@ -364,10 +345,8 @@ export default function PilihLokasiStanPage() {
           </div>
         )}
 
-        {/* ================= TAMPILAN HASIL ================= */}
         {hasil && !isLoadingAwal && (
           <div className="flex flex-col gap-4">
-            {/* Banner sukses */}
             <div className="w-full bg-[#e3f8ee] border border-[#bfeed7] rounded-xl px-4 py-3 flex items-start gap-3">
               <div className="w-6 h-6 rounded-full bg-[#16a34a] flex items-center justify-center shrink-0 mt-0.5">
                 <CheckCircle2 size={15} className="text-white" strokeWidth={2.5} />
@@ -382,10 +361,21 @@ export default function PilihLokasiStanPage() {
               </div>
             </div>
 
+            <div className="w-full bg-[#fef9e7] border border-[#fce8b2] rounded-xl px-4 py-3 flex items-start gap-3">
+              <Clock className="w-5 h-5 text-amber-500 shrink-0 mt-0.5" />
+              <div>
+                <p className="text-[13.5px] font-semibold text-[#b45309]">
+                  Menunggu Verifikasi Petugas
+                </p>
+                <p className="text-[12.5px] text-[#92400e]">
+                  Tunjukkan QR code ini ke petugas untuk melakukan check-in. 
+                  Halaman akan otomatis berpindah setelah check-in berhasil.
+                </p>
+              </div>
+            </div>
+
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {/* Kolom kiri */}
               <div className="flex flex-col gap-4">
-                {/* Nomor Stan */}
                 <div className="w-full bg-white rounded-2xl border border-[#e7e8f1] shadow-[0_2px_8px_-2px_rgba(23,29,64,0.06)] overflow-hidden">
                   <div className="h-1 w-full bg-[#00288e]" />
                   <div className="px-5 py-5 text-center">
@@ -417,7 +407,6 @@ export default function PilihLokasiStanPage() {
                   </div>
                 </div>
 
-                {/* Verifikasi Pedagang */}
                 <div className="w-full bg-white rounded-2xl border border-[#e7e8f1] shadow-[0_2px_8px_-2px_rgba(23,29,64,0.06)] p-5 text-center">
                   <h3 className="text-[14px] font-semibold text-[#1a1d29] mb-3">
                     Verifikasi Pedagang
@@ -441,9 +430,7 @@ export default function PilihLokasiStanPage() {
                 </div>
               </div>
 
-              {/* Kolom kanan */}
               <div className="flex flex-col gap-4">
-                {/* Data Pedagang */}
                 <div className="w-full bg-white rounded-2xl border border-[#e7e8f1] shadow-[0_2px_8px_-2px_rgba(23,29,64,0.06)] p-5">
                   <div className="flex items-center gap-2 mb-4">
                     <User size={17} className="text-[#00288e]" />
@@ -480,7 +467,6 @@ export default function PilihLokasiStanPage() {
                   </div>
                 </div>
 
-                {/* Data Usaha */}
                 <div className="w-full bg-white rounded-2xl border border-[#e7e8f1] shadow-[0_2px_8px_-2px_rgba(23,29,64,0.06)] p-5">
                   <div className="flex items-center gap-2 mb-4">
                     <Store size={17} className="text-[#00288e]" />
@@ -521,15 +507,14 @@ export default function PilihLokasiStanPage() {
           </div>
         )}
 
-        {/* ================= BELUM ADA SESI AKTIF ================= */}
-        {!hasil && !isLoadingAwal && !sesiAktif && (
+        {!hasil && !isLoadingAwal && !sesiKlaimDibuka && (
           <div className="w-full bg-white rounded-2xl border border-[#e7e8f1] shadow-[0_2px_8px_-2px_rgba(23,29,64,0.06)] p-8 flex flex-col items-center text-center gap-3">
             <div className="w-14 h-14 rounded-2xl bg-[#fdecec] flex items-center justify-center">
               <AlertTriangle size={28} className="text-[#ba1a1a]" />
             </div>
-            <h3 className="text-[16px] font-bold text-[#1a1d29]">Belum Bisa Check-in</h3>
+            <h3 className="text-[16px] font-bold text-[#1a1d29]">Sesi Klaim Belum Dibuka</h3>
             <p className="text-[13px] text-[#767884] max-w-[360px]">
-              {pesanSesi ?? "Sesi CFD hari ini belum dibuka oleh petugas."}
+              {pesanSesiKlaim ?? "Sesi klaim lapak hari ini belum dibuka oleh petugas."}
             </p>
             <button
               type="button"
@@ -541,10 +526,8 @@ export default function PilihLokasiStanPage() {
           </div>
         )}
 
-        {/* ================= FORM PILIH LOKASI ================= */}
-        {!hasil && !isLoadingAwal && sesiAktif && (
+        {!hasil && !isLoadingAwal && sesiKlaimDibuka && (
           <form onSubmit={handleSubmit} className="flex flex-col gap-4">
-            {/* Lokasi Penempatan */}
             <section className="w-full bg-white rounded-2xl border border-[#e7e8f1] shadow-[0_2px_8px_-2px_rgba(23,29,64,0.06)] p-5">
               <div className="flex items-center gap-2 mb-4">
                 <MapPin size={18} className="text-[#00288e]" />
@@ -587,7 +570,6 @@ export default function PilihLokasiStanPage() {
                 </select>
               </div>
 
-              {/* Pilihan Jalan -- muncul setelah kecamatan dipilih */}
               {kecamatanId && (
                 <div className="w-full flex flex-col gap-1.5">
                   <label className="text-[12px] font-medium text-[#4b4d5a] uppercase tracking-wide">
@@ -642,7 +624,6 @@ export default function PilihLokasiStanPage() {
               )}
             </section>
 
-            {/* Data Pendaftar */}
             <section className="w-full bg-white rounded-2xl border border-[#e7e8f1] shadow-[0_2px_8px_-2px_rgba(23,29,64,0.06)] p-5">
               <div className="flex items-center gap-2 mb-1">
                 <User size={18} className="text-[#00288e]" />
@@ -750,7 +731,6 @@ export default function PilihLokasiStanPage() {
               </p>
             )}
 
-            {/* Actions */}
             <div className="w-full flex gap-3">
               <button
                 type="submit"
