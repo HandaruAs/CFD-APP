@@ -58,6 +58,7 @@ function ModalForm({
   initialData,
   instansiList,
   loading,
+  error,
 }: {
   open: boolean;
   onClose: () => void;
@@ -66,6 +67,7 @@ function ModalForm({
   initialData?: any;
   instansiList: { id: string; nama: string }[];
   loading: boolean;
+  error?: string | null;
 }) {
   const [form, setForm] = useState({
     kode_jalan: "",
@@ -91,6 +93,8 @@ function ModalForm({
   useEffect(() => setMounted(true), []);
 
   if (!open || !mounted) return null;
+
+  const isEdit = !!initialData;
 
   return createPortal(
     <div
@@ -157,20 +161,31 @@ function ModalForm({
               placeholder="Contoh: 20"
             />
           </div>
-          <div>
-            <label className="text-label-sm font-semibold text-on-surface">Kecamatan</label>
-            <select
-              required
-              value={form.instansi_id}
-              onChange={(e) => setForm({ ...form, instansi_id: e.target.value })}
-              className="h-11 w-full rounded-lg border border-outline bg-surface-container-lowest px-md text-body-md text-on-surface outline-none focus:border-primary focus:ring-2 focus:ring-primary/20"
-            >
-              <option value="">Pilih Kecamatan</option>
-              {instansiList.map((i) => (
-                <option key={i.id} value={i.id}>{i.nama}</option>
-              ))}
-            </select>
-          </div>
+          {/* Kecamatan tidak bisa diubah lewat form edit (backend UpdateJalan
+              cuma menerima nama_jalan & kapasitas), jadi field ini hanya
+              ditampilkan & wajib diisi saat menambah lapak baru. */}
+          {!isEdit && (
+            <div>
+              <label className="text-label-sm font-semibold text-on-surface">Kecamatan</label>
+              <select
+                required
+                value={form.instansi_id}
+                onChange={(e) => setForm({ ...form, instansi_id: e.target.value })}
+                className="h-11 w-full rounded-lg border border-outline bg-surface-container-lowest px-md text-body-md text-on-surface outline-none focus:border-primary focus:ring-2 focus:ring-primary/20"
+              >
+                <option value="">Pilih Kecamatan</option>
+                {instansiList.map((i) => (
+                  <option key={i.id} value={i.id}>{i.nama}</option>
+                ))}
+              </select>
+            </div>
+          )}
+
+          {error && (
+            <div className="rounded-lg border border-error-container bg-error-container/20 px-md py-sm text-label-md text-on-error-container">
+              {error}
+            </div>
+          )}
 
           <div className="mt-lg flex justify-end gap-sm">
             <button
@@ -206,6 +221,7 @@ export default function SisaLapakPage() {
   const [editingItem, setEditingItem] = useState<any>(null);
   const [instansiList, setInstansiList] = useState<{ id: string; nama: string }[]>([]);
   const [saving, setSaving] = useState(false);
+  const [formError, setFormError] = useState<string | null>(null);
 
   const loadData = async () => {
     try {
@@ -238,6 +254,7 @@ export default function SisaLapakPage() {
 
   const handleCreate = async (form: any) => {
     setSaving(true);
+    setFormError(null);
     try {
       await apiFetch("/api/petugas/sisa-lapak", {
         method: "POST",
@@ -251,7 +268,7 @@ export default function SisaLapakPage() {
       await loadData();
       setModalOpen(false);
     } catch (err) {
-      alert(err instanceof Error ? err.message : "Gagal menambahkan");
+      setFormError(err instanceof Error ? err.message : "Gagal menambahkan");
     } finally {
       setSaving(false);
     }
@@ -260,10 +277,12 @@ export default function SisaLapakPage() {
   const handleUpdate = async (form: any) => {
     if (!editingItem) return;
     setSaving(true);
+    setFormError(null);
     try {
       await apiFetch(`/api/petugas/sisa-lapak/${editingItem.id}`, {
         method: "PUT",
         body: JSON.stringify({
+          kode_jalan: form.kode_jalan,
           nama_jalan: form.nama_jalan,
           kapasitas: form.kapasitas,
         }),
@@ -272,7 +291,7 @@ export default function SisaLapakPage() {
       setModalOpen(false);
       setEditingItem(null);
     } catch (err) {
-      alert(err instanceof Error ? err.message : "Gagal mengupdate");
+      setFormError(err instanceof Error ? err.message : "Gagal mengupdate");
     } finally {
       setSaving(false);
     }
@@ -325,7 +344,7 @@ export default function SisaLapakPage() {
           )}
         </div>
         <button
-          onClick={() => { setEditingItem(null); setModalOpen(true); }}
+          onClick={() => { setEditingItem(null); setFormError(null); setModalOpen(true); }}
           className="flex items-center gap-sm rounded-md bg-primary px-lg py-sm text-label-md text-on-primary transition-all hover:bg-primary-container hover:shadow-md"
         >
           <Plus className="h-[18px] w-[18px]" strokeWidth={2} />
@@ -418,8 +437,8 @@ export default function SisaLapakPage() {
                             kode_jalan: j.kode_jalan,
                             nama_jalan: j.nama,
                             kapasitas: j.kuota,
-                            instansi_id: activeKecamatan,
                           });
+                          setFormError(null);
                           setModalOpen(true);
                         }}
                         className="rounded p-1 text-on-surface-variant hover:bg-surface-container-high transition-colors"
@@ -462,12 +481,13 @@ export default function SisaLapakPage() {
       {/* Modal Form - DILETAKKAN DI PALING BAWAH */}
       <ModalForm
         open={modalOpen}
-        onClose={() => { setModalOpen(false); setEditingItem(null); }}
+        onClose={() => { setModalOpen(false); setEditingItem(null); setFormError(null); }}
         onSubmit={editingItem ? handleUpdate : handleCreate}
         title={editingItem ? "Edit Lapak" : "Tambah Lapak"}
         initialData={editingItem}
         instansiList={instansiList}
         loading={saving}
+        error={formError}
       />
     </div>
   );

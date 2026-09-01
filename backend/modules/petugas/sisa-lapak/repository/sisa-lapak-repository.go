@@ -6,11 +6,29 @@ import (
 
 	"cfd-backend/modules/petugas/sisa-lapak/entity"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 type Repository struct {
 	db *pgxpool.Pool
+}
+
+// terjemahkanError mengubah error database mentah (khususnya pelanggaran
+// UNIQUE constraint) menjadi pesan yang mudah dipahami pengguna, alih-alih
+// menampilkan pesan SQLSTATE mentah ke frontend.
+func terjemahkanError(err error) error {
+	if err == nil {
+		return nil
+	}
+	var pgErr *pgconn.PgError
+	if errors.As(err, &pgErr) && pgErr.Code == "23505" {
+		if pgErr.ConstraintName == "master_jalan_kode_jalan_key" {
+			return errors.New("kode jalan ini sudah dipakai jalan lain, silakan gunakan kode yang berbeda")
+		}
+		return errors.New("data ini sudah ada, silakan periksa kembali isian kamu")
+	}
+	return err
 }
 
 func NewRepository(db *pgxpool.Pool) *Repository {
@@ -34,7 +52,7 @@ func (r *Repository) GetSisaLapak(ctx context.Context) ([]entity.KecamatanData, 
 
 	query := `
 		SELECT 
-			COALESCE(mi.nama_unit, 'Tanpa Kecamatan') AS kecamatan,
+			COALESCE(mi.nama_instansi, 'Tanpa Kecamatan') AS kecamatan,
 			mj.id,
 			mj.kode_jalan,
 			mj.nama_jalan,
@@ -45,7 +63,7 @@ func (r *Repository) GetSisaLapak(ctx context.Context) ([]entity.KecamatanData, 
 		LEFT JOIN master_instansi mi ON ji.instansi_id = mi.id
 		LEFT JOIN jalan_kapasitas_sesi jks ON mj.id = jks.jalan_id AND jks.session_id = $1
 		WHERE mj.deleted_at IS NULL
-		ORDER BY mi.nama_unit, mj.nama_jalan
+		ORDER BY mi.nama_instansi, mj.nama_jalan
 	`
 	rows, err := r.db.Query(ctx, query, sessionID)
 	if err != nil {
@@ -54,11 +72,16 @@ func (r *Repository) GetSisaLapak(ctx context.Context) ([]entity.KecamatanData, 
 	defer rows.Close()
 
 	mapData := make(map[string][]entity.JalanData)
+	var urutanKecamatan []string // simpan urutan kemunculan sesuai ORDER BY di SQL,
+	// karena iterasi Go map tidak dijamin konsisten urutannya.
 	for rows.Next() {
 		var kec, id, kodeJalan, namaJalan string
 		var kuota, terisi int
 		if err := rows.Scan(&kec, &id, &kodeJalan, &namaJalan, &kuota, &terisi); err != nil {
 			return nil, err
+		}
+		if _, sudahAda := mapData[kec]; !sudahAda {
+			urutanKecamatan = append(urutanKecamatan, kec)
 		}
 		mapData[kec] = append(mapData[kec], entity.JalanData{
 			ID:         id,
@@ -70,10 +93,10 @@ func (r *Repository) GetSisaLapak(ctx context.Context) ([]entity.KecamatanData, 
 	}
 
 	var result []entity.KecamatanData
-	for kec, jalanList := range mapData {
+	for _, kec := range urutanKecamatan {
 		result = append(result, entity.KecamatanData{
 			Kecamatan: kec,
-			Jalan:     jalanList,
+			Jalan:     mapData[kec],
 		})
 	}
 	return result, nil
@@ -94,7 +117,7 @@ func (r *Repository) CreateJalan(ctx context.Context, kodeJalan, namaJalan strin
 		RETURNING id
 	`, kodeJalan, namaJalan, kapasitas).Scan(&jalanID)
 	if err != nil {
-		return err
+		return terjemahkanError(err)
 	}
 
 	_, err = tx.Exec(ctx, `
@@ -108,14 +131,14 @@ func (r *Repository) CreateJalan(ctx context.Context, kodeJalan, namaJalan strin
 	return tx.Commit(ctx)
 }
 
-// UpdateJalan update nama & kapasitas
-func (r *Repository) UpdateJalan(ctx context.Context, id, namaJalan string, kapasitas int) error {
+// UpdateJalan update kode, nama & kapasitas
+func (r *Repository) UpdateJalan(ctx context.Context, id, kodeJalan, namaJalan string, kapasitas int) error {
 	_, err := r.db.Exec(ctx, `
 		UPDATE master_jalan
-		SET nama_jalan = $1, kapasitas = $2, updated_at = now()
-		WHERE id = $3 AND deleted_at IS NULL
-	`, namaJalan, kapasitas, id)
-	return err
+		SET kode_jalan = $1, nama_jalan = $2, kapasitas = $3, updated_at = now()
+		WHERE id = $4 AND deleted_at IS NULL
+	`, kodeJalan, namaJalan, kapasitas, id)
+	return terjemahkanError(err)
 }
 
 // DeleteJalan soft delete
@@ -149,7 +172,7 @@ func (r *Repository) InstansiExists(ctx context.Context, id string) (bool, error
 // GetAllInstansi ambil semua instansi
 func (r *Repository) GetAllInstansi(ctx context.Context) ([]entity.InstansiData, error) {
 	rows, err := r.db.Query(ctx, `
-		SELECT id, nama_unit FROM master_instansi WHERE deleted_at IS NULL ORDER BY nama_unit
+		SELECT id, nama_instansi FROM master_instansi WHERE deleted_at IS NULL ORDER BY nama_instansi
 	`)
 	if err != nil {
 		return nil, err
