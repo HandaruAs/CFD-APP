@@ -1,19 +1,19 @@
 class MenuModel {
   final String label;
-  final String path; 
-  final String iconName; 
+  final String? path;
+  final String iconName;
 
   MenuModel({
     required this.label,
-    required this.path,
+    this.path,
     required this.iconName,
   });
 
   factory MenuModel.fromJson(Map<String, dynamic> json) {
     return MenuModel(
-      label: json['label'] as String,
-      path: json['path'] as String,
-      iconName: json['icon_name'] as String,
+      label: json['name'] as String,
+      path: json['route'] as String?,
+      iconName: json['icon'] as String? ?? 'circle',
     );
   }
 }

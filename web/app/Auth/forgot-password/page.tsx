@@ -144,7 +144,7 @@ export default function ForgotPasswordPage() {
         {/* Link kembali */}
         <p className="text-center text-sm mt-6">
           <a
-            href="/login"
+            href="/auth/login"
             className="inline-flex items-center gap-1.5 font-medium text-[#2563EB] hover:text-[#1D4ED8]"
           >
             <svg viewBox="0 0 24 24" fill="none" width="14" height="14">

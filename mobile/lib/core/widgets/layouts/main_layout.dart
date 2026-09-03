@@ -1,8 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:mobile/features/menu/data/datasources/menu_remote_datasource.dart';
 import 'package:mobile/core/models/menu_model.dart';
-// Import halaman-halaman yang akan dinavigasi di sini
-import 'package:mobile/features/pedagang/presentation/pages/pedagang_dashboard.dart';
+import 'package:mobile/features/pedagang/presentation/pages/pendaftaran_screen.dart';
+import 'package:mobile/features/pedagang/presentation/pages/status_verifikasi_screen.dart';
+import 'package:mobile/features/pedagang/presentation/pages/lapak_screen.dart';
 
 class MainLayout extends StatefulWidget {
   final Widget body; // Halaman yang dibungkus (misal: HomeScreen)
@@ -83,7 +84,13 @@ class _MainLayoutState extends State<MainLayout> {
                   title: Text(menu.label),
                   onTap: () {
                     Navigator.pop(context); // Tutup drawer terlebih dahulu
-                    _navigateTo(context, menu.path);
+                    if (menu.path == null) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(content: Text('Menu ini belum punya halaman.')),
+                      );
+                      return;
+                    }
+                    _navigateTo(context, menu.path!);
                   },
                 );
               },
@@ -120,21 +127,44 @@ class _MainLayoutState extends State<MainLayout> {
   }
 
   // --- Fungsi Navigasi ---
+  //
+  // CATATAN PATH: ini harus persis sama kayak kolom `route` di tabel
+  // `menus` backend, yang sekarang kamu atur sendiri lewat Manajemen
+  // Menu (bukan migrasi). Yang udah dikonfirmasi dari seed migrasi lama:
+  //   - Dashboard            -> /pedagang                (belum ada halamannya)
+  //   - Pendaftaran          -> /pedagang/pendaftaran
+  //   - Status Verifikasi    -> /pedagang/status-verifikasi
+  //   - Jadwal & Lokasi      -> /pedagang/jadwal-lokasi   (masih dummy, ganti
+  //     route-nya lewat Manajemen Menu jadi '/pedagang/nomor-stand' biar
+  //     kepencet ke LapakScreen di bawah)
+  //   - Profil Usaha         -> /pedagang/profil          (belum dikerjain)
+  //
+  // CheckoutScreen SENGAJA gak punya case di sini -- gak ada menu yang
+  // nunjuk ke situ, sama kayak CekOut di web. Halaman ini cuma dicapai
+  // lewat auto-redirect dari LapakScreen setelah polling check-in
+  // berhasil (lihat _maybeStartPolling di lapak_screen.dart).
   void _navigateTo(BuildContext context, String path) {
-    print("Navigasi ke $path");
-
     switch (path) {
-      case '/pedagang/dashboard':
+      case '/pedagang/pendaftaran':
         Navigator.push(
           context,
-          MaterialPageRoute(builder: (context) => const PedagangDashboard()),
+          MaterialPageRoute(builder: (context) => const PendaftaranScreen()),
         );
         break;
 
-      // Tambahkan case lain di sini seiring kamu membuat halaman baru
-      // case '/pedagang/pengajuan':
-      //   Navigator.push(context, MaterialPageRoute(builder: (context) => const PedagangPengajuanScreen()));
-      //   break;
+      case '/pedagang/status-verifikasi':
+        Navigator.push(
+          context,
+          MaterialPageRoute(builder: (context) => const StatusVerifikasiScreen()),
+        );
+        break;
+
+      case '/pedagang/nomer-stand':
+        Navigator.push(
+          context,
+          MaterialPageRoute(builder: (context) => const LapakScreen()),
+        );
+        break;
 
       default:
         ScaffoldMessenger.of(context).showSnackBar(
