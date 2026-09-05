@@ -7,6 +7,7 @@ import 'package:mobile/features/auth/presentation/pages/login_screen.dart';
 import 'package:mobile/features/pedagang/presentation/pages/pendaftaran_screen.dart';
 import 'package:mobile/features/pedagang/presentation/pages/status_verifikasi_screen.dart';
 import 'package:mobile/features/pedagang/presentation/pages/lapak_screen.dart';
+import 'package:mobile/features/petugas/presentation/pages/jam_operasional_screen.dart';
 
 class MainLayout extends ConsumerStatefulWidget {
   final Widget body; // Halaman yang dibungkus (misal: HomeScreen)
@@ -160,6 +161,14 @@ class _MainLayoutState extends ConsumerState<MainLayout> {
   }
 
   // --- Fungsi Navigasi ---
+  //
+  // CATATAN PATH: harus persis sama kolom `route` di tabel `menus`
+  // backend. Yang udah dikonfirmasi dari migrasi seed:
+  //   - Pedagang - Pendaftaran        -> /pedagang/pendaftaran
+  //   - Pedagang - Status Verifikasi  -> /pedagang/status-verifikasi
+  //   - Pedagang - Nomor Stand        -> /pedagang/nomer-stand
+  //   - Petugas  - Jam Operasional    -> /petugas/jam-operasional
+  //     (dari migrasi 000016_restructure_menus.up.sql)
   void _navigateTo(BuildContext context, String path) {
     switch (path) {
       case '/pedagang/pendaftaran':
@@ -180,6 +189,13 @@ class _MainLayoutState extends ConsumerState<MainLayout> {
         Navigator.push(
           context,
           MaterialPageRoute(builder: (context) => const LapakScreen()),
+        );
+        break;
+
+      case '/petugas/jam-operasional':
+        Navigator.push(
+          context,
+          MaterialPageRoute(builder: (context) => const JamOperasionalScreen()),
         );
         break;
 
