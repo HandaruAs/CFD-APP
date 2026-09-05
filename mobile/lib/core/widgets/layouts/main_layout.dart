@@ -1,11 +1,14 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:mobile/features/menu/data/datasources/menu_remote_datasource.dart';
 import 'package:mobile/core/models/menu_model.dart';
+import 'package:mobile/features/auth/presentation/providers/auth_provider.dart';
+import 'package:mobile/features/auth/presentation/pages/login_screen.dart';
 import 'package:mobile/features/pedagang/presentation/pages/pendaftaran_screen.dart';
 import 'package:mobile/features/pedagang/presentation/pages/status_verifikasi_screen.dart';
 import 'package:mobile/features/pedagang/presentation/pages/lapak_screen.dart';
 
-class MainLayout extends StatefulWidget {
+class MainLayout extends ConsumerStatefulWidget {
   final Widget body; // Halaman yang dibungkus (misal: HomeScreen)
   final String title; // Judul AppBar
 
@@ -16,10 +19,10 @@ class MainLayout extends StatefulWidget {
   });
 
   @override
-  State<MainLayout> createState() => _MainLayoutState();
+  ConsumerState<MainLayout> createState() => _MainLayoutState();
 }
 
-class _MainLayoutState extends State<MainLayout> {
+class _MainLayoutState extends ConsumerState<MainLayout> {
   late Future<List<MenuModel>> _menuFuture;
 
   @override
@@ -38,67 +41,97 @@ class _MainLayoutState extends State<MainLayout> {
         foregroundColor: Colors.white,
       ),
       drawer: Drawer(
-        child: FutureBuilder<List<MenuModel>>(
-          future: _menuFuture,
-          builder: (context, snapshot) {
-            // State Loading
-            if (snapshot.connectionState == ConnectionState.waiting) {
-              return const Center(child: CircularProgressIndicator());
-            }
-            // State Error
-            if (snapshot.hasError) {
-              return Center(
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    const Icon(Icons.error_outline, color: Colors.red, size: 40),
-                    const SizedBox(height: 10),
-                    Text('Error: ${snapshot.error}'),
-                    const SizedBox(height: 10),
-                    ElevatedButton(
-                      onPressed: () {
-                        setState(() {
-                          _menuFuture = MenuRemoteDatasource.fetchUserMenus();
-                        });
-                      },
-                      child: const Text('Coba Lagi'),
-                    )
-                  ],
-                ),
-              );
-            }
+        child: Column(
+          children: [
+            Expanded(
+              child: FutureBuilder<List<MenuModel>>(
+                future: _menuFuture,
+                builder: (context, snapshot) {
+                  // State Loading
+                  if (snapshot.connectionState == ConnectionState.waiting) {
+                    return const Center(child: CircularProgressIndicator());
+                  }
+                  // State Error
+                  if (snapshot.hasError) {
+                    return Center(
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          const Icon(Icons.error_outline, color: Colors.red, size: 40),
+                          const SizedBox(height: 10),
+                          Text('Error: ${snapshot.error}'),
+                          const SizedBox(height: 10),
+                          ElevatedButton(
+                            onPressed: () {
+                              setState(() {
+                                _menuFuture = MenuRemoteDatasource.fetchUserMenus();
+                              });
+                            },
+                            child: const Text('Coba Lagi'),
+                          )
+                        ],
+                      ),
+                    );
+                  }
 
-            // State Sukses
-            final menus = snapshot.data!;
-            if (menus.isEmpty) {
-              return const Center(child: Text('Tidak ada menu untuk role Anda.'));
-            }
+                  // State Sukses
+                  final menus = snapshot.data!;
+                  if (menus.isEmpty) {
+                    return const Center(child: Text('Tidak ada menu untuk role Anda.'));
+                  }
 
-            return ListView.builder(
-              padding: EdgeInsets.zero,
-              itemCount: menus.length,
-              itemBuilder: (context, index) {
-                final menu = menus[index];
-                return ListTile(
-                  leading: Icon(_getIcon(menu.iconName)),
-                  title: Text(menu.label),
-                  onTap: () {
-                    Navigator.pop(context); // Tutup drawer terlebih dahulu
-                    if (menu.path == null) {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(content: Text('Menu ini belum punya halaman.')),
+                  return ListView.builder(
+                    padding: EdgeInsets.zero,
+                    itemCount: menus.length,
+                    itemBuilder: (context, index) {
+                      final menu = menus[index];
+                      return ListTile(
+                        leading: Icon(_getIcon(menu.iconName)),
+                        title: Text(menu.label),
+                        onTap: () {
+                          Navigator.pop(context); // Tutup drawer terlebih dahulu
+                          if (menu.path == null) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(content: Text('Menu ini belum punya halaman.')),
+                            );
+                            return;
+                          }
+                          _navigateTo(context, menu.path!);
+                        },
                       );
-                      return;
-                    }
-                    _navigateTo(context, menu.path!);
-                  },
-                );
+                    },
+                  );
+                },
+              ),
+            ),
+            // Logout SENGAJA statis di luar list dinamis dari backend --
+            // gak semua role (mis. superadmin) punya row menu "Logout"
+            // di tabel menus, jadi ini fallback yang selalu tampil di
+            // drawer apapun isi menu dinamis dari backend.
+            const Divider(height: 1),
+            ListTile(
+              leading: const Icon(Icons.logout, color: Colors.red),
+              title: const Text('Logout', style: TextStyle(color: Colors.red)),
+              onTap: () {
+                Navigator.pop(context); // Tutup drawer dulu
+                _logout(context);
               },
-            );
-          },
+            ),
+            const SizedBox(height: 8),
+          ],
         ),
       ),
       body: widget.body,
+    );
+  }
+
+  // --- Logout ---
+  Future<void> _logout(BuildContext context) async {
+    await ref.read(authProvider.notifier).logout();
+    if (!context.mounted) return;
+    Navigator.of(context).pushAndRemoveUntil(
+      MaterialPageRoute(builder: (_) => const LoginScreen()),
+      (route) => false,
     );
   }
 
@@ -127,22 +160,6 @@ class _MainLayoutState extends State<MainLayout> {
   }
 
   // --- Fungsi Navigasi ---
-  //
-  // CATATAN PATH: ini harus persis sama kayak kolom `route` di tabel
-  // `menus` backend, yang sekarang kamu atur sendiri lewat Manajemen
-  // Menu (bukan migrasi). Yang udah dikonfirmasi dari seed migrasi lama:
-  //   - Dashboard            -> /pedagang                (belum ada halamannya)
-  //   - Pendaftaran          -> /pedagang/pendaftaran
-  //   - Status Verifikasi    -> /pedagang/status-verifikasi
-  //   - Jadwal & Lokasi      -> /pedagang/jadwal-lokasi   (masih dummy, ganti
-  //     route-nya lewat Manajemen Menu jadi '/pedagang/nomor-stand' biar
-  //     kepencet ke LapakScreen di bawah)
-  //   - Profil Usaha         -> /pedagang/profil          (belum dikerjain)
-  //
-  // CheckoutScreen SENGAJA gak punya case di sini -- gak ada menu yang
-  // nunjuk ke situ, sama kayak CekOut di web. Halaman ini cuma dicapai
-  // lewat auto-redirect dari LapakScreen setelah polling check-in
-  // berhasil (lihat _maybeStartPolling di lapak_screen.dart).
   void _navigateTo(BuildContext context, String path) {
     switch (path) {
       case '/pedagang/pendaftaran':

@@ -1,9 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:mobile/features/auth/presentation/providers/auth_provider.dart';
-import 'package:mobile/features/pedagang/presentation/providers/pedagang_provider.dart';
-import 'package:mobile/features/pedagang/presentation/pages/pendaftaran_screen.dart';
-import 'package:mobile/features/pedagang/presentation/pages/status_verifikasi_screen.dart';
+import 'package:mobile/features/auth/presentation/navigation/role_navigation.dart';
 import 'package:mobile/features/auth/presentation/pages/register_screen.dart';
 
 class LoginScreen extends ConsumerStatefulWidget {
@@ -36,21 +34,19 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
       _passwordController.text,
     );
 
-    // Cek hasil login
+    // Cek hasil login, lalu arahkan ke home sesuai role user (pedagang,
+    // petugas, atau superadmin) lewat RoleNavigation -- logic per-role
+    // gak lagi hardcode di sini.
     final state = ref.read(authProvider);
-    if (state.isLoggedIn && mounted) {
-      // Cek dulu udah pernah ngirim pengajuan usaha apa belum, biar
-      // gak nyasar ke form pendaftaran padahal udah pernah ngajuin.
-      await ref.read(pedagangProvider.notifier).loadStatusPengajuan();
-      final sudahAdaPengajuan = ref.read(pedagangProvider).pengajuan != null;
+    if (state.isLoggedIn && state.user != null && mounted) {
+      final homeScreen = await RoleNavigation.resolveHomeScreen(
+        ref,
+        state.user!,
+      );
 
       if (!mounted) return;
       Navigator.of(context).pushReplacement(
-        MaterialPageRoute(
-          builder: (context) => sudahAdaPengajuan
-              ? const StatusVerifikasiScreen()
-              : const PendaftaranScreen(),
-        ),
+        MaterialPageRoute(builder: (context) => homeScreen),
       );
     }
   }
