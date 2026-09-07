@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:mobile/core/widgets/layouts/main_layout.dart';
-import 'package:mobile/core/routers/app_router.dart';
+import 'package:mobile/core/providers/nav_provider.dart';
+import 'package:mobile/features/petugas/presentation/pages/sisa_lapak_screen.dart';
 import 'package:mobile/features/petugas/domain/entities/status_operasional.dart';
 import 'package:mobile/features/petugas/domain/entities/stats_kehadiran.dart';
 import 'package:mobile/features/petugas/presentation/providers/petugas_dashboard_state.dart';
@@ -24,10 +24,12 @@ class _MenuShortcut {
 }
 
 // 4 menu utama petugas (di luar Dashboard & Logout yang udah ada di
-// drawer). "Jam Operasional", "Scan QR Pedagang", & "Sisa Lapak" udah
-// nyambung ke halaman asli lewat AppRoutes -- "Laporan Kehadiran"
-// masih nunggu tahap 70-90% di progress plan, jadi tap-nya masih
-// nunjukin snackbar.
+// bottom nav). "Jam Operasional" & "Scan QR Pedagang" itu tab beneran
+// (ada menu row-nya di backend, migrasi 000016 & 000018) jadi tap-nya
+// pindah tab lewat bottomNavIndexProvider. "Sisa Lapak" BELUM punya
+// menu row sendiri (bukan tab) jadi tap-nya push halaman biasa kayak
+// CheckoutScreen. "Laporan Kehadiran" masih nunggu tahap 70-90% di
+// progress plan, jadi tap-nya masih nunjukin snackbar.
 const _shortcuts = [
   _MenuShortcut(
     title: 'Jam Operasional',
@@ -55,14 +57,13 @@ const _shortcuts = [
   ),
 ];
 
-// Pemetaan judul shortcut -> named route di AppRoutes. Satu-satunya
-// tempat yang perlu diubah kalau ada menu baru yang halamannya udah
-// jadi -- gak perlu tambah if/else baru di onTap.
-const Map<String, String> _shortcutRoutes = {
-  'Jam Operasional': AppRoutes.petugasJamOperasional,
-  'Scan QR Pedagang': AppRoutes.petugasScanQr,
-  'Sisa Lapak': AppRoutes.petugasSisaLapak,
-  'Laporan Kehadiran': AppRoutes.petugasLaporan,
+// Judul shortcut -> route persis kolom `route` di tabel `menus`
+// backend, KHUSUS buat yang beneran tab (dicek index-nya di menu
+// list, bukan di-push). Kalau nanti "Laporan Kehadiran" udah dikasih
+// tab juga, tinggal tambah barisnya di sini.
+const Map<String, String> _shortcutTabRoutes = {
+  'Jam Operasional': '/petugas/jam-operasional',
+  'Scan QR Pedagang': '/petugas/scan-qr',
 };
 
 class PetugasHomeScreen extends ConsumerStatefulWidget {
@@ -85,12 +86,9 @@ class _PetugasHomeScreenState extends ConsumerState<PetugasHomeScreen> {
   Widget build(BuildContext context) {
     final state = ref.watch(petugasDashboardProvider);
 
-    return MainLayout(
-      title: 'Dashboard Petugas CFD',
-      body: RefreshIndicator(
+    return RefreshIndicator(
         onRefresh: () => ref.read(petugasDashboardProvider.notifier).loadDashboard(),
         child: _buildBody(state),
-      ),
     );
   }
 
@@ -278,21 +276,54 @@ class _PetugasHomeScreenState extends ConsumerState<PetugasHomeScreen> {
     );
   }
 
+  // Tab beneran (ada menu row-nya) -> pindah tab lewat bottomNavIndexProvider,
+  // BUKAN Navigator.pushNamed lagi -- screen tab sekarang cuma widget body,
+  // gak punya Scaffold/AppBar sendiri buat di-push jadi halaman penuh.
+  void _handleShortcutTap(_MenuShortcut item) {
+    final tabRoute = _shortcutTabRoutes[item.title];
+    if (tabRoute != null) {
+      final menus = ref.read(menuListProvider).valueOrNull;
+      final idx = menus?.indexWhere((m) => m.path == tabRoute) ?? -1;
+      if (idx == -1) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Menu "${item.title}" belum tersedia untuk akun Anda.')),
+        );
+        return;
+      }
+      ref.read(bottomNavIndexProvider.notifier).state = idx;
+      return;
+    }
+
+    // "Sisa Lapak" belum punya menu row sendiri (bukan tab) -- tetap
+    // push halaman biasa di atas shell, sama kayak CheckoutScreen di
+    // sisi pedagang.
+    if (item.title == 'Sisa Lapak') {
+      Navigator.of(context).push(
+        MaterialPageRoute(
+          builder: (_) => Scaffold(
+            appBar: AppBar(
+              title: const Text('Sisa Lapak'),
+              backgroundColor: _brandColor,
+              foregroundColor: Colors.white,
+            ),
+            body: const SisaLapakScreen(),
+          ),
+        ),
+      );
+      return;
+    }
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('Halaman ${item.title} belum dibuat.')),
+    );
+  }
+
   Widget _buildShortcutCard(_MenuShortcut item) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 12),
       child: InkWell(
         borderRadius: BorderRadius.circular(12),
-        onTap: () {
-          final route = _shortcutRoutes[item.title];
-          if (route != null) {
-            Navigator.pushNamed(context, route);
-            return;
-          }
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('Halaman ${item.title} belum dibuat.')),
-          );
-        },
+        onTap: () => _handleShortcutTap(item),
         child: Card(
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
           child: Padding(

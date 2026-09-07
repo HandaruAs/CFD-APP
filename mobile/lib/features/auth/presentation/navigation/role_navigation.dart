@@ -1,10 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:mobile/features/auth/domain/entities/user.dart';
+import 'package:mobile/core/widgets/layouts/main_layout.dart';
 import 'package:mobile/features/pedagang/presentation/providers/pedagang_provider.dart';
-import 'package:mobile/features/pedagang/presentation/pages/pendaftaran_screen.dart';
-import 'package:mobile/features/pedagang/presentation/pages/status_verifikasi_screen.dart';
-import 'package:mobile/features/petugas/presentation/pages/petugas_home_screen.dart';
 import 'package:mobile/features/superadmin/presentation/pages/superadmin_home_screen.dart';
 
 /// Titik tunggal buat nentuin halaman awal (home) tiap role setelah
@@ -19,8 +17,13 @@ class RoleNavigation {
       case 'pedagang':
         return _resolvePedagangHome(ref);
       case 'petugas':
-        return const PetugasHomeScreen();
+        // Gak perlu initialPath -- tab index 0 (Dashboard) udah pas
+        // buat kondisi awal petugas, gak ada percabangan kayak pedagang.
+        return const MainLayout();
       case 'superadmin':
+        // Superadmin BUKAN MainLayout -- menunya masih halaman
+        // manajemen (bukan tab dashboard), lihat komentar di
+        // SuperadminHomeScreen.
         return const SuperadminHomeScreen();
       default:
         // Role tak dikenal -- tetap kasih halaman (bukan crash), biar
@@ -31,14 +34,17 @@ class RoleNavigation {
   }
 
   /// Pedagang: cek dulu udah pernah ngirim pengajuan usaha apa belum,
-  /// biar gak nyasar ke form pendaftaran padahal udah pernah ngajuin.
+  /// biar tab awal yang kebuka MainLayout bukan Pendaftaran kalau
+  /// ternyata udah pernah ngajuin.
   static Future<Widget> _resolvePedagangHome(WidgetRef ref) async {
     await ref.read(pedagangProvider.notifier).loadStatusPengajuan();
     final sudahAdaPengajuan = ref.read(pedagangProvider).pengajuan != null;
 
-    return sudahAdaPengajuan
-        ? const StatusVerifikasiScreen()
-        : const PendaftaranScreen();
+    return MainLayout(
+      initialPath: sudahAdaPengajuan
+          ? '/pedagang/status-verifikasi'
+          : '/pedagang/pendaftaran',
+    );
   }
 }
 
