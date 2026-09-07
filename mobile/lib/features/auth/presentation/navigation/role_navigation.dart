@@ -1,0 +1,66 @@
+import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:mobile/features/auth/domain/entities/user.dart';
+import 'package:mobile/features/pedagang/presentation/providers/pedagang_provider.dart';
+import 'package:mobile/features/pedagang/presentation/pages/pendaftaran_screen.dart';
+import 'package:mobile/features/pedagang/presentation/pages/status_verifikasi_screen.dart';
+import 'package:mobile/features/petugas/presentation/pages/petugas_home_screen.dart';
+import 'package:mobile/features/superadmin/presentation/pages/superadmin_home_screen.dart';
+
+/// Titik tunggal buat nentuin halaman awal (home) tiap role setelah
+/// login/auto-login berhasil. Semua percabangan logic-per-role hidup
+/// di sini -- login_screen dan splash_screen tinggal panggil
+/// [resolveHomeScreen], gak perlu tau detail tiap role.
+class RoleNavigation {
+  RoleNavigation._();
+
+  static Future<Widget> resolveHomeScreen(WidgetRef ref, AuthUser user) async {
+    switch (user.role) {
+      case 'pedagang':
+        return _resolvePedagangHome(ref);
+      case 'petugas':
+        return const PetugasHomeScreen();
+      case 'superadmin':
+        return const SuperadminHomeScreen();
+      default:
+        // Role tak dikenal -- tetap kasih halaman (bukan crash), biar
+        // gampang ketauan kalau ada role baru dari backend yang belum
+        // di-handle di app.
+        return _UnknownRolePlaceholder(roleLabel: user.role);
+    }
+  }
+
+  /// Pedagang: cek dulu udah pernah ngirim pengajuan usaha apa belum,
+  /// biar gak nyasar ke form pendaftaran padahal udah pernah ngajuin.
+  static Future<Widget> _resolvePedagangHome(WidgetRef ref) async {
+    await ref.read(pedagangProvider.notifier).loadStatusPengajuan();
+    final sudahAdaPengajuan = ref.read(pedagangProvider).pengajuan != null;
+
+    return sudahAdaPengajuan
+        ? const StatusVerifikasiScreen()
+        : const PendaftaranScreen();
+  }
+}
+
+/// Fallback kalau backend suatu saat ngasih role yang gak dikenal app
+/// ini. Bukan bug/crash -- cuma sinyal "ada role baru, perlu di-handle
+/// di resolveHomeScreen di atas".
+class _UnknownRolePlaceholder extends StatelessWidget {
+  final String roleLabel;
+
+  const _UnknownRolePlaceholder({required this.roleLabel});
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: Text('Dashboard $roleLabel'),
+        backgroundColor: const Color(0xFF1C3F7C),
+        foregroundColor: Colors.white,
+      ),
+      body: Center(
+        child: Text('Role "$roleLabel" belum di-handle di app.'),
+      ),
+    );
+  }
+}

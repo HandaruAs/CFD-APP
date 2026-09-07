@@ -27,6 +27,24 @@ class AuthNotifier extends StateNotifier<AuthState> {
     }
   }
 
+  Future<void> tryAutoLogin() async {
+  state = state.copyWith(isLoading: true, error: null);
+
+  try {
+    final token = await AuthRemoteDatasource.getToken();
+    if (token == null) {
+      state = state.copyWith(isLoading: false, isLoggedIn: false);
+      return;
+    }
+
+    final user = await AuthRemoteDatasource.getMe();
+    state = state.copyWith(isLoading: false, isLoggedIn: true, user: user);
+  } catch (_) {
+    await AuthRemoteDatasource.logout();
+    state = AuthState.initial();
+  }
+}
+
   Future<void> register(String name, String email, String password) async {
     state = state.copyWith(isLoading: true, error: null);
 

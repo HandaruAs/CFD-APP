@@ -356,7 +356,18 @@ func main() {
 		middleware.PermissionMiddleware(permissionRepository, "jadwal.manage"),
 		operasionalController.BuatSesiWilayah,
 	)
+		app.Post("/api/petugas/jam-operasional/sesi-wilayah",
+		middleware.AuthMiddleware(cfg.JWTSecret),
+		middleware.PermissionMiddleware(permissionRepository, "jadwal.manage"),
+		operasionalController.BuatSesiWilayah,
+	)
 
+	app.Delete("/api/petugas/jam-operasional/sesi-wilayah/:id",
+		middleware.AuthMiddleware(cfg.JWTSecret),
+		middleware.PermissionMiddleware(permissionRepository, "jadwal.manage"),
+		operasionalController.HapusSesiWilayah,
+	)
+	
 	// ============================================================
 	// 10. ENDPOINT PETUGAS - SCAN QR
 	// ============================================================

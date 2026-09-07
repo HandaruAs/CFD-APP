@@ -227,3 +227,32 @@ func (ctrl *OperasionalController) UpdateJadwalMingguan(c fiber.Ctx) error {
 		"jadwal":  jadwal,
 	})
 }
+
+func (ctrl *OperasionalController) HapusSesiWilayah(c fiber.Ctx) error {
+	id := c.Params("id")
+	if id == "" {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"error": "id sesi wajib diisi",
+		})
+	}
+
+	userID, err := getUserID(c)
+	if err != nil {
+		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{
+			"error": err.Error(),
+		})
+	}
+
+	if err := ctrl.operasionalUsecase.HapusSesiWilayah(c.Context(), userID, id); err != nil {
+		status := fiber.StatusBadRequest
+		if errors.Is(err, usecase.ErrSesiTidakDitemukan) {
+			status = fiber.StatusNotFound
+		}
+		return c.Status(status).JSON(fiber.Map{
+			"error": err.Error(),
+		})
+	}
+	return c.Status(fiber.StatusOK).JSON(fiber.Map{
+		"message": "sesi CFD berhasil dihapus",
+	})
+}

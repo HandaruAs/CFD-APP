@@ -14,6 +14,7 @@ var (
 	ErrJamSelesaiSudahLewat   = errors.New("jam selesai harus lebih besar dari jam sekarang")
 	ErrSesiSudahDiatur        = errors.New("sesi hari ini sudah diatur, tidak bisa diubah")
 	ErrPendaftaranSudahDiubah = errors.New("pengaturan pendaftaran sudah diubah hari ini, hanya boleh sekali pada hari Jumat")
+	ErrSesiTidakDitemukan     = errors.New("sesi tidak ditemukan atau kamu tidak berhak menghapusnya")
 )
 
 type OperasionalRepository interface {
@@ -35,6 +36,7 @@ type OperasionalRepository interface {
 	ListSesiJalanRows(ctx context.Context) ([]entity.SesiJalanRow, error)
 	JalanUntukScope(ctx context.Context, scope string, kecamatanID, jalanID *string) ([]string, error)
 	CreateSesiWilayah(ctx context.Context, namaSesi, tanggal, jamMulai, jamSelesai string, createdBy *string, jalanIDs []string) (*entity.Sesi, error)
+	HapusSesiWilayah(ctx context.Context, id string) error
 }
 
 type OperasionalUsecase interface {
@@ -51,6 +53,7 @@ type OperasionalUsecase interface {
 	GetWilayahSaya(ctx context.Context, userID string) (*entity.WilayahPetugasDTO, error)
 	ListSesiWilayah(ctx context.Context, userID string) ([]entity.SesiWilayahDTO, error)
 	BuatSesiWilayah(ctx context.Context, userID string, req *entity.CreateSesiWilayahRequest) (*entity.SesiWilayahDTO, error)
+	HapusSesiWilayah(ctx context.Context, userID, sesiID string) error
 }
 
 type operasionalUsecase struct {
@@ -624,6 +627,28 @@ func (u *operasionalUsecase) BuatSesiWilayah(ctx context.Context, userID string,
 		return nil, errors.New("sesi berhasil dibuat tapi gagal dimuat ulang")
 	}
 	return &hasil[0], nil
+}
+
+// HapusSesiWilayah menghapus (soft-delete) sesi CFD. Otorisasi di-reuse
+// dari ListSesiWilayah: kalau sesiID gak muncul di daftar sesi yang
+// "kelihatan" buat petugas ini, berarti dia gak berhak menghapusnya
+// (baik karena bukan sesi di wilayahnya, atau memang sudah tidak ada).
+func (u *operasionalUsecase) HapusSesiWilayah(ctx context.Context, userID, sesiID string) error {
+	daftar, err := u.ListSesiWilayah(ctx, userID)
+	if err != nil {
+		return err
+	}
+	ditemukan := false
+	for _, s := range daftar {
+		if s.ID == sesiID {
+			ditemukan = true
+			break
+		}
+	}
+	if !ditemukan {
+		return ErrSesiTidakDitemukan
+	}
+	return u.repo.HapusSesiWilayah(ctx, sesiID)
 }
 
 func scopeLabelDariReq(req *entity.CreateSesiWilayahRequest) string {

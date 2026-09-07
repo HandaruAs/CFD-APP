@@ -389,3 +389,22 @@ func (r *OperasionalRepository) CreateSesiWilayah(
 	}
 	return sesi, nil
 }
+
+// HapusSesiWilayah soft-delete sesi CFD. Baris jalan_kapasitas_sesi
+// terkait dibiarkan apa adanya -- otomatis tidak lagi ikut kehitung
+// di manapun karena semua query (ListSesiJalanRows, GetSesiHariIni, dll)
+// selalu join/filter cfd_sessions WHERE deleted_at IS NULL.
+func (r *OperasionalRepository) HapusSesiWilayah(ctx context.Context, id string) error {
+	tag, err := r.db.Exec(ctx, `
+		UPDATE cfd_sessions
+		SET deleted_at = now(), updated_at = now()
+		WHERE id = $1 AND deleted_at IS NULL
+	`, id)
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() == 0 {
+		return errors.New("sesi tidak ditemukan atau sudah dihapus")
+	}
+	return nil
+}

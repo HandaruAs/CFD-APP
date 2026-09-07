@@ -6,7 +6,6 @@ import {
   Clock,
   Hourglass,
   History,
-  CalendarCheck2,
   Lock,
   LockOpen,
   Check,
@@ -20,6 +19,9 @@ import {
   Plus,
   CalendarDays,
   Save,
+  Trash2,
+  ChevronUp,
+  ChevronDown,
 } from "lucide-react";
 
 // ========== TYPES ==========
@@ -101,35 +103,20 @@ type KecamatanData = {
   jalan: JalanData[];
 };
 
-// ========== STYLE ==========
-const STATUS_STYLE: Record<StatusRiwayat, { label: string; bg: string; text: string; icon: typeof Check }> = {
-  normal: {
-    label: "Selesai Normal",
-    bg: "bg-secondary-container/40",
-    text: "text-on-secondary-container",
-    icon: Check,
-  },
-  diperpanjang: {
-    label: "Diperpanjang",
-    bg: "bg-tertiary-container/15",
-    text: "text-on-tertiary-container",
-    icon: Clock,
-  },
-  "diakhiri-awal": {
-    label: "Diakhiri Awal",
-    bg: "bg-error-container/60",
-    text: "text-on-error-container",
-    icon: AlertTriangle,
-  },
+// ========== STYLE (class pt-pill-* didefinisikan di petugas.css) ==========
+const STATUS_STYLE: Record<StatusRiwayat, { label: string; pill: string; icon: typeof Check }> = {
+  normal: { label: "Selesai Normal", pill: "pt-pill-success", icon: Check },
+  diperpanjang: { label: "Diperpanjang", pill: "pt-pill-warning", icon: Clock },
+  "diakhiri-awal": { label: "Diakhiri Awal", pill: "pt-pill-danger", icon: AlertTriangle },
 };
 
-const SESI_WILAYAH_STATUS_STYLE: Record<string, { label: string; bg: string; text: string }> = {
-  berlangsung: { label: "Berlangsung", bg: "bg-secondary-container/40", text: "text-on-secondary-container" },
-  diperpanjang: { label: "Diperpanjang", bg: "bg-tertiary-container/15", text: "text-on-tertiary-container" },
-  selesai_normal: { label: "Selesai Normal", bg: "bg-surface-container-high", text: "text-on-surface-variant" },
-  diakhiri_awal: { label: "Diakhiri Awal", bg: "bg-error-container/60", text: "text-on-error-container" },
+const SESI_WILAYAH_STATUS_STYLE: Record<string, { label: string; pill: string }> = {
+  berlangsung: { label: "Berlangsung", pill: "pt-pill-success" },
+  diperpanjang: { label: "Diperpanjang", pill: "pt-pill-warning" },
+  selesai_normal: { label: "Selesai Normal", pill: "pt-pill-neutral" },
+  diakhiri_awal: { label: "Diakhiri Awal", pill: "pt-pill-danger" },
 };
-const SESI_WILAYAH_STATUS_DEFAULT = { label: "-", bg: "bg-surface-container-high", text: "text-on-surface-variant" };
+const SESI_WILAYAH_STATUS_DEFAULT = { label: "-", pill: "pt-pill-neutral" };
 
 const HARI_LIST: { value: HariValue; label: string }[] = [
   { value: "senin", label: "Senin" },
@@ -183,71 +170,120 @@ async function apiFetch(path: string, options: RequestInit = {}) {
 }
 
 // ===== MODAL SHELL =====
-function ModalShell({ children, onClose }: { children: React.ReactNode; onClose: () => void }) {
+function ModalShell({
+  children,
+  onClose,
+  title,
+  description,
+  footer,
+  maxWidthClass = "max-w-[30rem]",
+}: {
+  children: React.ReactNode;
+  onClose: () => void;
+  title?: string;
+  description?: string;
+  footer?: React.ReactNode;
+  maxWidthClass?: string;
+}) {
   return (
-    <div
-      style={{
-        position: "fixed",
-        inset: 0,
-        zIndex: 9999,
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        backgroundColor: "rgba(0,0,0,0.5)",
-        backdropFilter: "blur(2px)",
-        padding: "1rem",
-      }}
-      onClick={onClose}
-    >
-      <div
-        style={{
-          position: "relative",
-          width: "100%",
-          maxWidth: "28rem",
-          backgroundColor: "#ffffff",
-          borderRadius: "0.75rem",
-          padding: "1.5rem",
-          boxShadow: "0 20px 60px rgba(0,0,0,0.3)",
-          animation: "modalIn 0.2s ease-out",
-          maxHeight: "90vh",
-          overflowY: "auto",
-        }}
-        onClick={(e) => e.stopPropagation()}
-      >
-        <button
-          type="button"
-          onClick={onClose}
-          aria-label="Tutup"
-          style={{
-            position: "absolute",
-            top: "0.75rem",
-            right: "0.75rem",
-            borderRadius: "9999px",
-            padding: "0.25rem",
-            color: "#444653",
-            background: "transparent",
-            border: "none",
-            cursor: "pointer",
-          }}
-        >
+    <div className="pt-modal-overlay" onClick={onClose}>
+      <div className={`pt-modal-box ${maxWidthClass}`} onClick={(e) => e.stopPropagation()}>
+        <button type="button" onClick={onClose} aria-label="Tutup" className="pt-modal-close">
           <X className="h-4 w-4" strokeWidth={2} />
         </button>
-        {children}
+
+        {(title || description) && (
+          <div className="shrink-0 border-b border-outline-variant px-lg pb-md pt-lg pr-14">
+            {title && <h3 className="text-title-lg font-semibold text-on-surface">{title}</h3>}
+            {description && <p className="mt-1 text-body-sm text-on-surface-variant">{description}</p>}
+          </div>
+        )}
+
+        <div className="overflow-y-auto px-lg py-md">{children}</div>
+
+        {footer && <div className="shrink-0 border-t border-outline-variant px-lg py-md">{footer}</div>}
       </div>
     </div>
   );
 }
 
-// Animasi modal
-if (typeof document !== "undefined") {
-  const styleSheet = document.createElement("style");
-  styleSheet.textContent = `
-    @keyframes modalIn {
-      from { opacity: 0; transform: scale(0.95) translateY(10px); }
-      to { opacity: 1; transform: scale(1) translateY(0); }
-    }
-  `;
-  document.head.appendChild(styleSheet);
+// ===== TIME STEPPER (ganti input jam bawaan browser) =====
+// Jam & menit cuma bisa diubah lewat tombol panah, tidak bisa diketik
+// sama sekali -- lebih mudah dipakai lewat sentuhan/klik dan tidak
+// memunculkan popup jam bawaan browser yang tampilannya tidak
+// konsisten dengan desain halaman.
+function TimeStepper({
+  value,
+  onChange,
+  disabled = false,
+}: {
+  value: string; // format "HH:MM"
+  onChange: (next: string) => void;
+  disabled?: boolean;
+}) {
+  const [hh, mm] = value.split(":").map((n) => parseInt(n, 10) || 0);
+
+  const setHour = (next: number) => {
+    const wrapped = ((next % 24) + 24) % 24;
+    onChange(`${String(wrapped).padStart(2, "0")}:${String(mm).padStart(2, "0")}`);
+  };
+  // Menit melompat per 5 dan selalu "snap" ke kelipatan 5 terdekat di
+  // arah yang ditekan -- jadi dari angka aneh manapun (mis. 08 atau 59)
+  // satu klik langsung ke angka bulat (10 atau 00), bukan geser 1-1.
+  const setMinute = (direction: 1 | -1) => {
+    const next =
+      direction === 1 ? Math.ceil((mm + 1) / 5) * 5 : Math.floor((mm - 1) / 5) * 5;
+    const wrapped = ((next % 60) + 60) % 60;
+    onChange(`${String(hh).padStart(2, "0")}:${String(wrapped).padStart(2, "0")}`);
+  };
+
+  return (
+    <div className="inline-flex items-center gap-sm">
+      <div className="flex flex-col items-center">
+        <button
+          type="button"
+          onClick={() => setHour(hh + 1)}
+          disabled={disabled}
+          aria-label="Tambah jam"
+          className="pt-time-btn"
+        >
+          <ChevronUp className="h-4 w-4" strokeWidth={2.5} />
+        </button>
+        <span className="pt-time-value">{String(hh).padStart(2, "0")}</span>
+        <button
+          type="button"
+          onClick={() => setHour(hh - 1)}
+          disabled={disabled}
+          aria-label="Kurangi jam"
+          className="pt-time-btn"
+        >
+          <ChevronDown className="h-4 w-4" strokeWidth={2.5} />
+        </button>
+      </div>
+      <span className="text-title-lg font-semibold text-on-surface">:</span>
+      <div className="flex flex-col items-center">
+        <button
+          type="button"
+          onClick={() => setMinute(1)}
+          disabled={disabled}
+          aria-label="Tambah menit"
+          className="pt-time-btn"
+        >
+          <ChevronUp className="h-4 w-4" strokeWidth={2.5} />
+        </button>
+        <span className="pt-time-value">{String(mm).padStart(2, "0")}</span>
+        <button
+          type="button"
+          onClick={() => setMinute(-1)}
+          disabled={disabled}
+          aria-label="Kurangi menit"
+          className="pt-time-btn"
+        >
+          <ChevronDown className="h-4 w-4" strokeWidth={2.5} />
+        </button>
+      </div>
+    </div>
+  );
 }
 
 // ===== MAIN =====
@@ -287,6 +323,7 @@ export default function JamOperasionalPage() {
   const [checkInJamTutup, setCheckInJamTutup] = useState("23:59");
   const [isTogglingCheckIn, setIsTogglingCheckIn] = useState(false);
   const [isSavingCheckIn, setIsSavingCheckIn] = useState(false);
+  const [showEditJamCheckInModal, setShowEditJamCheckInModal] = useState(false);
 
   // ===== STATE UNTUK SISA LAPAK =====
   const [lapakData, setLapakData] = useState<KecamatanData[]>([]);
@@ -306,7 +343,7 @@ export default function JamOperasionalPage() {
 
   const showToast = (message: string, type: "success" | "error" = "success") => {
     setToast({ message, type });
-    setTimeout(() => setToast(null), 3000);
+    setTimeout(() => setToast(null), 4000);
   };
 
   // ===== LOAD STATUS (pendaftaran / check-in + riwayat) =====
@@ -489,6 +526,28 @@ export default function JamOperasionalPage() {
     }
   };
 
+  // ===== HANDLER: HAPUS SESI WILAYAH =====
+  const handleHapusSesi = (sesi: SesiWilayah) => {
+    setConfirmDialog({
+      title: "Hapus Sesi CFD",
+      message: `Yakin ingin menghapus sesi "${sesi.namaSesi}"? Tindakan ini tidak bisa dibatalkan.`,
+      confirmLabel: "Ya, Hapus",
+      danger: true,
+      onConfirm: async () => {
+        setConfirmDialog(null);
+        try {
+          await apiFetch(`/api/petugas/jam-operasional/sesi-wilayah/${sesi.id}`, {
+            method: "DELETE",
+          });
+          showToast("✅ Sesi CFD berhasil dihapus", "success");
+          await loadSesiWilayah();
+        } catch (err) {
+          showToast(err instanceof Error ? err.message : "gagal menghapus sesi", "error");
+        }
+      },
+    });
+  };
+
   // ===== HANDLER: JADWAL MINGGUAN =====
   const startEditJadwal = (hari: HariValue, row?: JadwalMingguan) => {
     setEditingHari(hari);
@@ -574,6 +633,7 @@ export default function JamOperasionalPage() {
             }),
           });
           showToast("✅ Pengaturan check-in berhasil disimpan", "success");
+          setShowEditJamCheckInModal(false);
           await loadStatus();
         } catch (err) {
           showToast(err instanceof Error ? err.message : "Gagal menyimpan pengaturan check-in", "error");
@@ -586,14 +646,17 @@ export default function JamOperasionalPage() {
 
   if (isLoadingPage) {
     return (
-      <div className="flex items-center justify-center py-24 text-on-surface-variant">
-        <Loader2 className="h-6 w-6 animate-spin" strokeWidth={2} />
+      <div className="flex min-h-[50vh] items-center justify-center">
+        <div className="pt-loading">
+          <Loader2 className="h-6 w-6 animate-spin" strokeWidth={2} />
+          <p className="text-body-sm">Memuat data jam operasional...</p>
+        </div>
       </div>
     );
   }
   if (loadError || !status) {
     return (
-      <div className="rounded-lg border border-error-container bg-error-container/20 p-lg text-on-error-container">
+      <div className="rounded-xl border border-error-container bg-error-container/20 px-md py-sm text-body-sm text-on-error-container">
         Gagal memuat data: {loadError ?? "data tidak ditemukan"}
       </div>
     );
@@ -601,8 +664,8 @@ export default function JamOperasionalPage() {
 
   const canEditCheckIn = !(isFriday && checkInSudahDiubahHariIni);
 
-  // Sesi wilayah yang lagi aktif (buat ditampilin di timer kanan) --
-  // kalau ada lebih dari satu yang aktif bersamaan, ambil yang paling
+  // Sesi wilayah yang lagi aktif (buat ditampilin di timer) -- kalau
+  // ada lebih dari satu yang aktif bersamaan, ambil yang paling
   // cepat berakhir (sisaMenit terkecil).
   const sesiAktifWilayah = sesiWilayahList
     .filter((s) => s.aktif)
@@ -624,47 +687,44 @@ export default function JamOperasionalPage() {
   const sisaTotal = totalKuota - totalTerisi;
 
   return (
-    <div className="flex flex-col gap-lg">
+    <div className="flex flex-col gap-lg pb-xl">
       {toast && (
-        <div
-          className={`fixed bottom-6 right-6 z-50 rounded-lg px-md py-sm shadow-lg animate-in slide-in-from-bottom-5 ${
-            toast.type === "success"
-              ? "bg-secondary-container/90 text-on-secondary-container"
-              : "bg-error-container/90 text-on-error-container"
-          }`}
-        >
-          <p className="text-label-md">{toast.message}</p>
+        <div className={`pt-toast ${toast.type === "success" ? "pt-toast-success" : "pt-toast-error"}`}>
+          {toast.type === "success" ? (
+            <Check className="h-4 w-4 shrink-0" strokeWidth={2.5} />
+          ) : (
+            <AlertTriangle className="h-4 w-4 shrink-0" strokeWidth={2.5} />
+          )}
+          <p className="text-body-md font-medium">{toast.message}</p>
         </div>
       )}
 
       <div>
         <h2 className="text-headline-lg text-on-surface">Jam Operasional</h2>
         <p className="mt-xs max-w-2xl text-body-md text-on-surface-variant">
-          Atur sesi CFD per wilayah (kota / kecamatan / jalan) dan jadwal mingguan otomatis. Kelola check-in pedagang secara terpisah.
+          Atur sesi CFD per wilayah (kota / kecamatan / jalan) dan jadwal mingguan otomatis. Kelola check-in pedagang
+          secara terpisah.
         </p>
       </div>
 
-      <div className="grid grid-cols-1 gap-md lg:grid-cols-[1fr_280px]">
-        {/* ===== SESI CFD PER WILAYAH (BARU) ===== */}
-        <div className="rounded-xl border border-outline-variant bg-surface-container-lowest p-lg">
+      <div className="grid grid-cols-1 gap-md lg:grid-cols-[1fr_300px]">
+        {/* ===== SESI CFD PER WILAYAH + CHECK-IN (satu card, timer di samping) ===== */}
+        <div className="pt-card">
           <div className="flex flex-wrap items-center justify-between gap-sm">
-            <h3 className="text-title-lg text-on-surface">Sesi CFD per Wilayah</h3>
-            <button
-              type="button"
-              onClick={openBuatSesiModal}
-              className="flex items-center gap-xs rounded-md bg-primary px-md py-sm text-label-sm text-on-primary transition-all hover:bg-primary-container hover:shadow-md"
-            >
+            <h3 className="pt-section-title">Sesi CFD per Wilayah</h3>
+            <button type="button" onClick={openBuatSesiModal} className="pt-btn pt-btn-primary">
               <Plus className="h-4 w-4" strokeWidth={2} />
               Buat Sesi Baru
             </button>
           </div>
 
           {isLoadingSesiWilayah ? (
-            <div className="flex items-center justify-center py-8">
-              <Loader2 className="h-6 w-6 animate-spin text-on-surface-variant" strokeWidth={2} />
+            <div className="pt-loading">
+              <Loader2 className="h-6 w-6 animate-spin" strokeWidth={2} />
+              <p className="text-body-sm">Memuat sesi...</p>
             </div>
           ) : sesiWilayahError ? (
-            <div className="mt-sm rounded-lg border border-error-container bg-error-container/20 p-md text-on-error-container">
+            <div className="mt-sm rounded-xl border border-error-container bg-error-container/20 px-md py-sm text-body-sm text-on-error-container">
               Gagal memuat sesi: {sesiWilayahError}
             </div>
           ) : sesiWilayahList.length === 0 ? (
@@ -676,152 +736,134 @@ export default function JamOperasionalPage() {
               {sesiWilayahList.map((s) => {
                 const style = SESI_WILAYAH_STATUS_STYLE[s.status] ?? SESI_WILAYAH_STATUS_DEFAULT;
                 return (
-                  <div key={s.id} className="rounded-lg border border-outline-variant bg-surface-container-low p-md">
-                    <div className="flex flex-wrap items-start justify-between gap-sm">
-                      <div>
+                  <div
+                    key={s.id}
+                    className="flex flex-col gap-sm rounded-xl border border-outline-variant bg-surface-container-low p-md sm:flex-row sm:items-center sm:justify-between"
+                  >
+                    <div className="min-w-0">
+                      <div className="flex flex-wrap items-center gap-sm">
                         <p className="text-title-md text-on-surface">{s.namaSesi}</p>
-                        <p className="mt-0.5 flex items-center gap-1 text-label-sm text-on-surface-variant">
-                          <MapPin className="h-3 w-3" strokeWidth={2} />
-                          {s.scopeLabel} · {s.tanggal}
-                        </p>
+                        <span className={`pt-pill ${style.pill}`}>
+                          <span className={`pt-pill-dot ${s.aktif ? "is-pulse" : ""}`} />
+                          {style.label}
+                        </span>
                       </div>
-                      <span
-                        className={`flex shrink-0 items-center gap-xs rounded-full px-sm py-1 text-label-sm ${style.bg} ${style.text}`}
-                      >
-                        <span className={`h-1.5 w-1.5 rounded-full bg-current ${s.aktif ? "animate-pulse" : ""}`} />
-                        {style.label}
-                      </span>
+                      <p className="mt-1 flex items-center gap-1 text-body-sm text-on-surface-variant">
+                        <MapPin className="h-3.5 w-3.5 shrink-0" strokeWidth={2} />
+                        {s.scopeLabel} · {s.tanggal}
+                      </p>
+                      <p className="mt-0.5 text-body-sm text-on-surface-variant">
+                        {formatJamTampilan(s.jamMulai)} – {formatJamTampilan(s.jamSelesaiRencana)} WIB
+                        {s.aktif && (
+                          <>
+                            {" "}
+                            · sisa <strong className="text-on-surface">{formatSisaWaktu(s.sisaMenit)}</strong>
+                          </>
+                        )}
+                      </p>
                     </div>
-                    <p className="mt-sm text-label-sm text-on-surface-variant">
-                      {formatJamTampilan(s.jamMulai)} – {formatJamTampilan(s.jamSelesaiRencana)} WIB
-                      {s.aktif && (
-                        <>
-                          {" "}
-                          · sisa <strong className="text-on-surface">{formatSisaWaktu(s.sisaMenit)}</strong>
-                        </>
-                      )}
-                    </p>
+                    <button
+                      type="button"
+                      onClick={() => handleHapusSesi(s)}
+                      title={`Hapus sesi ${s.namaSesi}`}
+                      aria-label={`Hapus sesi ${s.namaSesi}`}
+                      className="pt-btn pt-btn-icon pt-btn-ghost-danger self-end sm:self-center"
+                    >
+                      <Trash2 className="h-4 w-4" strokeWidth={2} />
+                    </button>
                   </div>
                 );
               })}
             </div>
           )}
 
-          {/* ===== CHECK-IN PEDAGANG ===== */}
-          <div className="mt-lg border-t border-outline-variant pt-md">
-            <h4 className="text-title-md text-on-surface">Pengaturan Check-in Pedagang</h4>
-            <div className="mt-sm flex flex-wrap items-center justify-between gap-sm rounded-lg border border-outline-variant bg-surface-container-lowest p-md">
-              <div className="flex items-center gap-sm">
-                {status.pendaftaran.isOpen ? (
-                  <LockOpen className="h-4 w-4 text-secondary" strokeWidth={2} />
-                ) : (
-                  <Lock className="h-4 w-4 text-error" strokeWidth={2} />
-                )}
-                <span className="text-label-md font-medium">
-                  Status:{" "}
-                  <strong className={status.pendaftaran.isOpen ? "text-secondary" : "text-error"}>
-                    {status.pendaftaran.isOpen ? "Terbuka" : "Tertutup"}
-                  </strong>
-                </span>
-                {status.pendaftaran.linkPendaftaran && (
-                  <a
-                    href={status.pendaftaran.linkPendaftaran}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="text-label-sm text-primary underline hover:opacity-80"
+          {/* ===== CHECK-IN PEDAGANG (nested di card yang sama) ===== */}
+          <div className="mt-lg border-t border-outline-variant pt-lg">
+            <div className="flex flex-wrap items-center justify-between gap-sm">
+              <h4 className="pt-section-title">Pengaturan Check-in Pedagang</h4>
+              <button
+                type="button"
+                onClick={() => setShowEditJamCheckInModal(true)}
+                className="pt-btn pt-btn-ghost"
+              >
+                <Edit className="h-4 w-4" strokeWidth={2} />
+                Edit Jam
+              </button>
+            </div>
+
+            <div className="mt-sm rounded-xl border border-outline-variant bg-surface-container-lowest p-md">
+              {/* Baris status + toggle buka/tutup */}
+              <div className="flex flex-col gap-sm sm:flex-row sm:items-center sm:justify-between">
+                <div className="flex flex-wrap items-center gap-sm">
+                  {status.pendaftaran.isOpen ? (
+                    <LockOpen className="h-5 w-5 shrink-0 text-secondary" strokeWidth={2} />
+                  ) : (
+                    <Lock className="h-5 w-5 shrink-0 text-error" strokeWidth={2} />
+                  )}
+                  <span className="text-label-md font-medium">
+                    Status:{" "}
+                    <strong className={status.pendaftaran.isOpen ? "text-secondary" : "text-error"}>
+                      {status.pendaftaran.isOpen ? "Terbuka" : "Tertutup"}
+                    </strong>
+                  </span>
+                  {status.pendaftaran.linkPendaftaran && (
+                    <a
+                      href={status.pendaftaran.linkPendaftaran}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-label-sm text-primary underline hover:opacity-80"
+                    >
+                      Link Pendaftaran
+                    </a>
+                  )}
+                </div>
+                <div className="flex items-center gap-sm self-end sm:self-center">
+                  {isTogglingCheckIn && <Loader2 className="h-4 w-4 animate-spin text-on-surface-variant" strokeWidth={2} />}
+                  <span className="text-label-md text-on-surface-variant">
+                    {status.pendaftaran.isOpen ? "Tutup" : "Buka"}
+                  </span>
+                  <button
+                    type="button"
+                    role="switch"
+                    aria-checked={status.pendaftaran.isOpen}
+                    aria-label={status.pendaftaran.isOpen ? "Tutup check-in pedagang" : "Buka check-in pedagang"}
+                    onClick={handleToggleCheckIn}
+                    disabled={isTogglingCheckIn}
+                    className={`pt-switch ${status.pendaftaran.isOpen ? "is-on" : ""}`}
                   >
-                    Link Pendaftaran
-                  </a>
-                )}
-              </div>
-              <button
-                type="button"
-                onClick={handleToggleCheckIn}
-                disabled={isTogglingCheckIn}
-                className={`flex items-center gap-sm rounded-md px-md py-sm text-label-md transition-all hover:shadow-md disabled:opacity-60 ${
-                  status.pendaftaran.isOpen
-                    ? "bg-error-container/60 text-on-error-container hover:bg-error-container"
-                    : "bg-secondary-container/40 text-on-secondary-container hover:bg-secondary-container"
-                }`}
-              >
-                {isTogglingCheckIn ? (
-                  <Loader2 className="h-4 w-4 animate-spin" strokeWidth={2} />
-                ) : status.pendaftaran.isOpen ? (
-                  <>
-                    <Lock className="h-4 w-4" strokeWidth={2} />
-                    Tutup Check-in
-                  </>
-                ) : (
-                  <>
-                    <LockOpen className="h-4 w-4" strokeWidth={2} />
-                    Buka Check-in
-                  </>
-                )}
-              </button>
-            </div>
-
-            <div className="mt-sm grid grid-cols-1 gap-sm sm:grid-cols-2">
-              <div className="flex items-center gap-sm rounded-lg bg-surface-container-low p-md">
-                <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-secondary-container text-on-secondary-container">
-                  <Clock className="h-[18px] w-[18px]" strokeWidth={2} />
-                </span>
-                <div className="flex-1">
-                  <p className="text-label-sm uppercase tracking-wide text-on-surface-variant">Jam Buka Check-in</p>
-                  <input
-                    type="time"
-                    value={checkInJamBuka}
-                    onChange={(e) => setCheckInJamBuka(e.target.value)}
-                    disabled={!canEditCheckIn}
-                    onKeyDown={(e) => e.preventDefault()}
-                    className="w-full bg-transparent text-title-lg text-on-surface outline-none disabled:opacity-50"
-                  />
+                    <span className="pt-switch-knob" />
+                  </button>
                 </div>
               </div>
-              <div className="flex items-center gap-sm rounded-lg bg-error-container/30 p-md">
-                <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-error-container text-on-error-container">
-                  <Hourglass className="h-[18px] w-[18px]" strokeWidth={2} />
-                </span>
-                <div className="flex-1">
-                  <p className="text-label-sm uppercase tracking-wide text-on-surface-variant">Jam Tutup Check-in</p>
-                  <input
-                    type="time"
-                    value={checkInJamTutup}
-                    onChange={(e) => setCheckInJamTutup(e.target.value)}
-                    disabled={!canEditCheckIn}
-                    onKeyDown={(e) => e.preventDefault()}
-                    className="w-full bg-transparent text-title-lg text-on-surface outline-none disabled:opacity-50"
-                  />
+
+              {/* Ringkasan jam saat ini -- kotak sama seperti sebelumnya, tapi
+                  cuma tampilan (baca saja); ubahnya lewat tombol "Edit Jam" di atas */}
+              <div className="mt-md grid grid-cols-1 gap-sm border-t border-outline-variant pt-md sm:grid-cols-2">
+                <div className="flex items-center gap-sm rounded-lg bg-surface-container-low p-md">
+                  <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-secondary-container text-on-secondary-container">
+                    <Clock className="h-[18px] w-[18px]" strokeWidth={2} />
+                  </span>
+                  <div>
+                    <p className="text-label-sm uppercase tracking-wide text-on-surface-variant">Jam Buka Check-in</p>
+                    <p className="text-title-lg font-semibold text-on-surface">{formatJamTampilan(checkInJamBuka)}</p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-sm rounded-lg bg-error-container/30 p-md">
+                  <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-error-container text-on-error-container">
+                    <Hourglass className="h-[18px] w-[18px]" strokeWidth={2} />
+                  </span>
+                  <div>
+                    <p className="text-label-sm uppercase tracking-wide text-on-surface-variant">Jam Tutup Check-in</p>
+                    <p className="text-title-lg font-semibold text-on-surface">{formatJamTampilan(checkInJamTutup)}</p>
+                  </div>
                 </div>
               </div>
-            </div>
-
-            {isFriday && checkInSudahDiubahHariIni && (
-              <div className="mt-sm flex items-center gap-sm rounded-lg bg-surface-container-high px-md py-sm text-label-sm text-on-surface-variant">
-                <Info className="h-4 w-4" strokeWidth={2} />
-                Pengaturan check-in sudah diubah hari ini (hanya sekali pada hari Jumat)
-              </div>
-            )}
-
-            <div className="mt-sm flex justify-end">
-              <button
-                type="button"
-                onClick={handleSimpanCheckIn}
-                disabled={!canEditCheckIn || isSavingCheckIn}
-                className="flex items-center gap-sm rounded-md bg-secondary px-lg py-sm text-label-md text-on-secondary transition-all hover:bg-secondary-container hover:shadow-md disabled:opacity-60"
-              >
-                {isSavingCheckIn ? (
-                  <Loader2 className="h-4 w-4 animate-spin" strokeWidth={2} />
-                ) : (
-                  <CalendarCheck2 className="h-[18px] w-[18px]" strokeWidth={2} />
-                )}
-                {isSavingCheckIn ? "Menyimpan..." : "Simpan Pengaturan Check-in"}
-              </button>
             </div>
           </div>
         </div>
 
         {/* Timer */}
-        <div className="flex flex-col items-center justify-center gap-sm rounded-xl border border-outline-variant bg-surface-container-lowest p-lg text-center">
+        <div className="pt-card flex flex-col items-center justify-center gap-sm text-center">
           <div className="relative flex h-32 w-32 items-center justify-center">
             <svg className="h-32 w-32 -rotate-90" viewBox="0 0 120 120">
               <circle cx="60" cy="60" r={RADIUS} fill="none" stroke="var(--color-surface-container-high)" strokeWidth="10" />
@@ -855,226 +897,217 @@ export default function JamOperasionalPage() {
               "Belum ada sesi yang sedang berlangsung"
             )}
           </p>
-          <div className="mt-xs w-full max-w-[200px] rounded-full bg-surface-container-high h-1">
-            <div
-              className="h-full rounded-full bg-primary transition-all duration-1000"
-              style={{
-                width: `${
-                  sesiAktifWilayah && sesiAktifWilayah.totalMenit > 0
-                    ? (sesiAktifWilayah.sisaMenit / sesiAktifWilayah.totalMenit) * 100
-                    : 0
-                }%`,
-              }}
-            />
-          </div>
         </div>
       </div>
 
       {/* ===== JADWAL MINGGUAN (BARU) ===== */}
-      <div className="rounded-xl border border-outline-variant bg-surface-container-lowest p-lg">
+      <div className="pt-card">
         <div className="mb-md flex flex-wrap items-center gap-sm">
           <CalendarDays className="h-[18px] w-[18px] text-on-surface-variant" strokeWidth={2} />
-          <h3 className="text-title-lg text-on-surface">Jadwal Mingguan (Otomatis)</h3>
+          <h3 className="pt-section-title">Jadwal Mingguan (Otomatis)</h3>
           <span className="ml-auto text-label-sm text-on-surface-variant">
             Dipakai sistem buat auto-mulai/selesai sesi tiap minggu
           </span>
         </div>
 
         {isLoadingJadwal ? (
-          <div className="flex items-center justify-center py-8">
-            <Loader2 className="h-6 w-6 animate-spin text-on-surface-variant" strokeWidth={2} />
+          <div className="pt-loading">
+            <Loader2 className="h-6 w-6 animate-spin" strokeWidth={2} />
+            <p className="text-body-sm">Memuat jadwal...</p>
           </div>
         ) : jadwalError ? (
-          <div className="rounded-lg border border-error-container bg-error-container/20 p-md text-on-error-container">
+          <div className="rounded-xl border border-error-container bg-error-container/20 px-md py-sm text-body-sm text-on-error-container">
             Gagal memuat jadwal mingguan: {jadwalError}
           </div>
         ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-left">
-              <thead>
-                <tr className="border-b border-outline-variant text-label-sm text-on-surface-variant">
-                  <th className="px-sm py-sm font-medium">Hari</th>
-                  <th className="px-sm py-sm font-medium">Jam Mulai</th>
-                  <th className="px-sm py-sm font-medium">Jam Selesai</th>
-                  <th className="px-sm py-sm font-medium">Status</th>
-                  <th className="px-sm py-sm font-medium text-right">Aksi</th>
-                </tr>
-              </thead>
-              <tbody>
-                {HARI_LIST.map((hari) => {
-                  const row = jadwalList.find((j) => j.hari === hari.value);
-                  const isEditing = editingHari === hari.value;
-                  return (
-                    <tr key={hari.value} className="border-b border-outline-variant last:border-0">
-                      <td className="px-sm py-sm text-body-md text-on-surface">{hari.label}</td>
-                      <td className="px-sm py-sm text-body-md text-on-surface-variant">
-                        {isEditing ? (
-                          <input
-                            type="time"
-                            value={jadwalDraft.jamMulai}
-                            onChange={(e) => setJadwalDraft((d) => ({ ...d, jamMulai: e.target.value }))}
-                            className="rounded-md border border-outline-variant bg-transparent px-2 py-1 text-body-md text-on-surface"
-                          />
-                        ) : row ? (
-                          formatWaktuTabel(formatJamTampilan(row.jamMulai))
-                        ) : (
-                          "-"
-                        )}
-                      </td>
-                      <td className="px-sm py-sm text-body-md text-on-surface-variant">
-                        {isEditing ? (
-                          <input
-                            type="time"
-                            value={jadwalDraft.jamSelesaiRencana}
-                            onChange={(e) => setJadwalDraft((d) => ({ ...d, jamSelesaiRencana: e.target.value }))}
-                            className="rounded-md border border-outline-variant bg-transparent px-2 py-1 text-body-md text-on-surface"
-                          />
-                        ) : row ? (
-                          formatWaktuTabel(formatJamTampilan(row.jamSelesaiRencana))
-                        ) : (
-                          "-"
-                        )}
-                      </td>
-                      <td className="px-sm py-sm">
-                        {isEditing ? (
-                          <label className="flex items-center gap-xs text-label-sm text-on-surface-variant">
-                            <input
-                              type="checkbox"
-                              checked={jadwalDraft.isActive}
-                              onChange={(e) => setJadwalDraft((d) => ({ ...d, isActive: e.target.checked }))}
+          <div className="flex flex-col gap-sm">
+            {HARI_LIST.map((hari) => {
+              const row = jadwalList.find((j) => j.hari === hari.value);
+              const isEditing = editingHari === hari.value;
+              return (
+                <div key={hari.value} className="rounded-xl border border-outline-variant bg-surface-container-low p-md">
+                  {isEditing ? (
+                    <div className="flex flex-col gap-sm">
+                      <p className="text-title-md text-on-surface">{hari.label}</p>
+                      <div className="grid grid-cols-1 gap-sm sm:grid-cols-2">
+                        <div>
+                          <span className="pt-field-label">Jam Mulai</span>
+                          <div className="mt-1">
+                            <TimeStepper
+                              value={jadwalDraft.jamMulai}
+                              onChange={(next) => setJadwalDraft((d) => ({ ...d, jamMulai: next }))}
                             />
-                            Aktif
-                          </label>
-                        ) : (
-                          <span
-                            className={`inline-flex items-center rounded-full px-sm py-0.5 text-label-sm ${
-                              row?.isActive
-                                ? "bg-secondary-container/40 text-on-secondary-container"
-                                : "bg-surface-container-high text-on-surface-variant"
-                            }`}
-                          >
-                            {row?.isActive ? "Aktif" : "Nonaktif"}
-                          </span>
-                        )}
-                      </td>
-                      <td className="px-sm py-sm text-right">
-                        {isEditing ? (
-                          <div className="flex justify-end gap-xs">
-                            <button
-                              type="button"
-                              onClick={() => setEditingHari(null)}
-                              className="rounded-md px-sm py-1 text-label-sm text-on-surface-variant hover:bg-surface-container-high transition"
-                            >
-                              Batal
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => handleSimpanJadwalHari(hari.value)}
-                              disabled={savingHari === hari.value}
-                              className="flex items-center gap-1 rounded-md bg-primary px-sm py-1 text-label-sm text-on-primary transition hover:bg-primary-container disabled:opacity-60"
-                            >
-                              {savingHari === hari.value ? (
-                                <Loader2 className="h-3 w-3 animate-spin" strokeWidth={2} />
-                              ) : (
-                                <Save className="h-3 w-3" strokeWidth={2} />
-                              )}
-                              Simpan
-                            </button>
                           </div>
-                        ) : (
-                          <button
-                            type="button"
-                            onClick={() => startEditJadwal(hari.value, row)}
-                            className="ml-auto flex items-center gap-1 rounded-md px-sm py-1 text-label-sm text-on-surface-variant hover:bg-surface-container-high transition"
-                          >
-                            <Edit className="h-3 w-3" strokeWidth={2} />
-                            Edit
-                          </button>
-                        )}
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
+                        </div>
+                        <div>
+                          <span className="pt-field-label">Jam Selesai</span>
+                          <div className="mt-1">
+                            <TimeStepper
+                              value={jadwalDraft.jamSelesaiRencana}
+                              onChange={(next) => setJadwalDraft((d) => ({ ...d, jamSelesaiRencana: next }))}
+                            />
+                          </div>
+                        </div>
+                      </div>
+                      <label className="flex cursor-pointer items-center gap-sm text-body-sm text-on-surface-variant">
+                        <input
+                          type="checkbox"
+                          checked={jadwalDraft.isActive}
+                          onChange={(e) => setJadwalDraft((d) => ({ ...d, isActive: e.target.checked }))}
+                          className="h-5 w-5 accent-primary"
+                        />
+                        Aktifkan jadwal hari ini
+                      </label>
+                      <div className="flex justify-end gap-sm pt-1">
+                        <button type="button" onClick={() => setEditingHari(null)} className="pt-btn pt-btn-ghost">
+                          Batal
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleSimpanJadwalHari(hari.value)}
+                          disabled={savingHari === hari.value}
+                          className="pt-btn pt-btn-primary"
+                        >
+                          {savingHari === hari.value ? (
+                            <Loader2 className="h-4 w-4 animate-spin" strokeWidth={2} />
+                          ) : (
+                            <Save className="h-4 w-4" strokeWidth={2} />
+                          )}
+                          Simpan
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="flex flex-wrap items-center justify-between gap-sm">
+                      <div className="flex flex-wrap items-center gap-sm sm:gap-md">
+                        <p className="w-24 shrink-0 text-title-md text-on-surface">{hari.label}</p>
+                        <p className="text-body-md text-on-surface-variant">
+                          {row ? (
+                            <>
+                              {formatWaktuTabel(formatJamTampilan(row.jamMulai))} –{" "}
+                              {formatWaktuTabel(formatJamTampilan(row.jamSelesaiRencana))}
+                            </>
+                          ) : (
+                            "Belum diatur"
+                          )}
+                        </p>
+                        <span className={`pt-pill ${row?.isActive ? "pt-pill-success" : "pt-pill-neutral"}`}>
+                          {row?.isActive ? "Aktif" : "Nonaktif"}
+                        </span>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => startEditJadwal(hari.value, row)}
+                        className="pt-btn pt-btn-ghost"
+                      >
+                        <Edit className="h-4 w-4" strokeWidth={2} />
+                        Edit
+                      </button>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
           </div>
         )}
       </div>
 
       {/* ===== RIWAYAT OPERASIONAL ===== */}
-      <div className="rounded-xl border border-outline-variant bg-surface-container-lowest p-lg">
+      <div className="pt-card">
         <div className="mb-md flex items-center gap-sm">
           <History className="h-[18px] w-[18px] text-on-surface-variant" strokeWidth={2} />
-          <h3 className="text-title-lg text-on-surface">Riwayat Operasional</h3>
+          <h3 className="pt-section-title">Riwayat Operasional</h3>
           <span className="ml-auto text-label-sm text-on-surface-variant">{status.riwayat.length} sesi terakhir</span>
         </div>
-        <div className="overflow-x-auto">
-          <table className="w-full text-left">
-            <thead>
-              <tr className="border-b border-outline-variant text-label-sm text-on-surface-variant">
-                <th className="px-sm py-sm font-medium">Tanggal</th>
-                <th className="px-sm py-sm font-medium">Jam Mulai</th>
-                <th className="px-sm py-sm font-medium">Jam Selesai</th>
-                <th className="px-sm py-sm font-medium">Durasi</th>
-                <th className="px-sm py-sm font-medium">Status</th>
-              </tr>
-            </thead>
-            <tbody>
-              {status.riwayat.length === 0 && (
-                <tr>
-                  <td colSpan={5} className="px-sm py-md text-center text-body-md text-on-surface-variant">
-                    Belum ada riwayat sesi.
-                  </td>
-                </tr>
-              )}
+
+        {status.riwayat.length === 0 ? (
+          <p className="py-8 text-center text-body-md text-on-surface-variant">Belum ada riwayat sesi.</p>
+        ) : (
+          <>
+            {/* Tabel -- tablet ke atas */}
+            <div className="hidden overflow-x-auto sm:block">
+              <table className="w-full text-left">
+                <thead>
+                  <tr className="border-b border-outline-variant text-label-sm text-on-surface-variant">
+                    <th className="px-sm py-sm font-medium">Tanggal</th>
+                    <th className="px-sm py-sm font-medium">Jam Mulai</th>
+                    <th className="px-sm py-sm font-medium">Jam Selesai</th>
+                    <th className="px-sm py-sm font-medium">Durasi</th>
+                    <th className="px-sm py-sm font-medium">Status</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {status.riwayat.map((row) => {
+                    const style = STATUS_STYLE[row.status];
+                    const Icon = style.icon;
+                    return (
+                      <tr
+                        key={row.id}
+                        className="border-b border-outline-variant last:border-0 hover:bg-surface-container-low/50 transition-colors"
+                      >
+                        <td className="px-sm py-sm text-body-md text-on-surface">{row.tanggal}</td>
+                        <td className="px-sm py-sm text-body-md text-on-surface-variant">{formatWaktuTabel(row.jamMulai)}</td>
+                        <td className="px-sm py-sm text-body-md text-on-surface-variant">{formatWaktuTabel(row.jamSelesai)}</td>
+                        <td className="px-sm py-sm text-body-md text-on-surface-variant">{row.durasi}</td>
+                        <td className="px-sm py-sm">
+                          <span className={`pt-pill ${style.pill}`}>
+                            <Icon className="h-3 w-3" strokeWidth={2.5} />
+                            {style.label}
+                          </span>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+
+            {/* Daftar kartu -- mobile */}
+            <div className="flex flex-col gap-sm sm:hidden">
               {status.riwayat.map((row) => {
-            const style = STATUS_STYLE[row.status];
-            const Icon = style.icon;
-            return (
-              <tr
-                key={row.id}
-                className="border-b border-outline-variant last:border-0 hover:bg-surface-container-low/50 transition-colors"
-              >
-                <td className="px-sm py-sm text-body-md text-on-surface">{row.tanggal}</td>
-                <td className="px-sm py-sm text-body-md text-on-surface-variant">{formatWaktuTabel(row.jamMulai)}</td>
-                <td className="px-sm py-sm text-body-md text-on-surface-variant">{formatWaktuTabel(row.jamSelesai)}</td>
-                <td className="px-sm py-sm text-body-md text-on-surface-variant">{row.durasi}</td>
-                <td className="px-sm py-sm">
-                  <span className={`inline-flex items-center gap-xs rounded-full px-sm py-1 text-label-sm ${style.bg} ${style.text}`}>
-                    <Icon className="h-3 w-3" strokeWidth={2.5} />
-                    {style.label}
-                  </span>
-                </td>
-              </tr>
-              );
-            })}
-            </tbody>
-          </table>
-        </div>
+                const style = STATUS_STYLE[row.status];
+                const Icon = style.icon;
+                return (
+                  <div key={row.id} className="rounded-xl border border-outline-variant bg-surface-container-low p-md">
+                    <div className="flex items-center justify-between gap-sm">
+                      <p className="text-body-md font-medium text-on-surface">{row.tanggal}</p>
+                      <span className={`pt-pill ${style.pill}`}>
+                        <Icon className="h-3 w-3" strokeWidth={2.5} />
+                        {style.label}
+                      </span>
+                    </div>
+                    <p className="mt-1 text-body-sm text-on-surface-variant">
+                      {formatWaktuTabel(row.jamMulai)} – {formatWaktuTabel(row.jamSelesai)} · {row.durasi}
+                    </p>
+                  </div>
+                );
+              })}
+            </div>
+          </>
+        )}
       </div>
 
       {/* ===== SISA KUOTA LAPAK PER WILAYAH ===== */}
-      <div className="rounded-xl border border-outline-variant bg-surface-container-lowest p-lg">
+      <div className="pt-card">
         <div className="mb-md flex items-center gap-sm">
           <Store className="h-[18px] w-[18px] text-on-surface-variant" strokeWidth={2} />
-          <h3 className="text-title-lg text-on-surface">Sisa Kuota Lapak per Wilayah</h3>
+          <h3 className="pt-section-title">Sisa Kuota Lapak per Wilayah</h3>
           <span className="ml-auto text-label-sm text-on-surface-variant">
             {isLoadingLapak ? "Memuat..." : `Total ${totalKuota} lapak, ${sisaTotal} tersisa`}
           </span>
         </div>
 
         {isLoadingLapak ? (
-          <div className="flex items-center justify-center py-8">
-            <Loader2 className="h-6 w-6 animate-spin text-on-surface-variant" strokeWidth={2} />
+          <div className="pt-loading">
+            <Loader2 className="h-6 w-6 animate-spin" strokeWidth={2} />
+            <p className="text-body-sm">Memuat data lapak...</p>
           </div>
         ) : lapakError ? (
-          <div className="rounded-lg border border-error-container bg-error-container/20 p-md text-on-error-container">
+          <div className="rounded-xl border border-error-container bg-error-container/20 px-md py-sm text-body-sm text-on-error-container">
             Gagal memuat data lapak: {lapakError}
           </div>
         ) : lapakData.length === 0 ? (
-          <p className="text-center text-body-md text-on-surface-variant">
-            Belum ada data kuota lapak yang diatur.
-          </p>
+          <p className="text-center text-body-md text-on-surface-variant">Belum ada data kuota lapak yang diatur.</p>
         ) : (
           <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
             {lapakData.map((kec) => {
@@ -1094,12 +1127,7 @@ export default function JamOperasionalPage() {
                     {kec.jalan.map((jalan) => {
                       const sisa = jalan.kuota - jalan.terisi;
                       const persen = jalan.kuota > 0 ? (jalan.terisi / jalan.kuota) * 100 : 0;
-                      const levelColor =
-                        sisa === 0
-                          ? "bg-error"
-                          : sisa / jalan.kuota <= 0.2
-                          ? "bg-tertiary"
-                          : "bg-secondary";
+                      const levelColor = sisa === 0 ? "bg-error" : sisa / jalan.kuota <= 0.2 ? "bg-tertiary" : "bg-secondary";
                       return (
                         <div key={jalan.id} className="rounded border border-outline-variant bg-surface-container-lowest p-2">
                           <div className="flex justify-between">
@@ -1128,16 +1156,35 @@ export default function JamOperasionalPage() {
 
       {/* Modal Buat Sesi Wilayah Baru */}
       {showBuatSesiModal && (
-        <ModalShell onClose={() => setShowBuatSesiModal(false)}>
-          <h3 className="text-title-lg font-semibold text-on-surface mb-3">Buat Sesi CFD Baru</h3>
+        <ModalShell
+          onClose={() => setShowBuatSesiModal(false)}
+          title="Buat Sesi CFD Baru"
+          description="Sesi menentukan kapan pedagang bisa check-in di wilayah yang dipilih."
+          footer={
+            <div className="flex justify-end gap-sm">
+              <button type="button" onClick={() => setShowBuatSesiModal(false)} className="pt-btn pt-btn-ghost">
+                Batal
+              </button>
+              <button
+                type="button"
+                onClick={handleSubmitSesiWilayah}
+                disabled={isSubmittingSesi}
+                className="pt-btn pt-btn-primary"
+              >
+                {isSubmittingSesi && <Loader2 className="h-4 w-4 animate-spin" strokeWidth={2} />}
+                {isSubmittingSesi ? "Menyimpan..." : "Buat Sesi"}
+              </button>
+            </div>
+          }
+        >
           <div className="flex flex-col gap-sm">
             {scopeOptionsTersedia.length > 1 && (
               <div>
-                <label className="text-label-sm text-on-surface-variant">Cakupan Sesi</label>
+                <label className="pt-field-label">Cakupan Sesi</label>
                 <select
                   value={formScope}
                   onChange={(e) => setFormScope(e.target.value as Scope)}
-                  className="mt-1 w-full rounded-md border border-outline-variant bg-transparent px-sm py-2 text-body-md text-on-surface"
+                  className="pt-input mt-1"
                 >
                   {scopeOptionsTersedia.map((o) => (
                     <option key={o.value} value={o.value}>
@@ -1155,11 +1202,11 @@ export default function JamOperasionalPage() {
 
             {formScope === "kecamatan" && wilayahSaya?.bebas && (
               <div>
-                <label className="text-label-sm text-on-surface-variant">Kecamatan</label>
+                <label className="pt-field-label">Kecamatan</label>
                 <select
                   value={formKecamatanId}
                   onChange={(e) => setFormKecamatanId(e.target.value)}
-                  className="mt-1 w-full rounded-md border border-outline-variant bg-transparent px-sm py-2 text-body-md text-on-surface"
+                  className="pt-input mt-1"
                 >
                   <option value="">Pilih kecamatan</option>
                   {daftarKecamatanForm.map((k) => (
@@ -1173,11 +1220,11 @@ export default function JamOperasionalPage() {
 
             {formScope === "jalan" && !wilayahSaya?.jalanId && (
               <div>
-                <label className="text-label-sm text-on-surface-variant">Jalan</label>
+                <label className="pt-field-label">Jalan</label>
                 <select
                   value={formJalanId}
                   onChange={(e) => setFormJalanId(e.target.value)}
-                  className="mt-1 w-full rounded-md border border-outline-variant bg-transparent px-sm py-2 text-body-md text-on-surface"
+                  className="pt-input mt-1"
                 >
                   <option value="">Pilih jalan</option>
                   {daftarJalanForm.map((j) => (
@@ -1189,87 +1236,114 @@ export default function JamOperasionalPage() {
               </div>
             )}
 
-            <div className="grid grid-cols-1 gap-sm sm:grid-cols-3">
+            <div>
+              <label className="pt-field-label">Tanggal</label>
+              <input
+                type="date"
+                value={formTanggal}
+                onChange={(e) => setFormTanggal(e.target.value)}
+                className="pt-input mt-1"
+              />
+            </div>
+            <div className="grid grid-cols-1 gap-sm sm:grid-cols-2">
               <div>
-                <label className="text-label-sm text-on-surface-variant">Tanggal</label>
-                <input
-                  type="date"
-                  value={formTanggal}
-                  onChange={(e) => setFormTanggal(e.target.value)}
-                  className="mt-1 w-full rounded-md border border-outline-variant bg-transparent px-sm py-2 text-body-md text-on-surface"
-                />
+                <label className="pt-field-label">Jam Mulai</label>
+                <div className="mt-1">
+                  <TimeStepper value={formJamMulai} onChange={setFormJamMulai} />
+                </div>
               </div>
               <div>
-                <label className="text-label-sm text-on-surface-variant">Jam Mulai</label>
-                <input
-                  type="time"
-                  value={formJamMulai}
-                  onChange={(e) => setFormJamMulai(e.target.value)}
-                  className="mt-1 w-full rounded-md border border-outline-variant bg-transparent px-sm py-2 text-body-md text-on-surface"
-                />
-              </div>
-              <div>
-                <label className="text-label-sm text-on-surface-variant">Jam Selesai</label>
-                <input
-                  type="time"
-                  value={formJamSelesai}
-                  onChange={(e) => setFormJamSelesai(e.target.value)}
-                  className="mt-1 w-full rounded-md border border-outline-variant bg-transparent px-sm py-2 text-body-md text-on-surface"
-                />
+                <label className="pt-field-label">Jam Selesai</label>
+                <div className="mt-1">
+                  <TimeStepper value={formJamSelesai} onChange={setFormJamSelesai} />
+                </div>
               </div>
             </div>
-          </div>
-          <div className="mt-4 flex justify-end gap-sm">
-            <button
-              type="button"
-              onClick={() => setShowBuatSesiModal(false)}
-              className="rounded-md px-4 py-2 text-label-md text-on-surface-variant hover:bg-surface-container-high transition"
-            >
-              Batal
-            </button>
-            <button
-              type="button"
-              onClick={handleSubmitSesiWilayah}
-              disabled={isSubmittingSesi}
-              className="flex items-center gap-sm rounded-md bg-primary px-4 py-2 text-label-md text-on-primary transition hover:bg-primary-container hover:shadow-md disabled:opacity-60"
-            >
-              {isSubmittingSesi && <Loader2 className="h-4 w-4 animate-spin" strokeWidth={2} />}
-              {isSubmittingSesi ? "Menyimpan..." : "Buat Sesi"}
-            </button>
           </div>
         </ModalShell>
       )}
 
-      {/* Modal Konfirmasi */}
+      {/* Modal Edit Jam Check-in */}
+      {showEditJamCheckInModal && (
+        <ModalShell
+          onClose={() => setShowEditJamCheckInModal(false)}
+          title="Edit Jam Check-in"
+          description="Atur jendela waktu pedagang bisa check-in dan mengambil nomor stand."
+          footer={
+            <div className="flex justify-end gap-sm">
+              <button
+                type="button"
+                onClick={() => setShowEditJamCheckInModal(false)}
+                className="pt-btn pt-btn-ghost"
+              >
+                Batal
+              </button>
+              <button
+                type="button"
+                onClick={handleSimpanCheckIn}
+                disabled={!canEditCheckIn || isSavingCheckIn}
+                className="pt-btn pt-btn-primary"
+              >
+                {isSavingCheckIn && <Loader2 className="h-4 w-4 animate-spin" strokeWidth={2} />}
+                {isSavingCheckIn ? "Menyimpan..." : "Simpan"}
+              </button>
+            </div>
+          }
+        >
+          <div className="grid grid-cols-1 gap-sm sm:grid-cols-2">
+            <div className="rounded-lg bg-surface-container-low p-md">
+              <div className="flex items-center gap-sm">
+                <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-secondary-container text-on-secondary-container">
+                  <Clock className="h-[18px] w-[18px]" strokeWidth={2} />
+                </span>
+                <p className="text-label-sm uppercase tracking-wide text-on-surface-variant">Jam Buka Check-in</p>
+              </div>
+              <div className="mt-sm">
+                <TimeStepper value={checkInJamBuka} onChange={setCheckInJamBuka} disabled={!canEditCheckIn} />
+              </div>
+            </div>
+            <div className="rounded-lg bg-error-container/30 p-md">
+              <div className="flex items-center gap-sm">
+                <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-error-container text-on-error-container">
+                  <Hourglass className="h-[18px] w-[18px]" strokeWidth={2} />
+                </span>
+                <p className="text-label-sm uppercase tracking-wide text-on-surface-variant">Jam Tutup Check-in</p>
+              </div>
+              <div className="mt-sm">
+                <TimeStepper value={checkInJamTutup} onChange={setCheckInJamTutup} disabled={!canEditCheckIn} />
+              </div>
+            </div>
+          </div>
+
+          {isFriday && checkInSudahDiubahHariIni && (
+            <div className="mt-sm flex items-center gap-sm rounded-lg bg-surface-container-high px-md py-sm text-label-sm text-on-surface-variant">
+              <Info className="h-4 w-4 shrink-0" strokeWidth={2} />
+              Pengaturan check-in sudah diubah hari ini (hanya sekali pada hari Jumat)
+            </div>
+          )}
+        </ModalShell>
+      )}
       {confirmDialog && (
-        <ModalShell onClose={() => setConfirmDialog(null)}>
-          <div className="flex items-center gap-sm mb-3">
+        <ModalShell onClose={() => setConfirmDialog(null)} maxWidthClass="max-w-[26rem]">
+          <div className="flex items-center gap-sm mb-3 pr-8">
             <span
-              className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full ${
+              className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-full ${
                 confirmDialog.danger ? "bg-error-container/60 text-on-error-container" : "bg-primary/10 text-primary"
               }`}
             >
-              <AlertTriangle className="h-[18px] w-[18px]" strokeWidth={2} />
+              <AlertTriangle className="h-5 w-5" strokeWidth={2} />
             </span>
             <h3 className="text-title-lg text-on-surface font-semibold">{confirmDialog.title}</h3>
           </div>
           <p className="text-body-md text-on-surface-variant mb-4">{confirmDialog.message}</p>
           <div className="flex justify-end gap-sm">
-            <button
-              type="button"
-              onClick={() => setConfirmDialog(null)}
-              className="rounded-md px-4 py-2 text-label-md text-on-surface-variant hover:bg-surface-container-high transition"
-            >
+            <button type="button" onClick={() => setConfirmDialog(null)} className="pt-btn pt-btn-ghost">
               Batal
             </button>
             <button
               type="button"
               onClick={confirmDialog.onConfirm}
-              className={`rounded-md px-4 py-2 text-label-md transition hover:shadow-md ${
-                confirmDialog.danger
-                  ? "bg-error-container/60 text-on-error-container hover:bg-error-container"
-                  : "bg-primary text-on-primary hover:bg-primary-container"
-              }`}
+              className={`pt-btn ${confirmDialog.danger ? "pt-btn-danger" : "pt-btn-primary"}`}
             >
               {confirmDialog.confirmLabel}
             </button>
