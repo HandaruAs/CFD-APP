@@ -1,12 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:mobile/core/widgets/layouts/main_layout.dart';
+import 'package:mobile/core/routers/app_router.dart';
 import 'package:mobile/features/petugas/domain/entities/status_operasional.dart';
 import 'package:mobile/features/petugas/domain/entities/stats_kehadiran.dart';
 import 'package:mobile/features/petugas/presentation/providers/petugas_dashboard_state.dart';
 import 'package:mobile/features/petugas/presentation/providers/petugas_dashboard_provider.dart';
-import 'package:mobile/features/petugas/presentation/pages/jam_operasional_screen.dart';
-import 'package:mobile/features/petugas/presentation/pages/scan_qr_screen.dart';
 
 const _brandColor = Color(0xFF1C3F7C);
 
@@ -25,9 +24,10 @@ class _MenuShortcut {
 }
 
 // 4 menu utama petugas (di luar Dashboard & Logout yang udah ada di
-// drawer). "Jam Operasional" & "Scan QR Pedagang" udah nyambung ke
-// halaman asli -- 2 sisanya masih nunggu tahap 50-90% di progress plan,
-// jadi tap-nya masih nunjukin snackbar.
+// drawer). "Jam Operasional", "Scan QR Pedagang", & "Sisa Lapak" udah
+// nyambung ke halaman asli lewat AppRoutes -- "Laporan Kehadiran"
+// masih nunggu tahap 70-90% di progress plan, jadi tap-nya masih
+// nunjukin snackbar.
 const _shortcuts = [
   _MenuShortcut(
     title: 'Jam Operasional',
@@ -54,6 +54,16 @@ const _shortcuts = [
     color: Color(0xFF7C3AED),
   ),
 ];
+
+// Pemetaan judul shortcut -> named route di AppRoutes. Satu-satunya
+// tempat yang perlu diubah kalau ada menu baru yang halamannya udah
+// jadi -- gak perlu tambah if/else baru di onTap.
+const Map<String, String> _shortcutRoutes = {
+  'Jam Operasional': AppRoutes.petugasJamOperasional,
+  'Scan QR Pedagang': AppRoutes.petugasScanQr,
+  'Sisa Lapak': AppRoutes.petugasSisaLapak,
+  'Laporan Kehadiran': AppRoutes.petugasLaporan,
+};
 
 class PetugasHomeScreen extends ConsumerStatefulWidget {
   const PetugasHomeScreen({super.key});
@@ -274,18 +284,9 @@ class _PetugasHomeScreenState extends ConsumerState<PetugasHomeScreen> {
       child: InkWell(
         borderRadius: BorderRadius.circular(12),
         onTap: () {
-          if (item.title == 'Jam Operasional') {
-            Navigator.push(
-              context,
-              MaterialPageRoute(builder: (_) => const JamOperasionalScreen()),
-            );
-            return;
-          }
-          if (item.title == 'Scan QR Pedagang') {
-            Navigator.push(
-              context,
-              MaterialPageRoute(builder: (_) => const ScanQrScreen()),
-            );
+          final route = _shortcutRoutes[item.title];
+          if (route != null) {
+            Navigator.pushNamed(context, route);
             return;
           }
           ScaffoldMessenger.of(context).showSnackBar(

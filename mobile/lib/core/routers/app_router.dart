@@ -14,54 +14,52 @@ import 'package:mobile/features/pedagang/presentation/pages/lapak_screen.dart';
 import 'package:mobile/features/pedagang/presentation/pages/checkout_screen.dart';
 import 'package:mobile/features/petugas/presentation/pages/jam_operasional_screen.dart';
 import 'package:mobile/features/petugas/presentation/pages/scan_qr_screen.dart';
+import 'package:mobile/features/petugas/presentation/pages/sisa_lapak_screen.dart';
+import 'package:mobile/features/petugas/presentation/pages/laporan_screen.dart';
 
 class AppRoutes {
   // Auth
   static const login = '/login';
   static const register = '/register';
 
-  // Pedagang -- string-nya HARUS sama persis kayak kolom `route` di
-  // tabel `menus` backend, karena ini yang dipencet dari drawer.
+  // Pedagang 
   static const pedagangDashboard = '/pedagang'; // belum ada halamannya
   static const pedagangPendaftaran = '/pedagang/pendaftaran';
   static const pedagangStatusVerifikasi = '/pedagang/status-verifikasi';
   static const pedagangNomerStand = '/pedagang/nomer-stand';
   static const pedagangProfil = '/pedagang/profil'; // belum dikerjain
 
-  // Petugas -- sama aturannya, string harus persis kolom `route` di
-  // tabel `menus` backend.
+  // Petugas 
   static const petugasJamOperasional = '/petugas/jam-operasional';
   static const petugasScanQr = '/petugas/scan-qr';
-
-  // CheckoutScreen sengaja gak masuk sini sebagai named route -- dia
-  // cuma dicapai lewat auto-redirect polling dari LapakScreen, sama
-  // kayak sebelumnya. Kalau nanti mau dipanggil manual, tinggal
-  // tambahin case '/pedagang/checkout' di bawah.
+  static const petugasLaporan = '/petugas/laporan';
+  static const petugasSisaLapak = '/petugas/sisa-lapak';
 }
 
 class AppRouter {
   static Route<dynamic> generateRoute(RouteSettings settings) {
     switch (settings.name) {
+      // Auth
       case AppRoutes.login:
         return MaterialPageRoute(builder: (_) => const LoginScreen());
-
       case AppRoutes.register:
         return MaterialPageRoute(builder: (_) => const RegisterScreen());
-
+      // Pedagang
       case AppRoutes.pedagangPendaftaran:
         return MaterialPageRoute(builder: (_) => const PendaftaranScreen());
-
       case AppRoutes.pedagangStatusVerifikasi:
         return MaterialPageRoute(builder: (_) => const StatusVerifikasiScreen());
-
       case AppRoutes.pedagangNomerStand:
         return MaterialPageRoute(builder: (_) => const LapakScreen());
-
+      // Petugas
       case AppRoutes.petugasJamOperasional:
         return MaterialPageRoute(builder: (_) => const JamOperasionalScreen());
-
       case AppRoutes.petugasScanQr:
         return MaterialPageRoute(builder: (_) => const ScanQrScreen());
+      case AppRoutes.petugasSisaLapak:
+        return MaterialPageRoute(builder: (_) => const SisaLapakScreen());
+      case AppRoutes.petugasLaporan:
+        return MaterialPageRoute(builder: (_) => const LaporanScreen());
 
       // Belum ada halamannya -- tetep didaftarin biar gak numpuk di
       // default case, tapi munculin state kosong yang jelas dulu.
