@@ -58,9 +58,7 @@ class _LaporanScreenState extends ConsumerState<LaporanScreen> {
   Widget build(BuildContext context) {
     final state = ref.watch(laporanProvider);
 
-    return MainLayout(
-      title: 'Laporan Kehadiran',
-      body: RefreshIndicator(
+    return RefreshIndicator(
         onRefresh: () => ref.read(laporanProvider.notifier).load(),
         child: Column(
           children: [
@@ -68,7 +66,6 @@ class _LaporanScreenState extends ConsumerState<LaporanScreen> {
             Expanded(child: _buildBody(state)),
           ],
         ),
-      ),
     );
   }
 
