@@ -4,6 +4,7 @@ import 'package:mobile/features/auth/presentation/pages/splash_screen.dart';
 import 'package:mobile/features/auth/presentation/pages/login_screen.dart';
 import 'package:mobile/features/auth/presentation/pages/register_screen.dart';
 import 'package:mobile/core/routers/app_router.dart';
+import 'package:mobile/core/themes/app_theme.dart';
 
 void main() {
   runApp(const ProviderScope(child: MyApp()));
@@ -17,10 +18,7 @@ class MyApp extends StatelessWidget {
     return MaterialApp(
       title: 'CFD Hub',
       debugShowCheckedModeBanner: false,
-      theme: ThemeData(
-        primarySwatch: Colors.blue,
-        useMaterial3: true,
-      ),
+      theme: AppTheme.light,
       // SplashScreen yang decide tujuan awal (LoginScreen atau home
       // sesuai role) lewat auto-login -- bukan hardcode ke '/login'
       // lagi kayak sebelumnya.
