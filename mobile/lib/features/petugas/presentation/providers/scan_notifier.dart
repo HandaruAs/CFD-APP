@@ -9,7 +9,7 @@ class ScanNotifier extends StateNotifier<ScanState> {
   /// ID pedagang mentah dari hasil scan.
   Future<void> verify(String qrCode) async {
     if (state.isVerifying) return; // cegah double-fire dari kamera
-    state = state.copyWith(isVerifying: true, error: null, result: null);
+    state = state.copyWith(isVerifying: true, error: null, result: null, lastCheckIn: null);
     try {
       final result = await ScanRemoteDatasource.verifyQr(qrCode);
       state = state.copyWith(isVerifying: false, result: result);
@@ -36,6 +36,6 @@ class ScanNotifier extends StateNotifier<ScanState> {
   /// Reset hasil verifikasi -- dipanggil pas bottom sheet ditutup biar
   /// kamera siap scan lagi dari nol.
   void resetResult() {
-    state = state.copyWith(result: null, error: null);
+    state = state.copyWith(result: null, error: null, lastCheckIn: null);
   }
 }

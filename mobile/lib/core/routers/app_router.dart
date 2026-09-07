@@ -12,6 +12,8 @@ import 'package:mobile/features/pedagang/presentation/pages/pendaftaran_screen.d
 import 'package:mobile/features/pedagang/presentation/pages/status_verifikasi_screen.dart';
 import 'package:mobile/features/pedagang/presentation/pages/lapak_screen.dart';
 import 'package:mobile/features/pedagang/presentation/pages/checkout_screen.dart';
+import 'package:mobile/features/petugas/presentation/pages/jam_operasional_screen.dart';
+import 'package:mobile/features/petugas/presentation/pages/scan_qr_screen.dart';
 
 class AppRoutes {
   // Auth
@@ -25,6 +27,11 @@ class AppRoutes {
   static const pedagangStatusVerifikasi = '/pedagang/status-verifikasi';
   static const pedagangNomerStand = '/pedagang/nomer-stand';
   static const pedagangProfil = '/pedagang/profil'; // belum dikerjain
+
+  // Petugas -- sama aturannya, string harus persis kolom `route` di
+  // tabel `menus` backend.
+  static const petugasJamOperasional = '/petugas/jam-operasional';
+  static const petugasScanQr = '/petugas/scan-qr';
 
   // CheckoutScreen sengaja gak masuk sini sebagai named route -- dia
   // cuma dicapai lewat auto-redirect polling dari LapakScreen, sama
@@ -49,6 +56,12 @@ class AppRouter {
 
       case AppRoutes.pedagangNomerStand:
         return MaterialPageRoute(builder: (_) => const LapakScreen());
+
+      case AppRoutes.petugasJamOperasional:
+        return MaterialPageRoute(builder: (_) => const JamOperasionalScreen());
+
+      case AppRoutes.petugasScanQr:
+        return MaterialPageRoute(builder: (_) => const ScanQrScreen());
 
       // Belum ada halamannya -- tetep didaftarin biar gak numpuk di
       // default case, tapi munculin state kosong yang jelas dulu.

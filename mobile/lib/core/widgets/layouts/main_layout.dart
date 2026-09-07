@@ -4,10 +4,6 @@ import 'package:mobile/features/menu/data/datasources/menu_remote_datasource.dar
 import 'package:mobile/core/models/menu_model.dart';
 import 'package:mobile/features/auth/presentation/providers/auth_provider.dart';
 import 'package:mobile/features/auth/presentation/pages/login_screen.dart';
-import 'package:mobile/features/pedagang/presentation/pages/pendaftaran_screen.dart';
-import 'package:mobile/features/pedagang/presentation/pages/status_verifikasi_screen.dart';
-import 'package:mobile/features/pedagang/presentation/pages/lapak_screen.dart';
-import 'package:mobile/features/petugas/presentation/pages/jam_operasional_screen.dart';
 
 class MainLayout extends ConsumerStatefulWidget {
   final Widget body; // Halaman yang dibungkus (misal: HomeScreen)
@@ -169,41 +165,10 @@ class _MainLayoutState extends ConsumerState<MainLayout> {
   //   - Pedagang - Nomor Stand        -> /pedagang/nomer-stand
   //   - Petugas  - Jam Operasional    -> /petugas/jam-operasional
   //     (dari migrasi 000016_restructure_menus.up.sql)
+  // Path -> halaman apa udah bukan urusan widget ini. Semua keputusan
+  // routing (termasuk fallback "halaman belum dibuat") ada di satu
+  // tempat: AppRouter.generateRoute (lihat core/routers/app_router.dart).
   void _navigateTo(BuildContext context, String path) {
-    switch (path) {
-      case '/pedagang/pendaftaran':
-        Navigator.push(
-          context,
-          MaterialPageRoute(builder: (context) => const PendaftaranScreen()),
-        );
-        break;
-
-      case '/pedagang/status-verifikasi':
-        Navigator.push(
-          context,
-          MaterialPageRoute(builder: (context) => const StatusVerifikasiScreen()),
-        );
-        break;
-
-      case '/pedagang/nomer-stand':
-        Navigator.push(
-          context,
-          MaterialPageRoute(builder: (context) => const LapakScreen()),
-        );
-        break;
-
-      case '/petugas/jam-operasional':
-        Navigator.push(
-          context,
-          MaterialPageRoute(builder: (context) => const JamOperasionalScreen()),
-        );
-        break;
-
-      default:
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Halaman $path belum dibuat')),
-        );
-        break;
-    }
+    Navigator.pushNamed(context, path);
   }
 }
