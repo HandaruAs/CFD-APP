@@ -3,7 +3,6 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:mobile/core/widgets/layouts/main_layout.dart';
 import 'package:mobile/features/pedagang/presentation/providers/pedagang_provider.dart';
 import 'package:mobile/features/pedagang/presentation/providers/pedagang_state.dart';
 import 'package:mobile/features/pedagang/domain/entities/lapak_data.dart';
@@ -26,6 +25,8 @@ String _qrCodeUrl(String pedagangId) {
   return 'https://api.qrserver.com/v1/create-qr-code/?size=240x240&data=$pedagangId';
 }
 
+/// TAB ROOT (menu "Nomor Stand"/"Jadwal & Lokasi" pedagang) -- build()
+/// return body langsung, Scaffold/AppBar dipegang shell MainLayout.
 class LapakScreen extends ConsumerStatefulWidget {
   const LapakScreen({super.key});
 
@@ -74,7 +75,9 @@ class _LapakScreenState extends ConsumerState<LapakScreen> {
       if (!mounted) return;
       if (sudahCheckIn) {
         _pollTimer?.cancel();
-        Navigator.of(context).pushReplacement(
+        // CheckoutScreen BUKAN tab -- ini push halaman beneran di atas
+        // shell, tetap valid dipakai sama kayak sebelumnya.
+        Navigator.of(context).push(
           MaterialPageRoute(builder: (_) => const CheckoutScreen()),
         );
       }
@@ -111,233 +114,225 @@ class _LapakScreenState extends ConsumerState<LapakScreen> {
     final isLoadingAwal = state.isLoadingPengajuan || state.isLoadingLapakStatus;
 
     if (isLoadingAwal && state.hasilKlaim == null) {
-      return const MainLayout(
-        title: 'Pilih Lokasi Stan',
-        body: Center(child: CircularProgressIndicator()),
-      );
+      return const Center(child: CircularProgressIndicator());
     }
 
     if (state.hasilKlaim != null) {
-      return MainLayout(
-        title: 'Alokasi Stan Dikonfirmasi',
-        body: _buildHasilKlaim(state, pengajuan),
-      );
+      return _buildHasilKlaim(state, pengajuan);
     }
 
     final sesiAktif = state.lapakStatus?.sesiAktif ?? true;
     if (!sesiAktif) {
-      return MainLayout(
-        title: 'Pilih Lokasi Stan',
-        body: Center(
-          child: Padding(
-            padding: const EdgeInsets.all(24),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                const Icon(Icons.warning_amber_rounded, color: Colors.red, size: 48),
-                const SizedBox(height: 12),
-                const Text('Sesi Klaim Belum Dibuka',
-                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-                const SizedBox(height: 8),
-                Text(
-                  state.lapakStatus?.pesanSesi ??
-                      'Sesi klaim lapak hari ini belum dibuka oleh petugas.',
-                  textAlign: TextAlign.center,
-                  style: const TextStyle(color: Colors.black54),
-                ),
-                const SizedBox(height: 16),
-                ElevatedButton(
-                  onPressed: () => Navigator.of(context).pop(),
-                  style: ElevatedButton.styleFrom(backgroundColor: _brandColor),
-                  child: const Text('Kembali', style: TextStyle(color: Colors.white)),
-                ),
-              ],
-            ),
+      return Center(
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Icon(Icons.warning_amber_rounded, color: Colors.red, size: 48),
+              const SizedBox(height: 12),
+              const Text('Sesi Klaim Belum Dibuka',
+                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+              const SizedBox(height: 8),
+              Text(
+                state.lapakStatus?.pesanSesi ??
+                    'Sesi klaim lapak hari ini belum dibuka oleh petugas.',
+                textAlign: TextAlign.center,
+                style: const TextStyle(color: Colors.black54),
+              ),
+              const SizedBox(height: 16),
+              // Dulu ada tombol "Kembali" (Navigator.pop) -- dihapus
+              // karena sekarang screen ini TAB (di IndexedStack), pop()
+              // di sini bakal nutup shell, bukan "balik" yang dimaksud.
+              // Diganti tombol reload status.
+              ElevatedButton(
+                onPressed: () => ref.read(pedagangProvider.notifier).loadLapakStatus(),
+                style: ElevatedButton.styleFrom(backgroundColor: _brandColor),
+                child: const Text('Cek Lagi', style: TextStyle(color: Colors.white)),
+              ),
+            ],
           ),
         ),
       );
     }
 
-    return MainLayout(
-      title: 'Pilih Lokasi Stan',
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            if (state.error != null) ...[
-              Container(
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: const Color(0xFFFEF2F2),
-                  border: Border.all(color: const Color(0xFFFECACA)),
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: Text(state.error!, style: const TextStyle(color: Color(0xFFB91C1C))),
+    return SingleChildScrollView(
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          if (state.error != null) ...[
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: const Color(0xFFFEF2F2),
+                border: Border.all(color: const Color(0xFFFECACA)),
+                borderRadius: BorderRadius.circular(8),
               ),
-              const SizedBox(height: 16),
-            ],
-            Card(
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-              child: Padding(
-                padding: const EdgeInsets.all(16),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const Text('Lokasi Penempatan',
-                        style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-                    const SizedBox(height: 12),
-                    DropdownButtonFormField<String>(
-                      initialValue: _kecamatanId,
-                      decoration: const InputDecoration(
-                        labelText: 'Kecamatan',
-                        border: OutlineInputBorder(),
-                      ),
-                      items: state.kecamatanList
-                          .map((k) => DropdownMenuItem(value: k.id, child: Text(k.nama)))
-                          .toList(),
-                      onChanged: !sudahDaftar || state.isLoadingKecamatan
-                          ? null
-                          : (v) {
-                              setState(() {
-                                _kecamatanId = v;
-                                _jalanId = null;
-                              });
-                              if (v != null) {
-                                ref.read(pedagangProvider.notifier).loadJalan(v);
-                              }
-                            },
-                    ),
-                    if (_kecamatanId != null) ...[
-                      const SizedBox(height: 16),
-                      const Text('Pilih Jalan', style: TextStyle(fontWeight: FontWeight.w600)),
-                      const SizedBox(height: 8),
-                      if (state.isLoadingJalan)
-                        const Padding(
-                          padding: EdgeInsets.symmetric(vertical: 8),
-                          child: Text('Memuat daftar jalan...',
-                              style: TextStyle(color: Colors.black54)),
-                        )
-                      else if (state.jalanList.isEmpty)
-                        const Padding(
-                          padding: EdgeInsets.symmetric(vertical: 8),
-                          child: Text('Belum ada jalan tersedia di kecamatan ini.',
-                              style: TextStyle(color: Colors.black54)),
-                        )
-                      else
-                        Wrap(
-                          spacing: 8,
-                          runSpacing: 8,
-                          children: state.jalanList.map((j) {
-                            final selected = _jalanId == j.id;
-                            return InkWell(
-                              onTap: j.penuh ? null : () => setState(() => _jalanId = j.id),
-                              borderRadius: BorderRadius.circular(8),
-                              child: Container(
-                                width: 160,
-                                padding:
-                                    const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                                decoration: BoxDecoration(
-                                  borderRadius: BorderRadius.circular(8),
-                                  border: Border.all(
-                                    color: j.penuh
-                                        ? const Color(0xFFE2E5F1)
-                                        : selected
-                                            ? _brandColor
-                                            : const Color(0xFFE2E5F1),
-                                    width: selected ? 2 : 1,
-                                  ),
-                                  color: j.penuh
-                                      ? const Color(0xFFF6F7FB)
-                                      : selected
-                                          ? const Color(0xFFEFF4FF)
-                                          : Colors.white,
-                                ),
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Text(j.namaJalan,
-                                        style: const TextStyle(
-                                            fontWeight: FontWeight.w600, fontSize: 13)),
-                                    const SizedBox(height: 2),
-                                    Text(
-                                      j.penuh ? 'Penuh' : 'Sisa ${j.sisa} dari ${j.kapasitas} slot',
-                                      style: TextStyle(
-                                        fontSize: 11.5,
-                                        color: j.penuh ? Colors.red : Colors.black54,
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            );
-                          }).toList(),
-                        ),
-                    ],
-                  ],
-                ),
-              ),
+              child: Text(state.error!, style: const TextStyle(color: Color(0xFFB91C1C))),
             ),
-            const SizedBox(height: 12),
-            Card(
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-              child: Padding(
-                padding: const EdgeInsets.all(16),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const Text('Data Pendaftar',
-                        style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-                    const SizedBox(height: 8),
-                    if (!sudahDaftar)
-                      const Padding(
-                        padding: EdgeInsets.only(bottom: 8),
-                        child: Text('Anda belum mendaftar, daftar terlebih dahulu',
-                            style: TextStyle(
-                                color: Colors.red,
-                                fontWeight: FontWeight.w500,
-                                fontSize: 12.5)),
-                      ),
-                    _infoRow('NIK', pengajuan?.nik ?? '-'),
-                    _infoRow('Nama Lengkap', pengajuan?.namaLengkap ?? '-'),
-                    _infoRow('Tanggal Lahir', pengajuan?.tanggalLahir ?? '-'),
-                    _infoRow('Nama Usaha', pengajuan?.namaUsaha ?? '-'),
-                    _infoRow(
-                      'Kategori',
-                      pengajuan != null
-                          ? (_kategoriLabel[pengajuan.jenisDagangan] ?? pengajuan.jenisDagangan)
-                          : '-',
-                    ),
-                    _infoRow(
-                      'Jenis Lapak',
-                      pengajuan?.jenisLapak != null
-                          ? (_lapakLabel[pengajuan!.jenisLapak!] ?? pengajuan.jenisLapak!)
-                          : '-',
-                    ),
-                  ],
-                ),
-              ),
-            ),
-            const SizedBox(height: 20),
-            ElevatedButton(
-              onPressed:
-                  state.isClaiming || !sudahDaftar || _jalanId == null ? null : _handleKlaim,
-              style: ElevatedButton.styleFrom(
-                backgroundColor: _brandColor,
-                foregroundColor: Colors.white,
-                padding: const EdgeInsets.symmetric(vertical: 16),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-              ),
-              child: state.isClaiming
-                  ? const SizedBox(
-                      height: 20,
-                      width: 20,
-                      child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
-                    )
-                  : const Text('Simpan Pilihan Stan'),
-            ),
+            const SizedBox(height: 16),
           ],
-        ),
+          Card(
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text('Lokasi Penempatan',
+                      style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                  const SizedBox(height: 12),
+                  DropdownButtonFormField<String>(
+                    initialValue: _kecamatanId,
+                    decoration: const InputDecoration(
+                      labelText: 'Kecamatan',
+                      border: OutlineInputBorder(),
+                    ),
+                    items: state.kecamatanList
+                        .map((k) => DropdownMenuItem(value: k.id, child: Text(k.nama)))
+                        .toList(),
+                    onChanged: !sudahDaftar || state.isLoadingKecamatan
+                        ? null
+                        : (v) {
+                            setState(() {
+                              _kecamatanId = v;
+                              _jalanId = null;
+                            });
+                            if (v != null) {
+                              ref.read(pedagangProvider.notifier).loadJalan(v);
+                            }
+                          },
+                  ),
+                  if (_kecamatanId != null) ...[
+                    const SizedBox(height: 16),
+                    const Text('Pilih Jalan', style: TextStyle(fontWeight: FontWeight.w600)),
+                    const SizedBox(height: 8),
+                    if (state.isLoadingJalan)
+                      const Padding(
+                        padding: EdgeInsets.symmetric(vertical: 8),
+                        child: Text('Memuat daftar jalan...',
+                            style: TextStyle(color: Colors.black54)),
+                      )
+                    else if (state.jalanList.isEmpty)
+                      const Padding(
+                        padding: EdgeInsets.symmetric(vertical: 8),
+                        child: Text('Belum ada jalan tersedia di kecamatan ini.',
+                            style: TextStyle(color: Colors.black54)),
+                      )
+                    else
+                      Wrap(
+                        spacing: 8,
+                        runSpacing: 8,
+                        children: state.jalanList.map((j) {
+                          final selected = _jalanId == j.id;
+                          return InkWell(
+                            onTap: j.penuh ? null : () => setState(() => _jalanId = j.id),
+                            borderRadius: BorderRadius.circular(8),
+                            child: Container(
+                              width: 160,
+                              padding:
+                                  const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                              decoration: BoxDecoration(
+                                borderRadius: BorderRadius.circular(8),
+                                border: Border.all(
+                                  color: j.penuh
+                                      ? const Color(0xFFE2E5F1)
+                                      : selected
+                                          ? _brandColor
+                                          : const Color(0xFFE2E5F1),
+                                  width: selected ? 2 : 1,
+                                ),
+                                color: j.penuh
+                                    ? const Color(0xFFF6F7FB)
+                                    : selected
+                                        ? const Color(0xFFEFF4FF)
+                                        : Colors.white,
+                              ),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(j.namaJalan,
+                                      style: const TextStyle(
+                                          fontWeight: FontWeight.w600, fontSize: 13)),
+                                  const SizedBox(height: 2),
+                                  Text(
+                                    j.penuh ? 'Penuh' : 'Sisa ${j.sisa} dari ${j.kapasitas} slot',
+                                    style: TextStyle(
+                                      fontSize: 11.5,
+                                      color: j.penuh ? Colors.red : Colors.black54,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          );
+                        }).toList(),
+                      ),
+                  ],
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(height: 12),
+          Card(
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text('Data Pendaftar',
+                      style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                  const SizedBox(height: 8),
+                  if (!sudahDaftar)
+                    const Padding(
+                      padding: EdgeInsets.only(bottom: 8),
+                      child: Text('Anda belum mendaftar, daftar terlebih dahulu',
+                          style: TextStyle(
+                              color: Colors.red,
+                              fontWeight: FontWeight.w500,
+                              fontSize: 12.5)),
+                    ),
+                  _infoRow('NIK', pengajuan?.nik ?? '-'),
+                  _infoRow('Nama Lengkap', pengajuan?.namaLengkap ?? '-'),
+                  _infoRow('Tanggal Lahir', pengajuan?.tanggalLahir ?? '-'),
+                  _infoRow('Nama Usaha', pengajuan?.namaUsaha ?? '-'),
+                  _infoRow(
+                    'Kategori',
+                    pengajuan != null
+                        ? (_kategoriLabel[pengajuan.jenisDagangan] ?? pengajuan.jenisDagangan)
+                        : '-',
+                  ),
+                  _infoRow(
+                    'Jenis Lapak',
+                    pengajuan?.jenisLapak != null
+                        ? (_lapakLabel[pengajuan!.jenisLapak!] ?? pengajuan.jenisLapak!)
+                        : '-',
+                  ),
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(height: 20),
+          ElevatedButton(
+            onPressed:
+                state.isClaiming || !sudahDaftar || _jalanId == null ? null : _handleKlaim,
+            style: ElevatedButton.styleFrom(
+              backgroundColor: _brandColor,
+              foregroundColor: Colors.white,
+              padding: const EdgeInsets.symmetric(vertical: 16),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+            ),
+            child: state.isClaiming
+                ? const SizedBox(
+                    height: 20,
+                    width: 20,
+                    child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                  )
+                : const Text('Simpan Pilihan Stan'),
+          ),
+        ],
       ),
     );
   }

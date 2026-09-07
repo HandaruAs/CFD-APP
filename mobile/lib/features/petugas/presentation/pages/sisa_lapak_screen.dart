@@ -34,12 +34,9 @@ class _SisaLapakScreenState extends ConsumerState<SisaLapakScreen> {
   Widget build(BuildContext context) {
     final state = ref.watch(sisaLapakProvider);
 
-    return MainLayout(
-      title: 'Sisa Lapak',
-      body: RefreshIndicator(
+    return RefreshIndicator(
         onRefresh: () => ref.read(sisaLapakProvider.notifier).loadAll(),
         child: _buildBody(state),
-      ),
     );
   }
 

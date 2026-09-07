@@ -4,7 +4,6 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:mobile/core/widgets/layouts/main_layout.dart';
 import 'package:mobile/features/pedagang/presentation/providers/pedagang_provider.dart';
 
 const _brandColor = Color(0xFF1C3F7C);
@@ -44,6 +43,12 @@ String _formatRibuan(int n) {
   return buffer.toString();
 }
 
+/// CATATAN ARSITEKTUR: screen ini BUKAN tab bottom nav -- dia cuma
+/// dicapai lewat auto-redirect polling dari LapakScreen setelah
+/// check-in berhasil (lihat _maybeStartPolling di lapak_screen.dart).
+/// Karena itu dia tetap punya Scaffold+AppBar sendiri (di-push di atas
+/// shell MainLayout), beda sama screen tab lain yang sekarang cuma
+/// return body doang.
 class CheckoutScreen extends ConsumerStatefulWidget {
   const CheckoutScreen({super.key});
 
@@ -143,21 +148,32 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
     }
   }
 
+  Widget _scaffold({required String title, required Widget body}) {
+    return Scaffold(
+      appBar: AppBar(
+        title: Text(title),
+        backgroundColor: _brandColor,
+        foregroundColor: Colors.white,
+      ),
+      body: body,
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final state = ref.watch(pedagangProvider);
 
     if (state.isLoadingCheckout && state.checkout == null) {
-      return const MainLayout(
+      return _scaffold(
         title: 'Cek-out Pedagang',
-        body: Center(child: CircularProgressIndicator()),
+        body: const Center(child: CircularProgressIndicator()),
       );
     }
 
     final data = state.checkout;
 
     if (data == null) {
-      return MainLayout(
+      return _scaffold(
         title: 'Cek-out Pedagang',
         body: Center(
           child: Padding(
@@ -182,9 +198,9 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
     }
 
     if (!data.sudahCheckIn) {
-      return const MainLayout(
+      return _scaffold(
         title: 'Cek-out Pedagang',
-        body: Center(
+        body: const Center(
           child: Padding(
             padding: EdgeInsets.all(24),
             child: Column(
@@ -205,7 +221,7 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
     }
 
     if (data.sudahCheckOut || _submitted) {
-      return MainLayout(
+      return _scaffold(
         title: 'Cek-out Pedagang',
         body: Center(
           child: Padding(
@@ -241,7 +257,7 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
     final canCheckout = data.sesiSudahSelesai && !data.sudahCheckOut;
     final countdown = _countdownText(data.jamSelesaiSesi, data.sudahCheckIn, data.sesiSudahSelesai);
 
-    return MainLayout(
+    return _scaffold(
       title: 'Cek-out Pedagang',
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(16),

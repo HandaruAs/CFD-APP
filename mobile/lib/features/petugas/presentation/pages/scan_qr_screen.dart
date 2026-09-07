@@ -58,48 +58,44 @@ class _ScanQrScreenState extends ConsumerState<ScanQrScreen> {
     _controller.start();
   }
 
-  @override
-  Widget build(BuildContext context) {
-    final state = ref.watch(scanProvider);
+ @override
+Widget build(BuildContext context) {
+  final state = ref.watch(scanProvider);
 
-    return MainLayout(
-      title: 'Scan QR Pedagang',
-      body: Stack(
-        children: [
-          MobileScanner(controller: _controller, onDetect: _onDetect),
-          // Overlay bingkai target -- murni visual, gak ngaruh ke deteksi.
-          Center(
-            child: Container(
-              width: 240,
-              height: 240,
-              decoration: BoxDecoration(
-                border: Border.all(color: Colors.white, width: 3),
-                borderRadius: BorderRadius.circular(16),
-              ),
-            ),
+  return Stack(
+    children: [
+      MobileScanner(controller: _controller, onDetect: _onDetect),
+      Center(
+        child: Container(
+          width: 240,
+          height: 240,
+          decoration: BoxDecoration(
+            border: Border.all(color: Colors.white, width: 3),
+            borderRadius: BorderRadius.circular(16),
           ),
-          Positioned(
-            left: 0,
-            right: 0,
-            bottom: 32,
-            child: Center(
-              child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                decoration: BoxDecoration(
-                  color: Colors.black54,
-                  borderRadius: BorderRadius.circular(20),
-                ),
-                child: Text(
-                  state.isVerifying ? 'Memverifikasi QR...' : 'Arahkan kamera ke QR pedagang',
-                  style: const TextStyle(color: Colors.white),
-                ),
-              ),
-            ),
-          ),
-        ],
+        ),
       ),
-    );
-  }
+      Positioned(
+        left: 0,
+        right: 0,
+        bottom: 32,
+        child: Center(
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+            decoration: BoxDecoration(
+              color: Colors.black54,
+              borderRadius: BorderRadius.circular(20),
+            ),
+            child: Text(
+              state.isVerifying ? 'Memverifikasi QR...' : 'Arahkan kamera ke QR pedagang',
+              style: const TextStyle(color: Colors.white),
+            ),
+          ),
+        ),
+      ),
+    ],
+  );
+}
 }
 
 class _ScanResultSheet extends ConsumerWidget {

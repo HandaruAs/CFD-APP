@@ -46,12 +46,9 @@ class _JamOperasionalScreenState extends ConsumerState<JamOperasionalScreen> {
   Widget build(BuildContext context) {
     final state = ref.watch(jamOperasionalProvider);
 
-    return MainLayout(
-      title: 'Jam Operasional',
-      body: RefreshIndicator(
+    return  RefreshIndicator(
         onRefresh: () => ref.read(jamOperasionalProvider.notifier).loadAll(),
         child: _buildBody(state),
-      ),
     );
   }
 
