@@ -6,7 +6,6 @@ import {
   Clock,
   Hourglass,
   History,
-  CircleX,
   CalendarCheck2,
   Lock,
   LockOpen,
@@ -18,6 +17,9 @@ import {
   Edit,
   MapPin,
   Store,
+  Plus,
+  CalendarDays,
+  Save,
 } from "lucide-react";
 
 // ========== TYPES ==========
@@ -29,16 +31,6 @@ type Riwayat = {
   jamSelesai: string;
   durasi: string;
   status: StatusRiwayat;
-};
-type SesiAktif = {
-  id: string;
-  tanggal: string;
-  jamMulai: string;
-  jamSelesaiRencana: string;
-  status: "berlangsung" | "selesai_normal" | "diperpanjang" | "diakhiri_awal";
-  aktif: boolean;
-  sisaMenit: number;
-  totalMenit: number;
 };
 type StatusOperasional = {
   // NOTE: nama field "pendaftaran" ini kontrak API dari backend
@@ -53,17 +45,58 @@ type StatusOperasional = {
     jamBuka?: string | null;
     jamTutup?: string | null;
   };
-  sesi: SesiAktif | null;
   riwayat: Riwayat[];
+};
+
+// ========== TIPE SESI PER-WILAYAH (BARU) ==========
+type Scope = "kota" | "kecamatan" | "jalan";
+type JalanRingkas = {
+  id: string;
+  nama: string;
+  kecamatanId: string;
+  kecamatanNama: string;
+};
+type SesiWilayah = {
+  id: string;
+  namaSesi: string;
+  tanggal: string;
+  jamMulai: string;
+  jamSelesaiRencana: string;
+  status: "berlangsung" | "selesai_normal" | "diperpanjang" | "diakhiri_awal" | string;
+  aktif: boolean;
+  sisaMenit: number;
+  totalMenit: number;
+  scope: Scope;
+  scopeLabel: string;
+  jalan: JalanRingkas[];
+};
+type WilayahSaya = {
+  kecamatanId: string | null;
+  kecamatanNama: string | null;
+  jalanId: string | null;
+  jalanNama: string | null;
+  bebas: boolean;
+};
+
+// ========== TIPE JADWAL MINGGUAN (BARU) ==========
+type HariValue = "senin" | "selasa" | "rabu" | "kamis" | "jumat" | "sabtu" | "minggu";
+type JadwalMingguan = {
+  hari: HariValue;
+  jamMulai: string;
+  jamSelesaiRencana: string;
+  isActive: boolean;
 };
 
 // ========== TIPE UNTUK SISA LAPAK ==========
 type JalanData = {
+  id: string;
+  kode_jalan: string;
   nama: string;
   kuota: number;
   terisi: number;
 };
 type KecamatanData = {
+  kecamatanId: string | null;
   kecamatan: string;
   jalan: JalanData[];
 };
@@ -90,6 +123,24 @@ const STATUS_STYLE: Record<StatusRiwayat, { label: string; bg: string; text: str
   },
 };
 
+const SESI_WILAYAH_STATUS_STYLE: Record<string, { label: string; bg: string; text: string }> = {
+  berlangsung: { label: "Berlangsung", bg: "bg-secondary-container/40", text: "text-on-secondary-container" },
+  diperpanjang: { label: "Diperpanjang", bg: "bg-tertiary-container/15", text: "text-on-tertiary-container" },
+  selesai_normal: { label: "Selesai Normal", bg: "bg-surface-container-high", text: "text-on-surface-variant" },
+  diakhiri_awal: { label: "Diakhiri Awal", bg: "bg-error-container/60", text: "text-on-error-container" },
+};
+const SESI_WILAYAH_STATUS_DEFAULT = { label: "-", bg: "bg-surface-container-high", text: "text-on-surface-variant" };
+
+const HARI_LIST: { value: HariValue; label: string }[] = [
+  { value: "senin", label: "Senin" },
+  { value: "selasa", label: "Selasa" },
+  { value: "rabu", label: "Rabu" },
+  { value: "kamis", label: "Kamis" },
+  { value: "jumat", label: "Jumat" },
+  { value: "sabtu", label: "Sabtu" },
+  { value: "minggu", label: "Minggu" },
+];
+
 const RADIUS = 54;
 const CIRC = 2 * Math.PI * RADIUS;
 
@@ -103,6 +154,12 @@ function formatSisaWaktu(totalMenit: number) {
 }
 function formatWaktuTabel(waktu: string) {
   return waktu.split(".")[0];
+}
+function todayISO() {
+  const d = new Date();
+  const offset = d.getTimezoneOffset();
+  const local = new Date(d.getTime() - offset * 60_000);
+  return local.toISOString().slice(0, 10);
 }
 function apiUrl(path: string) {
   const base = process.env.NEXT_PUBLIC_API_URL;
@@ -152,6 +209,8 @@ function ModalShell({ children, onClose }: { children: React.ReactNode; onClose:
           padding: "1.5rem",
           boxShadow: "0 20px 60px rgba(0,0,0,0.3)",
           animation: "modalIn 0.2s ease-out",
+          maxHeight: "90vh",
+          overflowY: "auto",
         }}
         onClick={(e) => e.stopPropagation()}
       >
@@ -196,17 +255,30 @@ export default function JamOperasionalPage() {
   const [status, setStatus] = useState<StatusOperasional | null>(null);
   const [isLoadingPage, setIsLoadingPage] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
-  const [actionLoading, setActionLoading] = useState<string | null>(null);
   const [toast, setToast] = useState<{ message: string; type: "success" | "error" } | null>(null);
 
-  const [jamMulaiInput, setJamMulaiInput] = useState("06:00");
-  const [jamSelesaiInput, setJamSelesaiInput] = useState("11:00");
-  const [editMode, setEditMode] = useState(false);
+  // ===== STATE SESI PER-WILAYAH (BARU) =====
+  const [wilayahSaya, setWilayahSaya] = useState<WilayahSaya | null>(null);
+  const [sesiWilayahList, setSesiWilayahList] = useState<SesiWilayah[]>([]);
+  const [isLoadingSesiWilayah, setIsLoadingSesiWilayah] = useState(true);
+  const [sesiWilayahError, setSesiWilayahError] = useState<string | null>(null);
 
-  // ===== TOGGLE SESI CFD (buka / akhiri) =====
-  // Gabungan dari "Buka Sesi Sekarang" + "Akhiri Sesi Lebih Awal" jadi satu
-  // toggle, persis pola yang sama dengan toggle Check-in Pedagang di bawah.
-  const [isTogglingSesi, setIsTogglingSesi] = useState(false);
+  const [showBuatSesiModal, setShowBuatSesiModal] = useState(false);
+  const [formScope, setFormScope] = useState<Scope>("jalan");
+  const [formKecamatanId, setFormKecamatanId] = useState("");
+  const [formJalanId, setFormJalanId] = useState("");
+  const [formTanggal, setFormTanggal] = useState(todayISO());
+  const [formJamMulai, setFormJamMulai] = useState("06:00");
+  const [formJamSelesai, setFormJamSelesai] = useState("11:00");
+  const [isSubmittingSesi, setIsSubmittingSesi] = useState(false);
+
+  // ===== STATE JADWAL MINGGUAN (BARU) =====
+  const [jadwalList, setJadwalList] = useState<JadwalMingguan[]>([]);
+  const [isLoadingJadwal, setIsLoadingJadwal] = useState(true);
+  const [jadwalError, setJadwalError] = useState<string | null>(null);
+  const [editingHari, setEditingHari] = useState<HariValue | null>(null);
+  const [jadwalDraft, setJadwalDraft] = useState({ jamMulai: "06:00", jamSelesaiRencana: "11:00", isActive: true });
+  const [savingHari, setSavingHari] = useState<HariValue | null>(null);
 
   // "checkIn*" di sini map ke field API "pendaftaran" (lihat catatan di
   // tipe StatusOperasional di atas) -- ini jendela waktu buat pedagang
@@ -216,7 +288,7 @@ export default function JamOperasionalPage() {
   const [isTogglingCheckIn, setIsTogglingCheckIn] = useState(false);
   const [isSavingCheckIn, setIsSavingCheckIn] = useState(false);
 
-  // ===== STATE UNTUK SISA LAPAK (BARU) =====
+  // ===== STATE UNTUK SISA LAPAK =====
   const [lapakData, setLapakData] = useState<KecamatanData[]>([]);
   const [isLoadingLapak, setIsLoadingLapak] = useState(true);
   const [lapakError, setLapakError] = useState<string | null>(null);
@@ -229,10 +301,7 @@ export default function JamOperasionalPage() {
     onConfirm: () => void;
   } | null>(null);
 
-  const today = new Date();
-  const isSunday = today.getDay() === 0;
-  const isFriday = today.getDay() === 5;
-  const sesiSudahAda = status?.sesi != null;
+  const isFriday = new Date().getDay() === 5;
   const [checkInSudahDiubahHariIni, setCheckInSudahDiubahHariIni] = useState(false);
 
   const showToast = (message: string, type: "success" | "error" = "success") => {
@@ -240,16 +309,12 @@ export default function JamOperasionalPage() {
     setTimeout(() => setToast(null), 3000);
   };
 
-  // ===== LOAD STATUS + SISA LAPAK =====
+  // ===== LOAD STATUS (pendaftaran / check-in + riwayat) =====
   const loadStatus = async () => {
     try {
       const data = (await apiFetch("/api/petugas/jam-operasional")) as StatusOperasional;
       setStatus(data);
       setLoadError(null);
-      if (data.sesi) {
-        setJamMulaiInput(data.sesi.jamMulai.slice(0, 5));
-        setJamSelesaiInput(data.sesi.jamSelesaiRencana.slice(0, 5));
-      }
       if (data.pendaftaran.jamBuka) {
         setCheckInJamBuka(data.pendaftaran.jamBuka.slice(0, 5));
       }
@@ -261,6 +326,44 @@ export default function JamOperasionalPage() {
       setLoadError(err instanceof Error ? err.message : "gagal memuat data");
     } finally {
       setIsLoadingPage(false);
+    }
+  };
+
+  // ===== LOAD WILAYAH SAYA =====
+  const loadWilayahSaya = async () => {
+    try {
+      const data = (await apiFetch("/api/petugas/wilayah-saya")) as WilayahSaya;
+      setWilayahSaya(data);
+    } catch {
+      // non-fatal -- form buat sesi baru cuma dibatasi kalau ini gagal
+      setWilayahSaya(null);
+    }
+  };
+
+  // ===== LOAD SESI PER-WILAYAH =====
+  const loadSesiWilayah = async () => {
+    try {
+      const data = await apiFetch("/api/petugas/jam-operasional/sesi-wilayah");
+      setSesiWilayahList(Array.isArray(data.sesi) ? data.sesi : []);
+      setSesiWilayahError(null);
+    } catch (err) {
+      setSesiWilayahError(err instanceof Error ? err.message : "gagal memuat sesi wilayah");
+      setSesiWilayahList([]);
+    } finally {
+      setIsLoadingSesiWilayah(false);
+    }
+  };
+
+  // ===== LOAD JADWAL MINGGUAN =====
+  const loadJadwalMingguan = async () => {
+    try {
+      const data = await apiFetch("/api/petugas/jam-operasional/jadwal-mingguan");
+      setJadwalList(Array.isArray(data.jadwal) ? data.jadwal : []);
+      setJadwalError(null);
+    } catch (err) {
+      setJadwalError(err instanceof Error ? err.message : "gagal memuat jadwal mingguan");
+    } finally {
+      setIsLoadingJadwal(false);
     }
   };
 
@@ -281,76 +384,141 @@ export default function JamOperasionalPage() {
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect
     loadStatus();
+    loadWilayahSaya();
+    loadSesiWilayah();
+    loadJadwalMingguan();
     loadSisaLapak();
     const interval = setInterval(() => {
       loadStatus();
+      loadSesiWilayah();
       loadSisaLapak();
     }, 60_000);
     return () => clearInterval(interval);
   }, []);
 
-  // ===== HANDLER SESI CFD =====
-  const handleSimpanPerubahan = async () => {
-    setConfirmDialog({
-      title: "Konfirmasi Perubahan",
-      message: "Apakah Anda yakin dengan perubahan jadwal sesi CFD ini?",
-      confirmLabel: "Ya, Simpan",
-      onConfirm: async () => {
-        setConfirmDialog(null);
-        setActionLoading("simpan");
-        try {
-          await apiFetch("/api/petugas/jam-operasional/sesi", {
-            method: "PATCH",
-            body: JSON.stringify({ jamMulai: jamMulaiInput, jamSelesaiRencana: jamSelesaiInput }),
-          });
-          showToast("✅ Jam sesi berhasil disimpan", "success");
-          setEditMode(false);
-          await loadStatus();
-        } catch (err) {
-          showToast(err instanceof Error ? err.message : "gagal menyimpan jam sesi", "error");
-        } finally {
-          setActionLoading(null);
-        }
-      },
+  // ===== HANDLER: BUAT SESI WILAYAH BARU =====
+  const scopeOptionsTersedia: { value: Scope; label: string }[] = !wilayahSaya
+    ? []
+    : wilayahSaya.bebas
+    ? [
+        { value: "kota", label: "Se-Surabaya" },
+        { value: "kecamatan", label: "1 Kecamatan" },
+        { value: "jalan", label: "1 Jalan" },
+      ]
+    : wilayahSaya.jalanId
+    ? [{ value: "jalan", label: `Jl. ${wilayahSaya.jalanNama ?? ""}` }]
+    : wilayahSaya.kecamatanId
+    ? [
+        { value: "kecamatan", label: `Kec. ${wilayahSaya.kecamatanNama ?? ""}` },
+        { value: "jalan", label: "1 Jalan di kecamatan saya" },
+      ]
+    : [];
+
+  const daftarKecamatanForm = lapakData
+    .filter((k) => k.kecamatanId)
+    .map((k) => ({ id: k.kecamatanId as string, nama: k.kecamatan }));
+
+  const daftarJalanForm = wilayahSaya?.jalanId
+    ? []
+    : wilayahSaya?.bebas
+    ? lapakData.flatMap((k) => k.jalan.map((j) => ({ id: j.id, label: `${j.nama} — ${k.kecamatan}` })))
+    : lapakData
+        .filter((k) => k.kecamatanId === wilayahSaya?.kecamatanId)
+        .flatMap((k) => k.jalan.map((j) => ({ id: j.id, label: j.nama })));
+
+  const openBuatSesiModal = () => {
+    if (!wilayahSaya) {
+      showToast("Data wilayah petugas belum siap, coba lagi sebentar", "error");
+      return;
+    }
+    const defaultScope: Scope = wilayahSaya.bebas
+      ? "kota"
+      : wilayahSaya.kecamatanId && !wilayahSaya.jalanId
+      ? "kecamatan"
+      : "jalan";
+    setFormScope(defaultScope);
+    setFormKecamatanId(wilayahSaya.kecamatanId ?? "");
+    setFormJalanId(wilayahSaya.jalanId ?? "");
+    setFormTanggal(todayISO());
+    setFormJamMulai("06:00");
+    setFormJamSelesai("11:00");
+    setShowBuatSesiModal(true);
+  };
+
+  const handleSubmitSesiWilayah = async () => {
+    if (!formTanggal || !formJamMulai || !formJamSelesai) {
+      showToast("Lengkapi tanggal dan jam terlebih dahulu", "error");
+      return;
+    }
+    const body: Record<string, unknown> = {
+      scope: formScope,
+      tanggal: formTanggal,
+      jamMulai: formJamMulai,
+      jamSelesaiRencana: formJamSelesai,
+    };
+    if (formScope === "kecamatan") {
+      const kecId = wilayahSaya?.bebas ? formKecamatanId : wilayahSaya?.kecamatanId;
+      if (!kecId) {
+        showToast("Pilih kecamatan terlebih dahulu", "error");
+        return;
+      }
+      body.kecamatanId = kecId;
+    }
+    if (formScope === "jalan") {
+      const jalId = wilayahSaya?.jalanId ?? formJalanId;
+      if (!jalId) {
+        showToast("Pilih jalan terlebih dahulu", "error");
+        return;
+      }
+      body.jalanId = jalId;
+    }
+
+    setIsSubmittingSesi(true);
+    try {
+      await apiFetch("/api/petugas/jam-operasional/sesi-wilayah", {
+        method: "POST",
+        body: JSON.stringify(body),
+      });
+      showToast("✅ Sesi CFD berhasil dibuat", "success");
+      setShowBuatSesiModal(false);
+      await loadSesiWilayah();
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : "gagal membuat sesi", "error");
+    } finally {
+      setIsSubmittingSesi(false);
+    }
+  };
+
+  // ===== HANDLER: JADWAL MINGGUAN =====
+  const startEditJadwal = (hari: HariValue, row?: JadwalMingguan) => {
+    setEditingHari(hari);
+    setJadwalDraft({
+      jamMulai: row ? row.jamMulai.slice(0, 5) : "06:00",
+      jamSelesaiRencana: row ? row.jamSelesaiRencana.slice(0, 5) : "11:00",
+      isActive: row ? row.isActive : true,
     });
   };
 
-  // Toggle buka/akhiri sesi CFD sekarang juga -- gabungan handleBukaSesiManual
-  // + handleAkhiriSesi versi lama, dipicu dari satu tombol yang sama seperti
-  // toggle Check-in Pedagang.
-  const handleToggleSesi = async () => {
-    const newState = !sesiSedangAktif; // true = mau buka sesi, false = mau akhiri sesi
-
-    setConfirmDialog({
-      title: newState ? "Buka Sesi Sekarang" : "Akhiri Sesi Lebih Awal",
-      message: newState
-        ? "Ini akan langsung mengaktifkan sesi CFD hari ini sampai jam 23:59, tanpa menunggu jadwal otomatis. Cocok untuk testing atau situasi darurat. Lanjutkan?"
-        : "Yakin mau akhiri sesi CFD hari ini lebih awal? Tindakan ini tidak bisa dibatalkan.",
-      confirmLabel: newState ? "Ya, Buka Sekarang" : "Ya, Akhiri Sesi",
-      danger: !newState,
-      onConfirm: async () => {
-        setConfirmDialog(null);
-        setIsTogglingSesi(true);
-        try {
-          await apiFetch(
-            newState
-              ? "/api/petugas/jam-operasional/sesi/buka"
-              : "/api/petugas/jam-operasional/sesi/akhiri",
-            { method: "PATCH" }
-          );
-          showToast(`✅ Sesi CFD berhasil ${newState ? "dibuka" : "diakhiri"}`, "success");
-          if (newState) setEditMode(false);
-          await loadStatus();
-        } catch (err) {
-          showToast(
-            err instanceof Error ? err.message : `gagal ${newState ? "membuka" : "mengakhiri"} sesi`,
-            "error"
-          );
-        } finally {
-          setIsTogglingSesi(false);
-        }
-      },
-    });
+  const handleSimpanJadwalHari = async (hari: HariValue) => {
+    setSavingHari(hari);
+    try {
+      await apiFetch("/api/petugas/jam-operasional/jadwal-mingguan", {
+        method: "PATCH",
+        body: JSON.stringify({
+          hari,
+          jamMulai: jadwalDraft.jamMulai,
+          jamSelesaiRencana: jadwalDraft.jamSelesaiRencana,
+          isActive: jadwalDraft.isActive,
+        }),
+      });
+      showToast("✅ Jadwal mingguan berhasil disimpan", "success");
+      setEditingHari(null);
+      await loadJadwalMingguan();
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : "gagal menyimpan jadwal mingguan", "error");
+    } finally {
+      setSavingHari(null);
+    }
   };
 
   // ===== HANDLER CHECK-IN PEDAGANG =====
@@ -431,18 +599,18 @@ export default function JamOperasionalPage() {
     );
   }
 
-  const sesi = status.sesi;
-  const sesiSedangAktif = sesi?.aktif ?? false;
-  const progress = sesi && sesi.totalMenit > 0 ? (sesi.sisaMenit / sesi.totalMenit) * CIRC : 0;
-
-  const canEditSesi = !sesiSudahAda || (sesiSudahAda && !isSunday && editMode);
-  const showEditButton = sesiSudahAda && !isSunday;
-  const sesiInfoMessage = !sesiSudahAda
-    ? "Anda dapat mengatur jadwal kapan saja. Pada hari Minggu, hanya bisa disimpan sekali."
-    : isSunday
-    ? "✅ Jadwal Minggu ini sudah diatur, tidak bisa diubah lagi"
-    : "💡 Klik 'Edit Kembali' untuk mengoreksi jam jika terjadi kesalahan.";
   const canEditCheckIn = !(isFriday && checkInSudahDiubahHariIni);
+
+  // Sesi wilayah yang lagi aktif (buat ditampilin di timer kanan) --
+  // kalau ada lebih dari satu yang aktif bersamaan, ambil yang paling
+  // cepat berakhir (sisaMenit terkecil).
+  const sesiAktifWilayah = sesiWilayahList
+    .filter((s) => s.aktif)
+    .sort((a, b) => a.sisaMenit - b.sisaMenit)[0];
+  const progress =
+    sesiAktifWilayah && sesiAktifWilayah.totalMenit > 0
+      ? (sesiAktifWilayah.sisaMenit / sesiAktifWilayah.totalMenit) * CIRC
+      : 0;
 
   // ===== SISA LAPAK =====
   const totalKuota = lapakData.reduce((acc, k) => {
@@ -472,135 +640,72 @@ export default function JamOperasionalPage() {
       <div>
         <h2 className="text-headline-lg text-on-surface">Jam Operasional</h2>
         <p className="mt-xs max-w-2xl text-body-md text-on-surface-variant">
-          Atur jam mulai & selesai CFD. Pada hari Minggu hanya bisa disimpan sekali. Kelola check-in pedagang secara terpisah.
+          Atur sesi CFD per wilayah (kota / kecamatan / jalan) dan jadwal mingguan otomatis. Kelola check-in pedagang secara terpisah.
         </p>
       </div>
 
       <div className="grid grid-cols-1 gap-md lg:grid-cols-[1fr_280px]">
+        {/* ===== SESI CFD PER WILAYAH (BARU) ===== */}
         <div className="rounded-xl border border-outline-variant bg-surface-container-lowest p-lg">
-          {/* Sesi CFD */}
           <div className="flex flex-wrap items-center justify-between gap-sm">
-            <h3 className="text-title-lg text-on-surface">Jadwal Sesi CFD Hari Ini</h3>
-            <span
-              className={`flex items-center gap-xs rounded-full px-sm py-1 text-label-sm ${
-                sesi && sesiSedangAktif
-                  ? "bg-secondary-container/40 text-on-secondary-container"
-                  : "bg-surface-container-high text-on-surface-variant"
-              }`}
+            <h3 className="text-title-lg text-on-surface">Sesi CFD per Wilayah</h3>
+            <button
+              type="button"
+              onClick={openBuatSesiModal}
+              className="flex items-center gap-xs rounded-md bg-primary px-md py-sm text-label-sm text-on-primary transition-all hover:bg-primary-container hover:shadow-md"
             >
-              <span
-                className={`h-1.5 w-1.5 rounded-full bg-secondary ${sesi && sesiSedangAktif ? "animate-pulse" : ""}`}
-              />
-              {!sesi && "Belum Diatur"}
-              {sesi?.status === "berlangsung" && "Sedang Berlangsung"}
-              {sesi?.status === "diperpanjang" && "Diperpanjang"}
-              {sesi?.status === "selesai_normal" && "Selesai Normal"}
-              {sesi?.status === "diakhiri_awal" && "Diakhiri Awal"}
-            </span>
+              <Plus className="h-4 w-4" strokeWidth={2} />
+              Buat Sesi Baru
+            </button>
           </div>
 
-          <div className="mt-md grid grid-cols-1 gap-sm sm:grid-cols-2">
-            <div className="flex items-center gap-sm rounded-lg bg-surface-container-low p-md">
-              <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-primary text-on-primary">
-                <Clock className="h-[18px] w-[18px]" strokeWidth={2} />
-              </span>
-              <div className="flex-1">
-                <p className="text-label-sm uppercase tracking-wide text-on-surface-variant">Jam Mulai CFD</p>
-                <input
-                  type="time"
-                  value={jamMulaiInput}
-                  onChange={(e) => setJamMulaiInput(e.target.value)}
-                  disabled={!canEditSesi}
-                  onKeyDown={(e) => e.preventDefault()}
-                  className="w-full bg-transparent text-title-lg text-on-surface outline-none disabled:opacity-50"
-                />
-              </div>
+          {isLoadingSesiWilayah ? (
+            <div className="flex items-center justify-center py-8">
+              <Loader2 className="h-6 w-6 animate-spin text-on-surface-variant" strokeWidth={2} />
             </div>
-            <div className="flex items-center gap-sm rounded-lg bg-error-container/30 p-md">
-              <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-error-container text-on-error-container">
-                <Hourglass className="h-[18px] w-[18px]" strokeWidth={2} />
-              </span>
-              <div className="flex-1">
-                <p className="text-label-sm uppercase tracking-wide text-on-surface-variant">Jam Selesai CFD</p>
-                <input
-                  type="time"
-                  value={jamSelesaiInput}
-                  onChange={(e) => setJamSelesaiInput(e.target.value)}
-                  disabled={!canEditSesi}
-                  onKeyDown={(e) => e.preventDefault()}
-                  className="w-full bg-transparent text-title-lg text-on-surface outline-none disabled:opacity-50"
-                />
-              </div>
+          ) : sesiWilayahError ? (
+            <div className="mt-sm rounded-lg border border-error-container bg-error-container/20 p-md text-on-error-container">
+              Gagal memuat sesi: {sesiWilayahError}
             </div>
-          </div>
-
-          {sesiInfoMessage && (
-            <div
-              className={`mt-sm flex items-center gap-sm rounded-lg px-md py-sm text-label-sm ${
-                sesiSudahAda && !isSunday
-                  ? "bg-secondary-container/20 text-on-secondary-container"
-                  : "bg-surface-container-high text-on-surface-variant"
-              }`}
-            >
-              <Info className="h-4 w-4" strokeWidth={2} />
-              {sesiInfoMessage}
+          ) : sesiWilayahList.length === 0 ? (
+            <p className="mt-sm py-8 text-center text-body-md text-on-surface-variant">
+              Belum ada sesi CFD yang diatur untuk wilayahmu.
+            </p>
+          ) : (
+            <div className="mt-md flex flex-col gap-sm">
+              {sesiWilayahList.map((s) => {
+                const style = SESI_WILAYAH_STATUS_STYLE[s.status] ?? SESI_WILAYAH_STATUS_DEFAULT;
+                return (
+                  <div key={s.id} className="rounded-lg border border-outline-variant bg-surface-container-low p-md">
+                    <div className="flex flex-wrap items-start justify-between gap-sm">
+                      <div>
+                        <p className="text-title-md text-on-surface">{s.namaSesi}</p>
+                        <p className="mt-0.5 flex items-center gap-1 text-label-sm text-on-surface-variant">
+                          <MapPin className="h-3 w-3" strokeWidth={2} />
+                          {s.scopeLabel} · {s.tanggal}
+                        </p>
+                      </div>
+                      <span
+                        className={`flex shrink-0 items-center gap-xs rounded-full px-sm py-1 text-label-sm ${style.bg} ${style.text}`}
+                      >
+                        <span className={`h-1.5 w-1.5 rounded-full bg-current ${s.aktif ? "animate-pulse" : ""}`} />
+                        {style.label}
+                      </span>
+                    </div>
+                    <p className="mt-sm text-label-sm text-on-surface-variant">
+                      {formatJamTampilan(s.jamMulai)} – {formatJamTampilan(s.jamSelesaiRencana)} WIB
+                      {s.aktif && (
+                        <>
+                          {" "}
+                          · sisa <strong className="text-on-surface">{formatSisaWaktu(s.sisaMenit)}</strong>
+                        </>
+                      )}
+                    </p>
+                  </div>
+                );
+              })}
             </div>
           )}
-
-          <div className="mt-lg flex flex-wrap gap-sm border-t border-outline-variant pt-md">
-            <button
-              type="button"
-              onClick={handleSimpanPerubahan}
-              disabled={!canEditSesi || actionLoading !== null}
-              className="flex items-center gap-sm rounded-md bg-primary px-lg py-sm text-label-md text-on-primary transition-all hover:bg-primary-container hover:shadow-md disabled:opacity-60"
-            >
-              <CalendarCheck2 className="h-[18px] w-[18px]" strokeWidth={2} />
-              {actionLoading === "simpan" ? "Menyimpan..." : "Simpan Perubahan"}
-            </button>
-
-            {/* Toggle Buka/Akhiri Sesi -- gabungan dari 2 tombol lama */}
-            <button
-              type="button"
-              onClick={handleToggleSesi}
-              disabled={isTogglingSesi || actionLoading !== null}
-              className={`flex items-center gap-sm rounded-md px-lg py-sm text-label-md transition-all hover:shadow-md disabled:opacity-60 ${
-                sesiSedangAktif
-                  ? "bg-error-container/60 text-on-error-container hover:bg-error-container"
-                  : "bg-secondary-container/40 text-on-secondary-container hover:bg-secondary-container"
-              }`}
-            >
-              {isTogglingSesi ? (
-                <Loader2 className="h-4 w-4 animate-spin" strokeWidth={2} />
-              ) : sesiSedangAktif ? (
-                <CircleX className="h-[18px] w-[18px]" strokeWidth={2} />
-              ) : (
-                <LockOpen className="h-[18px] w-[18px]" strokeWidth={2} />
-              )}
-              {isTogglingSesi
-                ? sesiSedangAktif
-                  ? "Mengakhiri..."
-                  : "Membuka..."
-                : sesiSedangAktif
-                ? "Akhiri Sesi Sekarang"
-                : "Buka Sesi Sekarang"}
-            </button>
-
-            {showEditButton && (
-              <button
-                type="button"
-                onClick={() => setEditMode(!editMode)}
-                disabled={actionLoading !== null}
-                className={`flex items-center gap-sm rounded-md px-lg py-sm text-label-md transition-all hover:shadow-md ${
-                  editMode
-                    ? "bg-secondary-container/40 text-on-secondary-container hover:bg-secondary-container"
-                    : "bg-surface-container-high text-on-surface-variant hover:bg-surface-container"
-                }`}
-              >
-                <Edit className="h-[18px] w-[18px]" strokeWidth={2} />
-                {editMode ? "Batalkan Edit" : "Edit Kembali"}
-              </button>
-            )}
-          </div>
 
           {/* ===== CHECK-IN PEDAGANG ===== */}
           <div className="mt-lg border-t border-outline-variant pt-md">
@@ -735,16 +840,16 @@ export default function JamOperasionalPage() {
             </svg>
             <div className="absolute flex flex-col items-center">
               <span className="text-title-lg font-semibold text-on-surface">
-                {sesi && sesiSedangAktif ? formatSisaWaktu(sesi.sisaMenit) : "--:--"}
+                {sesiAktifWilayah ? formatSisaWaktu(sesiAktifWilayah.sisaMenit) : "--:--"}
               </span>
               <span className="text-label-sm text-on-surface-variant">Sisa Waktu CFD</span>
             </div>
           </div>
           <p className="text-label-sm text-on-surface-variant">
-            {sesi && sesiSedangAktif ? (
+            {sesiAktifWilayah ? (
               <>
-                Sesi saat ini akan berakhir pada{" "}
-                <strong className="text-on-surface">{formatJamTampilan(sesi.jamSelesaiRencana)} WIB</strong>
+                {sesiAktifWilayah.scopeLabel} akan berakhir pada{" "}
+                <strong className="text-on-surface">{formatJamTampilan(sesiAktifWilayah.jamSelesaiRencana)} WIB</strong>
               </>
             ) : (
               "Belum ada sesi yang sedang berlangsung"
@@ -753,10 +858,147 @@ export default function JamOperasionalPage() {
           <div className="mt-xs w-full max-w-[200px] rounded-full bg-surface-container-high h-1">
             <div
               className="h-full rounded-full bg-primary transition-all duration-1000"
-              style={{ width: `${sesi && sesi.totalMenit > 0 ? (sesi.sisaMenit / sesi.totalMenit) * 100 : 0}%` }}
+              style={{
+                width: `${
+                  sesiAktifWilayah && sesiAktifWilayah.totalMenit > 0
+                    ? (sesiAktifWilayah.sisaMenit / sesiAktifWilayah.totalMenit) * 100
+                    : 0
+                }%`,
+              }}
             />
           </div>
         </div>
+      </div>
+
+      {/* ===== JADWAL MINGGUAN (BARU) ===== */}
+      <div className="rounded-xl border border-outline-variant bg-surface-container-lowest p-lg">
+        <div className="mb-md flex flex-wrap items-center gap-sm">
+          <CalendarDays className="h-[18px] w-[18px] text-on-surface-variant" strokeWidth={2} />
+          <h3 className="text-title-lg text-on-surface">Jadwal Mingguan (Otomatis)</h3>
+          <span className="ml-auto text-label-sm text-on-surface-variant">
+            Dipakai sistem buat auto-mulai/selesai sesi tiap minggu
+          </span>
+        </div>
+
+        {isLoadingJadwal ? (
+          <div className="flex items-center justify-center py-8">
+            <Loader2 className="h-6 w-6 animate-spin text-on-surface-variant" strokeWidth={2} />
+          </div>
+        ) : jadwalError ? (
+          <div className="rounded-lg border border-error-container bg-error-container/20 p-md text-on-error-container">
+            Gagal memuat jadwal mingguan: {jadwalError}
+          </div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-left">
+              <thead>
+                <tr className="border-b border-outline-variant text-label-sm text-on-surface-variant">
+                  <th className="px-sm py-sm font-medium">Hari</th>
+                  <th className="px-sm py-sm font-medium">Jam Mulai</th>
+                  <th className="px-sm py-sm font-medium">Jam Selesai</th>
+                  <th className="px-sm py-sm font-medium">Status</th>
+                  <th className="px-sm py-sm font-medium text-right">Aksi</th>
+                </tr>
+              </thead>
+              <tbody>
+                {HARI_LIST.map((hari) => {
+                  const row = jadwalList.find((j) => j.hari === hari.value);
+                  const isEditing = editingHari === hari.value;
+                  return (
+                    <tr key={hari.value} className="border-b border-outline-variant last:border-0">
+                      <td className="px-sm py-sm text-body-md text-on-surface">{hari.label}</td>
+                      <td className="px-sm py-sm text-body-md text-on-surface-variant">
+                        {isEditing ? (
+                          <input
+                            type="time"
+                            value={jadwalDraft.jamMulai}
+                            onChange={(e) => setJadwalDraft((d) => ({ ...d, jamMulai: e.target.value }))}
+                            className="rounded-md border border-outline-variant bg-transparent px-2 py-1 text-body-md text-on-surface"
+                          />
+                        ) : row ? (
+                          formatWaktuTabel(formatJamTampilan(row.jamMulai))
+                        ) : (
+                          "-"
+                        )}
+                      </td>
+                      <td className="px-sm py-sm text-body-md text-on-surface-variant">
+                        {isEditing ? (
+                          <input
+                            type="time"
+                            value={jadwalDraft.jamSelesaiRencana}
+                            onChange={(e) => setJadwalDraft((d) => ({ ...d, jamSelesaiRencana: e.target.value }))}
+                            className="rounded-md border border-outline-variant bg-transparent px-2 py-1 text-body-md text-on-surface"
+                          />
+                        ) : row ? (
+                          formatWaktuTabel(formatJamTampilan(row.jamSelesaiRencana))
+                        ) : (
+                          "-"
+                        )}
+                      </td>
+                      <td className="px-sm py-sm">
+                        {isEditing ? (
+                          <label className="flex items-center gap-xs text-label-sm text-on-surface-variant">
+                            <input
+                              type="checkbox"
+                              checked={jadwalDraft.isActive}
+                              onChange={(e) => setJadwalDraft((d) => ({ ...d, isActive: e.target.checked }))}
+                            />
+                            Aktif
+                          </label>
+                        ) : (
+                          <span
+                            className={`inline-flex items-center rounded-full px-sm py-0.5 text-label-sm ${
+                              row?.isActive
+                                ? "bg-secondary-container/40 text-on-secondary-container"
+                                : "bg-surface-container-high text-on-surface-variant"
+                            }`}
+                          >
+                            {row?.isActive ? "Aktif" : "Nonaktif"}
+                          </span>
+                        )}
+                      </td>
+                      <td className="px-sm py-sm text-right">
+                        {isEditing ? (
+                          <div className="flex justify-end gap-xs">
+                            <button
+                              type="button"
+                              onClick={() => setEditingHari(null)}
+                              className="rounded-md px-sm py-1 text-label-sm text-on-surface-variant hover:bg-surface-container-high transition"
+                            >
+                              Batal
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleSimpanJadwalHari(hari.value)}
+                              disabled={savingHari === hari.value}
+                              className="flex items-center gap-1 rounded-md bg-primary px-sm py-1 text-label-sm text-on-primary transition hover:bg-primary-container disabled:opacity-60"
+                            >
+                              {savingHari === hari.value ? (
+                                <Loader2 className="h-3 w-3 animate-spin" strokeWidth={2} />
+                              ) : (
+                                <Save className="h-3 w-3" strokeWidth={2} />
+                              )}
+                              Simpan
+                            </button>
+                          </div>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={() => startEditJadwal(hari.value, row)}
+                            className="ml-auto flex items-center gap-1 rounded-md px-sm py-1 text-label-sm text-on-surface-variant hover:bg-surface-container-high transition"
+                          >
+                            <Edit className="h-3 w-3" strokeWidth={2} />
+                            Edit
+                          </button>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
       </div>
 
       {/* ===== RIWAYAT OPERASIONAL ===== */}
@@ -811,7 +1053,7 @@ export default function JamOperasionalPage() {
         </div>
       </div>
 
-      {/* ===== SISA KUOTA LAPAK PER WILAYAH (BARU – DARI API) ===== */}
+      {/* ===== SISA KUOTA LAPAK PER WILAYAH ===== */}
       <div className="rounded-xl border border-outline-variant bg-surface-container-lowest p-lg">
         <div className="mb-md flex items-center gap-sm">
           <Store className="h-[18px] w-[18px] text-on-surface-variant" strokeWidth={2} />
@@ -859,7 +1101,7 @@ export default function JamOperasionalPage() {
                           ? "bg-tertiary"
                           : "bg-secondary";
                       return (
-                        <div key={jalan.nama} className="rounded border border-outline-variant bg-surface-container-lowest p-2">
+                        <div key={jalan.id} className="rounded border border-outline-variant bg-surface-container-lowest p-2">
                           <div className="flex justify-between">
                             <span className="text-label-sm text-on-surface">{jalan.nama}</span>
                             <span className="text-label-sm font-semibold text-on-surface">{sisa}</span>
@@ -883,6 +1125,120 @@ export default function JamOperasionalPage() {
           </div>
         )}
       </div>
+
+      {/* Modal Buat Sesi Wilayah Baru */}
+      {showBuatSesiModal && (
+        <ModalShell onClose={() => setShowBuatSesiModal(false)}>
+          <h3 className="text-title-lg font-semibold text-on-surface mb-3">Buat Sesi CFD Baru</h3>
+          <div className="flex flex-col gap-sm">
+            {scopeOptionsTersedia.length > 1 && (
+              <div>
+                <label className="text-label-sm text-on-surface-variant">Cakupan Sesi</label>
+                <select
+                  value={formScope}
+                  onChange={(e) => setFormScope(e.target.value as Scope)}
+                  className="mt-1 w-full rounded-md border border-outline-variant bg-transparent px-sm py-2 text-body-md text-on-surface"
+                >
+                  {scopeOptionsTersedia.map((o) => (
+                    <option key={o.value} value={o.value}>
+                      {o.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
+            {scopeOptionsTersedia.length === 1 && (
+              <div className="rounded-md bg-surface-container-low px-sm py-2 text-label-sm text-on-surface-variant">
+                Cakupan: <strong className="text-on-surface">{scopeOptionsTersedia[0].label}</strong>
+              </div>
+            )}
+
+            {formScope === "kecamatan" && wilayahSaya?.bebas && (
+              <div>
+                <label className="text-label-sm text-on-surface-variant">Kecamatan</label>
+                <select
+                  value={formKecamatanId}
+                  onChange={(e) => setFormKecamatanId(e.target.value)}
+                  className="mt-1 w-full rounded-md border border-outline-variant bg-transparent px-sm py-2 text-body-md text-on-surface"
+                >
+                  <option value="">Pilih kecamatan</option>
+                  {daftarKecamatanForm.map((k) => (
+                    <option key={k.id} value={k.id}>
+                      {k.nama}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
+
+            {formScope === "jalan" && !wilayahSaya?.jalanId && (
+              <div>
+                <label className="text-label-sm text-on-surface-variant">Jalan</label>
+                <select
+                  value={formJalanId}
+                  onChange={(e) => setFormJalanId(e.target.value)}
+                  className="mt-1 w-full rounded-md border border-outline-variant bg-transparent px-sm py-2 text-body-md text-on-surface"
+                >
+                  <option value="">Pilih jalan</option>
+                  {daftarJalanForm.map((j) => (
+                    <option key={j.id} value={j.id}>
+                      {j.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
+
+            <div className="grid grid-cols-1 gap-sm sm:grid-cols-3">
+              <div>
+                <label className="text-label-sm text-on-surface-variant">Tanggal</label>
+                <input
+                  type="date"
+                  value={formTanggal}
+                  onChange={(e) => setFormTanggal(e.target.value)}
+                  className="mt-1 w-full rounded-md border border-outline-variant bg-transparent px-sm py-2 text-body-md text-on-surface"
+                />
+              </div>
+              <div>
+                <label className="text-label-sm text-on-surface-variant">Jam Mulai</label>
+                <input
+                  type="time"
+                  value={formJamMulai}
+                  onChange={(e) => setFormJamMulai(e.target.value)}
+                  className="mt-1 w-full rounded-md border border-outline-variant bg-transparent px-sm py-2 text-body-md text-on-surface"
+                />
+              </div>
+              <div>
+                <label className="text-label-sm text-on-surface-variant">Jam Selesai</label>
+                <input
+                  type="time"
+                  value={formJamSelesai}
+                  onChange={(e) => setFormJamSelesai(e.target.value)}
+                  className="mt-1 w-full rounded-md border border-outline-variant bg-transparent px-sm py-2 text-body-md text-on-surface"
+                />
+              </div>
+            </div>
+          </div>
+          <div className="mt-4 flex justify-end gap-sm">
+            <button
+              type="button"
+              onClick={() => setShowBuatSesiModal(false)}
+              className="rounded-md px-4 py-2 text-label-md text-on-surface-variant hover:bg-surface-container-high transition"
+            >
+              Batal
+            </button>
+            <button
+              type="button"
+              onClick={handleSubmitSesiWilayah}
+              disabled={isSubmittingSesi}
+              className="flex items-center gap-sm rounded-md bg-primary px-4 py-2 text-label-md text-on-primary transition hover:bg-primary-container hover:shadow-md disabled:opacity-60"
+            >
+              {isSubmittingSesi && <Loader2 className="h-4 w-4 animate-spin" strokeWidth={2} />}
+              {isSubmittingSesi ? "Menyimpan..." : "Buat Sesi"}
+            </button>
+          </div>
+        </ModalShell>
+      )}
 
       {/* Modal Konfirmasi */}
       {confirmDialog && (

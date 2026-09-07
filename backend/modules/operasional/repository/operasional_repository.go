@@ -240,3 +240,152 @@ func (r *OperasionalRepository) ListRiwayat(ctx context.Context, limit int) ([]e
 	}
 	return list, rows.Err()
 }
+
+// ================================================================
+// ===== SESI PER-WILAYAH (kota / kecamatan / jalan) =====
+// ================================================================
+
+// GetWilayahPetugas ambil kecamatan_id / jalan_id yang ditugaskan ke
+// petugas (dari kolom users.kecamatan_id & users.jalan_id, migrasi 27).
+// Kalau dua-duanya NULL, petugas dianggap bebas (boleh atur wilayah manapun).
+func (r *OperasionalRepository) GetWilayahPetugas(ctx context.Context, userID string) (*entity.WilayahPetugasDTO, error) {
+	var kecID, kecNama, jlnID, jlnNama *string
+	err := r.db.QueryRow(ctx, `
+		SELECT u.kecamatan_id, mi.nama_instansi, u.jalan_id, mj.nama_jalan
+		FROM users u
+		LEFT JOIN master_instansi mi ON mi.id = u.kecamatan_id
+		LEFT JOIN master_jalan mj ON mj.id = u.jalan_id
+		WHERE u.id = $1 AND u.deleted_at IS NULL
+	`, userID).Scan(&kecID, &kecNama, &jlnID, &jlnNama)
+	if err != nil {
+		return nil, err
+	}
+	return &entity.WilayahPetugasDTO{
+		KecamatanID:   kecID,
+		KecamatanNama: kecNama,
+		JalanID:       jlnID,
+		JalanNama:     jlnNama,
+		Bebas:         kecID == nil && jlnID == nil,
+	}, nil
+}
+
+// ListSesiJalanRows ambil semua sesi (belum dihapus) beserta jalan-jalan
+// yang tercakup di dalamnya (lewat jalan_kapasitas_sesi), dibatasi ke
+// N hari terakhir + N hari ke depan biar gak berat. Grouping per sesi
+// dan penentuan scope (kota/kecamatan/jalan) dilakukan di usecase.
+func (r *OperasionalRepository) ListSesiJalanRows(ctx context.Context) ([]entity.SesiJalanRow, error) {
+	rows, err := r.db.Query(ctx, `
+		SELECT
+			cs.id, cs.nama_sesi, cs.tanggal::text, cs.jam_mulai::text, cs.jam_selesai::text,
+			cs.jam_selesai_aktual::text, cs.status, cs.is_active,
+			mj.id, mj.nama_jalan, mi.id, mi.nama_instansi
+		FROM cfd_sessions cs
+		JOIN jalan_kapasitas_sesi jks ON jks.session_id = cs.id
+		JOIN master_jalan mj ON mj.id = jks.jalan_id AND mj.deleted_at IS NULL
+		LEFT JOIN jalan_instansi ji ON ji.jalan_id = mj.id
+		LEFT JOIN master_instansi mi ON mi.id = ji.instansi_id
+		WHERE cs.deleted_at IS NULL
+			AND cs.tanggal >= CURRENT_DATE - INTERVAL '30 days'
+			AND cs.tanggal <= CURRENT_DATE + INTERVAL '30 days'
+		ORDER BY cs.tanggal DESC, cs.jam_mulai DESC, mi.nama_instansi, mj.nama_jalan
+	`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var list []entity.SesiJalanRow
+	for rows.Next() {
+		var row entity.SesiJalanRow
+		if err := rows.Scan(
+			&row.SesiID, &row.NamaSesi, &row.Tanggal, &row.JamMulai, &row.JamSelesaiRencana,
+			&row.JamSelesaiAktual, &row.Status, &row.IsActive,
+			&row.JalanID, &row.JalanNama, &row.KecamatanID, &row.KecamatanNama,
+		); err != nil {
+			return nil, err
+		}
+		list = append(list, row)
+	}
+	return list, rows.Err()
+}
+
+// JalanUntukScope ambil daftar jalan_id yang perlu di-link ke sesi baru,
+// sesuai cakupan yang dipilih petugas.
+func (r *OperasionalRepository) JalanUntukScope(ctx context.Context, scope string, kecamatanID, jalanID *string) ([]string, error) {
+	var rows pgx.Rows
+	var err error
+	switch scope {
+	case entity.ScopeKota:
+		rows, err = r.db.Query(ctx, `SELECT id FROM master_jalan WHERE deleted_at IS NULL`)
+	case entity.ScopeKecamatan:
+		rows, err = r.db.Query(ctx, `
+			SELECT mj.id FROM master_jalan mj
+			JOIN jalan_instansi ji ON ji.jalan_id = mj.id
+			WHERE ji.instansi_id = $1 AND mj.deleted_at IS NULL
+		`, kecamatanID)
+	case entity.ScopeJalan:
+		return []string{*jalanID}, nil
+	default:
+		return nil, errors.New("scope tidak valid")
+	}
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var ids []string
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		ids = append(ids, id)
+	}
+	return ids, rows.Err()
+}
+
+// CreateSesiWilayah insert sesi CFD baru + link ke jalan-jalan sesuai
+// cakupannya (jalan_kapasitas_sesi), dalam 1 transaksi.
+func (r *OperasionalRepository) CreateSesiWilayah(
+	ctx context.Context,
+	namaSesi, tanggal, jamMulai, jamSelesai string,
+	createdBy *string,
+	jalanIDs []string,
+) (*entity.Sesi, error) {
+	if len(jalanIDs) == 0 {
+		return nil, errors.New("tidak ada jalan yang tercakup di wilayah ini")
+	}
+
+	tx, err := r.db.Begin(ctx)
+	if err != nil {
+		return nil, err
+	}
+	defer tx.Rollback(ctx)
+
+	row := tx.QueryRow(ctx, `
+		INSERT INTO cfd_sessions (
+			nama_sesi, tanggal, jam_mulai, jam_selesai, status, created_by, is_active
+		) VALUES ($1, $2, $3, $4, 'aktif', $5, true)
+		RETURNING `+sesiColumns,
+		namaSesi, tanggal, jamMulai, jamSelesai, createdBy,
+	)
+	sesi, err := scanSesi(row)
+	if err != nil {
+		return nil, err
+	}
+
+	for _, jalanID := range jalanIDs {
+		if _, err := tx.Exec(ctx, `
+			INSERT INTO jalan_kapasitas_sesi (jalan_id, session_id, terisi)
+			VALUES ($1, $2, 0)
+			ON CONFLICT (jalan_id, session_id) DO NOTHING
+		`, jalanID, sesi.ID); err != nil {
+			return nil, err
+		}
+	}
+
+	if err := tx.Commit(ctx); err != nil {
+		return nil, err
+	}
+	return sesi, nil
+}

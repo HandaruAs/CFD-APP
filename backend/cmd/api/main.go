@@ -309,9 +309,9 @@ func main() {
 	)
 
 	app.Patch("/api/petugas/jam-operasional/sesi/buka",
-	middleware.AuthMiddleware(cfg.JWTSecret),
-	middleware.PermissionMiddleware(permissionRepository, "jadwal.manage"),
-	operasionalController.BukaSesiManual,
+		middleware.AuthMiddleware(cfg.JWTSecret),
+		middleware.PermissionMiddleware(permissionRepository, "jadwal.manage"),
+		operasionalController.BukaSesiManual,
 	)
 
 	app.Patch("/api/petugas/jam-operasional/sesi/akhiri",
@@ -336,6 +336,25 @@ func main() {
 		middleware.AuthMiddleware(cfg.JWTSecret),
 		middleware.PermissionMiddleware(permissionRepository, "jadwal.manage"),
 		operasionalController.UpdateJadwalMingguan,
+	)
+
+	// ----- Sesi CFD per-wilayah (kota / kecamatan / jalan) -----
+	app.Get("/api/petugas/wilayah-saya",
+		middleware.AuthMiddleware(cfg.JWTSecret),
+		middleware.PermissionMiddleware(permissionRepository, "jadwal.read"),
+		operasionalController.GetWilayahSaya,
+	)
+
+	app.Get("/api/petugas/jam-operasional/sesi-wilayah",
+		middleware.AuthMiddleware(cfg.JWTSecret),
+		middleware.PermissionMiddleware(permissionRepository, "jadwal.read"),
+		operasionalController.ListSesiWilayah,
+	)
+
+	app.Post("/api/petugas/jam-operasional/sesi-wilayah",
+		middleware.AuthMiddleware(cfg.JWTSecret),
+		middleware.PermissionMiddleware(permissionRepository, "jadwal.manage"),
+		operasionalController.BuatSesiWilayah,
 	)
 
 	// ============================================================
@@ -461,9 +480,9 @@ func main() {
 	)
 
 	app.Get("/api/pedagang/check-in/status",
-	middleware.AuthMiddleware(cfg.JWTSecret),
-	middleware.RoleMiddleware(userRepository, "pedagang"),
-	scanController.GetStatusCheckIn,
+		middleware.AuthMiddleware(cfg.JWTSecret),
+		middleware.RoleMiddleware(userRepository, "pedagang"),
+		scanController.GetStatusCheckIn,
 	)
 
 	// ============================================================

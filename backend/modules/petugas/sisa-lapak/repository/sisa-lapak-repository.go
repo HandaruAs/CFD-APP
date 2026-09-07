@@ -52,6 +52,7 @@ func (r *Repository) GetSisaLapak(ctx context.Context) ([]entity.KecamatanData, 
 
 	query := `
 		SELECT 
+			mi.id AS kecamatan_id,
 			COALESCE(mi.nama_instansi, 'Tanpa Kecamatan') AS kecamatan,
 			mj.id,
 			mj.kode_jalan,
@@ -72,16 +73,19 @@ func (r *Repository) GetSisaLapak(ctx context.Context) ([]entity.KecamatanData, 
 	defer rows.Close()
 
 	mapData := make(map[string][]entity.JalanData)
-	var urutanKecamatan []string // simpan urutan kemunculan sesuai ORDER BY di SQL,
+	kecIDData := make(map[string]*string) // nama kecamatan -> id (mi.id, nil kalau "Tanpa Kecamatan")
+	var urutanKecamatan []string          // simpan urutan kemunculan sesuai ORDER BY di SQL,
 	// karena iterasi Go map tidak dijamin konsisten urutannya.
 	for rows.Next() {
+		var kecID *string
 		var kec, id, kodeJalan, namaJalan string
 		var kuota, terisi int
-		if err := rows.Scan(&kec, &id, &kodeJalan, &namaJalan, &kuota, &terisi); err != nil {
+		if err := rows.Scan(&kecID, &kec, &id, &kodeJalan, &namaJalan, &kuota, &terisi); err != nil {
 			return nil, err
 		}
 		if _, sudahAda := mapData[kec]; !sudahAda {
 			urutanKecamatan = append(urutanKecamatan, kec)
+			kecIDData[kec] = kecID
 		}
 		mapData[kec] = append(mapData[kec], entity.JalanData{
 			ID:         id,
@@ -95,8 +99,9 @@ func (r *Repository) GetSisaLapak(ctx context.Context) ([]entity.KecamatanData, 
 	var result []entity.KecamatanData
 	for _, kec := range urutanKecamatan {
 		result = append(result, entity.KecamatanData{
-			Kecamatan: kec,
-			Jalan:     mapData[kec],
+			KecamatanID: kecIDData[kec],
+			Kecamatan:   kec,
+			Jalan:       mapData[kec],
 		})
 	}
 	return result, nil

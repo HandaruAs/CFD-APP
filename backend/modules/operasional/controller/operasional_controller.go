@@ -145,6 +145,62 @@ func (ctrl *OperasionalController) GetJadwalMingguan(c fiber.Ctx) error {
 	return c.Status(fiber.StatusOK).JSON(fiber.Map{"jadwal": list})
 }
 
+// ================================================================
+// ===== SESI PER-WILAYAH =====
+// ================================================================
+
+func (ctrl *OperasionalController) GetWilayahSaya(c fiber.Ctx) error {
+	userID, err := getUserID(c)
+	if err != nil {
+		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": err.Error()})
+	}
+	wilayah, err := ctrl.operasionalUsecase.GetWilayahSaya(c.Context(), userID)
+	if err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"error": "gagal mengambil wilayah petugas",
+		})
+	}
+	return c.Status(fiber.StatusOK).JSON(wilayah)
+}
+
+func (ctrl *OperasionalController) ListSesiWilayah(c fiber.Ctx) error {
+	userID, err := getUserID(c)
+	if err != nil {
+		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": err.Error()})
+	}
+	list, err := ctrl.operasionalUsecase.ListSesiWilayah(c.Context(), userID)
+	if err != nil {
+		log.Printf("DEBUG ListSesiWilayah error: %v", err)
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"error": "gagal mengambil daftar sesi",
+		})
+	}
+	return c.Status(fiber.StatusOK).JSON(fiber.Map{"sesi": list})
+}
+
+func (ctrl *OperasionalController) BuatSesiWilayah(c fiber.Ctx) error {
+	var req entity.CreateSesiWilayahRequest
+	if err := c.Bind().Body(&req); err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": err.Error()})
+	}
+	userID, err := getUserID(c)
+	if err != nil {
+		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": err.Error()})
+	}
+	sesi, err := ctrl.operasionalUsecase.BuatSesiWilayah(c.Context(), userID, &req)
+	if err != nil {
+		status := fiber.StatusBadRequest
+		if errors.Is(err, usecase.ErrWilayahTidakBerhak) {
+			status = fiber.StatusForbidden
+		}
+		return c.Status(status).JSON(fiber.Map{"error": err.Error()})
+	}
+	return c.Status(fiber.StatusCreated).JSON(fiber.Map{
+		"message": "sesi CFD berhasil dibuat",
+		"sesi":    sesi,
+	})
+}
+
 func (ctrl *OperasionalController) UpdateJadwalMingguan(c fiber.Ctx) error {
 	var req entity.UpdateJadwalMingguanRequest
 	if err := c.Bind().Body(&req); err != nil {
