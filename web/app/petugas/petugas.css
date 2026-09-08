@@ -236,3 +236,174 @@
   color: var(--color-on-background);
   font-family: var(--font-sans);
 }
+
+/* ============================================================
+   Class komponen UI untuk halaman-halaman di app/petugas/**.
+
+   Dipusatkan di sini (bukan komponen React terpisah) supaya tiap
+   page.tsx tetap 1 file datar seperti sebelumnya -- classnya
+   dipakai langsung lewat className, persis seperti class Tailwind
+   bawaan. Kalau nanti mau dipakai di halaman petugas lain
+   (acak-lapak, laporan, scan-qr, sisa-lapak), tinggal pakai class
+   yang sama, tidak perlu import apa-apa.
+   ============================================================ */
+@layer components {
+  [data-petugas-scope] .pt-card {
+    @apply rounded-2xl border border-outline-variant bg-surface-container-lowest p-lg shadow-[0_1px_3px_rgba(11,28,48,0.05)] sm:p-xl;
+  }
+
+  [data-petugas-scope] .pt-section-title {
+    @apply text-title-lg text-on-surface;
+  }
+  [data-petugas-scope] .pt-section-desc {
+    @apply mt-0.5 text-body-sm text-on-surface-variant;
+  }
+  [data-petugas-scope] .pt-section-icon {
+    @apply flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary;
+  }
+
+  /* Tombol -- tinggi minimal 44px biar nyaman disentuh */
+  [data-petugas-scope] .pt-btn {
+    @apply inline-flex min-h-11 items-center gap-sm rounded-xl px-md py-sm text-label-md font-medium transition-all disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:shadow-none;
+  }
+  [data-petugas-scope] .pt-btn:focus-visible {
+    @apply outline outline-2 outline-offset-2 outline-primary;
+  }
+  [data-petugas-scope] .pt-btn-primary {
+    @apply bg-primary text-on-primary hover:bg-primary-container hover:shadow-md;
+  }
+  [data-petugas-scope] .pt-btn-secondary {
+    @apply bg-secondary-container/40 text-on-secondary-container hover:bg-secondary-container/70 hover:shadow-md;
+  }
+  [data-petugas-scope] .pt-btn-danger {
+    @apply bg-error-container/60 text-on-error-container hover:bg-error-container hover:shadow-md;
+  }
+  [data-petugas-scope] .pt-btn-ghost {
+    @apply text-on-surface-variant hover:bg-surface-container-high;
+  }
+  [data-petugas-scope] .pt-btn-ghost-danger {
+    @apply text-on-surface-variant hover:bg-error-container/40 hover:text-on-error-container;
+  }
+  [data-petugas-scope] .pt-btn-icon {
+    @apply h-11 w-11 items-center justify-center px-0;
+  }
+
+  /* Pill status -- selalu dipasangkan ikon/titik + teks di JSX-nya,
+     warna di sini cuma penguat, bukan satu-satunya penanda */
+  [data-petugas-scope] .pt-pill {
+    @apply inline-flex items-center gap-xs whitespace-nowrap rounded-full px-md py-1.5 text-label-md;
+  }
+  [data-petugas-scope] .pt-pill-success {
+    @apply bg-secondary-container/40 text-on-secondary-container;
+  }
+  [data-petugas-scope] .pt-pill-warning {
+    @apply bg-tertiary-container/15 text-on-tertiary-container;
+  }
+  [data-petugas-scope] .pt-pill-danger {
+    @apply bg-error-container/60 text-on-error-container;
+  }
+  [data-petugas-scope] .pt-pill-neutral {
+    @apply bg-surface-container-high text-on-surface-variant;
+  }
+  [data-petugas-scope] .pt-pill-dot {
+    @apply h-2 w-2 shrink-0 rounded-full bg-current;
+  }
+  [data-petugas-scope] .pt-pill-dot.is-pulse {
+    @apply animate-pulse;
+  }
+
+  /* Input & select form */
+  [data-petugas-scope] .pt-input {
+    @apply w-full rounded-xl border border-outline-variant bg-transparent px-md py-3 text-body-md text-on-surface outline-none transition;
+  }
+  [data-petugas-scope] .pt-input:focus-visible {
+    @apply border-primary ring-2 ring-primary/20;
+  }
+  [data-petugas-scope] .pt-field-label {
+    @apply text-label-md text-on-surface-variant;
+  }
+
+  /* Toggle switch -- dipakai mis. utk buka/tutup check-in.
+     Aksi sesungguhnya tetap lewat onClick di JSX (biasanya
+     memicu dialog konfirmasi) -- class ini murni tampilan. */
+  [data-petugas-scope] .pt-switch {
+    @apply relative inline-flex h-8 w-14 shrink-0 items-center rounded-full bg-outline-variant transition-colors disabled:cursor-not-allowed disabled:opacity-60;
+  }
+  [data-petugas-scope] .pt-switch:focus-visible {
+    @apply outline outline-2 outline-offset-2 outline-primary;
+  }
+  [data-petugas-scope] .pt-switch.is-on {
+    @apply bg-secondary;
+  }
+  [data-petugas-scope] .pt-switch-knob {
+    @apply inline-block h-6 w-6 translate-x-1 transform rounded-full bg-white shadow-md transition-transform;
+  }
+  [data-petugas-scope] .pt-switch.is-on .pt-switch-knob {
+    @apply translate-x-7;
+  }
+
+  /* Empty / loading state */
+  [data-petugas-scope] .pt-empty {
+    @apply flex flex-col items-center justify-center gap-sm py-12 text-center;
+  }
+  [data-petugas-scope] .pt-empty-icon {
+    @apply flex h-14 w-14 items-center justify-center rounded-full bg-surface-container-high text-on-surface-variant;
+  }
+  [data-petugas-scope] .pt-loading {
+    @apply flex flex-col items-center justify-center gap-sm py-12 text-on-surface-variant;
+  }
+
+  /* Modal */
+  [data-petugas-scope] .pt-modal-overlay {
+    @apply fixed inset-0 z-[9999] flex items-center justify-center bg-black/50 p-md backdrop-blur-[2px];
+  }
+  [data-petugas-scope] .pt-modal-box {
+    /* PENTING: lebar pakai nilai eksplisit (bukan max-w-sm/md/lg dari
+       token --container-*). petugas.css dan app/globals.css sama-sama
+       "@import tailwindcss" di halaman yang sama (layout petugas
+       nested di root layout) -- kalau ada konflik/urutan compile yang
+       bikin token --container-* tidak kepakai, max-w-sm/md/lg bisa
+       balik ke lebar sangat sempit. Nilai eksplisit di bawah ini
+       kebal dari masalah itu karena tidak mengacu ke token apa pun. */
+    @apply relative flex max-h-[90vh] w-full max-w-[30rem] flex-col overflow-hidden rounded-2xl bg-surface-container-lowest shadow-2xl;
+    animation: pt-fade-in 0.18s ease-out;
+  }
+  [data-petugas-scope] .pt-modal-close {
+    @apply absolute right-3 top-3 flex h-9 w-9 items-center justify-center rounded-full text-on-surface-variant transition hover:bg-surface-container-high;
+  }
+
+  /* Time stepper -- ganti input type="time" bawaan browser. Jam &
+     menit cuma bisa diubah lewat tombol panah (lihat komponen
+     TimeStepper di page.tsx), tidak bisa diketik. */
+  [data-petugas-scope] .pt-time-btn {
+    @apply flex h-8 w-11 items-center justify-center rounded-lg text-on-surface-variant transition hover:bg-surface-container-high disabled:cursor-not-allowed disabled:opacity-40;
+  }
+  [data-petugas-scope] .pt-time-value {
+    @apply w-11 text-center text-title-lg font-semibold tabular-nums text-on-surface;
+  }
+
+  /* Toast -- di tengah atas layar (bukan pojok kanan bawah) supaya
+     langsung kelihatan. Lebar eksplisit, bukan max-w-md, karena
+     kena masalah token --container-* yang sama dengan modal. */
+  [data-petugas-scope] .pt-toast {
+    @apply fixed left-1/2 top-6 z-50 flex w-[calc(100%-2rem)] max-w-[26rem] -translate-x-1/2 items-center gap-sm rounded-xl px-lg py-md text-center shadow-lg;
+    animation: pt-fade-in 0.18s ease-out;
+  }
+  [data-petugas-scope] .pt-toast-success {
+    @apply bg-secondary-container text-on-secondary-container;
+  }
+  [data-petugas-scope] .pt-toast-error {
+    @apply bg-error-container text-on-error-container;
+  }
+}
+
+@keyframes pt-fade-in {
+  from {
+    opacity: 0;
+    transform: scale(0.96) translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}

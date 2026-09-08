@@ -9,8 +9,9 @@ type JalanData struct {
 }
 
 type KecamatanData struct {
-	Kecamatan string      `json:"kecamatan"`
-	Jalan     []JalanData `json:"jalan"`
+	KecamatanID *string     `json:"kecamatanId"`
+	Kecamatan   string      `json:"kecamatan"`
+	Jalan       []JalanData `json:"jalan"`
 }
 
 // CRUD

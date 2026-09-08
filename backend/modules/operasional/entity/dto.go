@@ -37,6 +37,7 @@ type SesiAktifDTO struct {
 }
 
 type RiwayatSesiDTO struct {
+	ID         string `json:"id"`
 	Tanggal    string `json:"tanggal"`
 	JamMulai   string `json:"jamMulai"`
 	JamSelesai string `json:"jamSelesai"`
