@@ -5,7 +5,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:mobile/features/pedagang/presentation/providers/pedagang_provider.dart';
 import 'package:mobile/features/pedagang/presentation/providers/pedagang_state.dart';
-import 'package:mobile/features/pedagang/domain/entities/lapak_data.dart';
 import 'package:mobile/features/pedagang/domain/entities/pengajuan_status.dart';
 import 'package:mobile/features/pedagang/presentation/pages/checkout_screen.dart';
 
@@ -35,8 +34,8 @@ class LapakScreen extends ConsumerStatefulWidget {
 }
 
 class _LapakScreenState extends ConsumerState<LapakScreen> {
+  String? _mode; // 'se_surabaya' atau 'kecamatan'
   String? _kecamatanId;
-  String? _jalanId;
   Timer? _pollTimer;
 
   @override
@@ -88,16 +87,12 @@ class _LapakScreenState extends ConsumerState<LapakScreen> {
   }
 
   Future<void> _handleKlaim() async {
-    final state = ref.read(pedagangProvider);
-    if (_jalanId == null) return;
-
-    final namaKecamatan = state.kecamatanList
-        .firstWhere((k) => k.id == _kecamatanId, orElse: () => Kecamatan(id: '', nama: '-'))
-        .nama;
+    if (_mode == null) return;
+    if (_mode == 'kecamatan' && _kecamatanId == null) return;
 
     final success = await ref.read(pedagangProvider.notifier).klaimLapak(
-          jalanId: _jalanId!,
-          namaKecamatan: namaKecamatan,
+          mode: _mode!,
+          kecamatanId: _mode == 'kecamatan' ? _kecamatanId : null,
         );
 
     if (success) {
@@ -182,93 +177,53 @@ class _LapakScreenState extends ConsumerState<LapakScreen> {
                 children: [
                   const Text('Lokasi Penempatan',
                       style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-                  const SizedBox(height: 12),
-                  DropdownButtonFormField<String>(
-                    initialValue: _kecamatanId,
-                    decoration: const InputDecoration(
-                      labelText: 'Kecamatan',
-                      border: OutlineInputBorder(),
-                    ),
-                    items: state.kecamatanList
-                        .map((k) => DropdownMenuItem(value: k.id, child: Text(k.nama)))
-                        .toList(),
-                    onChanged: !sudahDaftar || state.isLoadingKecamatan
-                        ? null
-                        : (v) {
-                            setState(() {
-                              _kecamatanId = v;
-                              _jalanId = null;
-                            });
-                            if (v != null) {
-                              ref.read(pedagangProvider.notifier).loadJalan(v);
-                            }
-                          },
+                  const SizedBox(height: 4),
+                  const Text(
+                    'Jalan dipilih otomatis secara acak oleh sistem sesuai mode yang dipilih.',
+                    style: TextStyle(fontSize: 12, color: Colors.black54),
                   ),
-                  if (_kecamatanId != null) ...[
-                    const SizedBox(height: 16),
-                    const Text('Pilih Jalan', style: TextStyle(fontWeight: FontWeight.w600)),
-                    const SizedBox(height: 8),
-                    if (state.isLoadingJalan)
-                      const Padding(
-                        padding: EdgeInsets.symmetric(vertical: 8),
-                        child: Text('Memuat daftar jalan...',
-                            style: TextStyle(color: Colors.black54)),
-                      )
-                    else if (state.jalanList.isEmpty)
-                      const Padding(
-                        padding: EdgeInsets.symmetric(vertical: 8),
-                        child: Text('Belum ada jalan tersedia di kecamatan ini.',
-                            style: TextStyle(color: Colors.black54)),
-                      )
-                    else
-                      Wrap(
-                        spacing: 8,
-                        runSpacing: 8,
-                        children: state.jalanList.map((j) {
-                          final selected = _jalanId == j.id;
-                          return InkWell(
-                            onTap: j.penuh ? null : () => setState(() => _jalanId = j.id),
-                            borderRadius: BorderRadius.circular(8),
-                            child: Container(
-                              width: 160,
-                              padding:
-                                  const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                              decoration: BoxDecoration(
-                                borderRadius: BorderRadius.circular(8),
-                                border: Border.all(
-                                  color: j.penuh
-                                      ? const Color(0xFFE2E5F1)
-                                      : selected
-                                          ? _brandColor
-                                          : const Color(0xFFE2E5F1),
-                                  width: selected ? 2 : 1,
-                                ),
-                                color: j.penuh
-                                    ? const Color(0xFFF6F7FB)
-                                    : selected
-                                        ? const Color(0xFFEFF4FF)
-                                        : Colors.white,
-                              ),
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(j.namaJalan,
-                                      style: const TextStyle(
-                                          fontWeight: FontWeight.w600, fontSize: 13)),
-                                  const SizedBox(height: 2),
-                                  Text(
-                                    j.penuh ? 'Penuh' : 'Sisa ${j.sisa} dari ${j.kapasitas} slot',
-                                    style: TextStyle(
-                                      fontSize: 11.5,
-                                      color: j.penuh ? Colors.red : Colors.black54,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                          );
-                        }).toList(),
+                  const SizedBox(height: 12),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: _ModeCard(
+                          title: 'Se-Surabaya',
+                          subtitle: 'Diacak dari semua kecamatan',
+                          selected: _mode == 'se_surabaya',
+                          enabled: sudahDaftar,
+                          onTap: () => setState(() {
+                            _mode = 'se_surabaya';
+                            _kecamatanId = null;
+                          }),
+                        ),
                       ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: _ModeCard(
+                          title: 'Kecamatan',
+                          subtitle: 'Pilih kecamatan, jalan diacak',
+                          selected: _mode == 'kecamatan',
+                          enabled: sudahDaftar,
+                          onTap: () => setState(() => _mode = 'kecamatan'),
+                        ),
+                      ),
+                    ],
+                  ),
+                  if (_mode == 'kecamatan') ...[
+                    const SizedBox(height: 16),
+                    DropdownButtonFormField<String>(
+                      initialValue: _kecamatanId,
+                      decoration: const InputDecoration(
+                        labelText: 'Kecamatan',
+                        border: OutlineInputBorder(),
+                      ),
+                      items: state.kecamatanList
+                          .map((k) => DropdownMenuItem(value: k.id, child: Text(k.nama)))
+                          .toList(),
+                      onChanged: !sudahDaftar || state.isLoadingKecamatan
+                          ? null
+                          : (v) => setState(() => _kecamatanId = v),
+                    ),
                   ],
                 ],
               ),
@@ -316,8 +271,12 @@ class _LapakScreenState extends ConsumerState<LapakScreen> {
           ),
           const SizedBox(height: 20),
           ElevatedButton(
-            onPressed:
-                state.isClaiming || !sudahDaftar || _jalanId == null ? null : _handleKlaim,
+            onPressed: state.isClaiming ||
+                    !sudahDaftar ||
+                    _mode == null ||
+                    (_mode == 'kecamatan' && _kecamatanId == null)
+                ? null
+                : _handleKlaim,
             style: ElevatedButton.styleFrom(
               backgroundColor: _brandColor,
               foregroundColor: Colors.white,
@@ -458,6 +417,52 @@ class _LapakScreenState extends ConsumerState<LapakScreen> {
           SizedBox(width: 130, child: Text(label, style: const TextStyle(color: Colors.black54))),
           Expanded(child: Text(value, style: const TextStyle(fontWeight: FontWeight.w500))),
         ],
+      ),
+    );
+  }
+}
+
+/// Kartu pilihan mode check-in ("Se-Surabaya" vs "Kecamatan"). Sengaja
+/// dipisah jadi widget sendiri (bukan diulang 2x inline) biar gampang
+/// nambah mode baru nanti kalau perlu.
+class _ModeCard extends StatelessWidget {
+  final String title;
+  final String subtitle;
+  final bool selected;
+  final bool enabled;
+  final VoidCallback onTap;
+
+  const _ModeCard({
+    required this.title,
+    required this.subtitle,
+    required this.selected,
+    required this.enabled,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      onTap: enabled ? onTap : null,
+      borderRadius: BorderRadius.circular(8),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(
+            color: selected ? _brandColor : const Color(0xFFE2E5F1),
+            width: selected ? 2 : 1,
+          ),
+          color: selected ? const Color(0xFFEFF4FF) : Colors.white,
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(title, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
+            const SizedBox(height: 2),
+            Text(subtitle, style: const TextStyle(fontSize: 11.5, color: Colors.black54)),
+          ],
+        ),
       ),
     );
   }

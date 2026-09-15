@@ -5,6 +5,7 @@ import (
 	"errors"
 
 	"cfd-backend/modules/petugas/sisa-lapak/entity"
+	"cfd-backend/modules/shared/sesi"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -14,9 +15,6 @@ type Repository struct {
 	db *pgxpool.Pool
 }
 
-// terjemahkanError mengubah error database mentah (khususnya pelanggaran
-// UNIQUE constraint) menjadi pesan yang mudah dipahami pengguna, alih-alih
-// menampilkan pesan SQLSTATE mentah ke frontend.
 func terjemahkanError(err error) error {
 	if err == nil {
 		return nil
@@ -37,16 +35,11 @@ func NewRepository(db *pgxpool.Pool) *Repository {
 
 // GetSisaLapak ambil data kuota + terisi + id & kode_jalan
 func (r *Repository) GetSisaLapak(ctx context.Context) ([]entity.KecamatanData, error) {
-	// Cari sesi aktif hari ini. Kalau tidak ada, sessionID tetap nil (NULL)
-	// -- JANGAN pakai string kosong "" karena kolom session_id bertipe UUID,
-	// dan "" bukan UUID yang valid (bikin error "invalid input syntax for type uuid").
-	var sessionID *string
-	err := r.db.QueryRow(ctx, `
-		SELECT id FROM cfd_sessions
-		WHERE tanggal = CURRENT_DATE AND is_active = true AND deleted_at IS NULL
-		LIMIT 1
-	`).Scan(&sessionID)
-	if err != nil && !errors.Is(err, pgx.ErrNoRows) {
+	// Pakai resolver bersama -- BUKAN filter is_active=true sendiri --
+	// biar sesi yang kebaca di sini SELALU sama dengan sesi tempat
+	// klaim pedagang beneran nempel (lihat modules/shared/sesi).
+	sessionID, err := sesi.ResolveSesiHariIni(ctx, r.db)
+	if err != nil {
 		return nil, err
 	}
 
@@ -73,9 +66,8 @@ func (r *Repository) GetSisaLapak(ctx context.Context) ([]entity.KecamatanData, 
 	defer rows.Close()
 
 	mapData := make(map[string][]entity.JalanData)
-	kecIDData := make(map[string]*string) // nama kecamatan -> id (mi.id, nil kalau "Tanpa Kecamatan")
-	var urutanKecamatan []string          // simpan urutan kemunculan sesuai ORDER BY di SQL,
-	// karena iterasi Go map tidak dijamin konsisten urutannya.
+	kecIDData := make(map[string]*string)
+	var urutanKecamatan []string
 	for rows.Next() {
 		var kecID *string
 		var kec, id, kodeJalan, namaJalan string
@@ -88,11 +80,11 @@ func (r *Repository) GetSisaLapak(ctx context.Context) ([]entity.KecamatanData, 
 			kecIDData[kec] = kecID
 		}
 		mapData[kec] = append(mapData[kec], entity.JalanData{
-			ID:         id,
-			KodeJalan:  kodeJalan,
-			Nama:       namaJalan,
-			Kuota:      kuota,
-			Terisi:     terisi,
+			ID:        id,
+			KodeJalan: kodeJalan,
+			Nama:      namaJalan,
+			Kuota:     kuota,
+			Terisi:    terisi,
 		})
 	}
 
@@ -107,7 +99,6 @@ func (r *Repository) GetSisaLapak(ctx context.Context) ([]entity.KecamatanData, 
 	return result, nil
 }
 
-// CreateJalan menambahkan jalan baru
 func (r *Repository) CreateJalan(ctx context.Context, kodeJalan, namaJalan string, kapasitas int, instansiID string) error {
 	tx, err := r.db.Begin(ctx)
 	if err != nil {
@@ -136,7 +127,6 @@ func (r *Repository) CreateJalan(ctx context.Context, kodeJalan, namaJalan strin
 	return tx.Commit(ctx)
 }
 
-// UpdateJalan update kode, nama & kapasitas
 func (r *Repository) UpdateJalan(ctx context.Context, id, kodeJalan, namaJalan string, kapasitas int) error {
 	_, err := r.db.Exec(ctx, `
 		UPDATE master_jalan
@@ -146,7 +136,6 @@ func (r *Repository) UpdateJalan(ctx context.Context, id, kodeJalan, namaJalan s
 	return terjemahkanError(err)
 }
 
-// DeleteJalan soft delete
 func (r *Repository) DeleteJalan(ctx context.Context, id string) error {
 	_, err := r.db.Exec(ctx, `
 		UPDATE master_jalan
@@ -156,7 +145,6 @@ func (r *Repository) DeleteJalan(ctx context.Context, id string) error {
 	return err
 }
 
-// InstansiExists cek apakah instansi dengan id tersebut ada & belum dihapus
 func (r *Repository) InstansiExists(ctx context.Context, id string) (bool, error) {
 	var exists bool
 	err := r.db.QueryRow(ctx, `
@@ -174,7 +162,6 @@ func (r *Repository) InstansiExists(ctx context.Context, id string) (bool, error
 	return exists, nil
 }
 
-// GetAllInstansi ambil semua instansi
 func (r *Repository) GetAllInstansi(ctx context.Context) ([]entity.InstansiData, error) {
 	rows, err := r.db.Query(ctx, `
 		SELECT id, nama_instansi FROM master_instansi WHERE deleted_at IS NULL ORDER BY nama_instansi

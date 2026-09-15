@@ -10,6 +10,9 @@ type UpdatePendaftaranRequest struct {
 	JamBuka  *string `json:"jamBuka"`
 	JamTutup *string `json:"jamTutup"`
 	Link     *string `json:"linkPendaftaran"`
+	// KodeEvent opsional -- kalau dikosongin (nil/""), kode event yang lama
+	// tetap dipakai (lihat validasi di usecase UpdatePendaftaran).
+	KodeEvent *string `json:"kodeEvent"`
 }
 
 type StatusOperasionalResponse struct {
@@ -23,6 +26,7 @@ type PendaftaranStatusDTO struct {
 	LinkPendaftaran *string `json:"linkPendaftaran"`
 	JamBuka         *string `json:"jamBuka"`
 	JamTutup        *string `json:"jamTutup"`
+	KodeEvent       string  `json:"kodeEvent"`
 }
 
 type SesiAktifDTO struct {

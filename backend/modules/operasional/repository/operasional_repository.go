@@ -41,7 +41,14 @@ func scanSesi(row pgx.Row) (*entity.Sesi, error) {
 	return &s, nil
 }
 
-// GetSesiHariIni ambil sesi yang aktif hari ini (is_active = true)
+// GetSesiHariIni ambil sesi yang AKTIF hari ini (is_active = true).
+// Ini fungsi "guard" -- dipakai buat cek "apa masih ada sesi yang lagi
+// jalan" sebelum bikin/ubah/akhiri sesi (SimpanSesi, BukaSesiManual,
+// AkhiriSesiLebihAwal, TickJadwalOtomatis). SENGAJA gak dipakai buat
+// nampilin status ke petugas -- begitu sesi berakhir (is_active jadi
+// false), fungsi ini balikin nil, padahal petugas masih perlu liat
+// "Sudah Berakhir", bukan "belum ada sesi sama sekali". Buat itu pakai
+// GetSesiHariIniUntukTampilan di bawah.
 func (r *OperasionalRepository) GetSesiHariIni(ctx context.Context) (*entity.Sesi, error) {
 	row := r.db.QueryRow(ctx, `
 		SELECT `+sesiColumns+`
@@ -51,31 +58,73 @@ func (r *OperasionalRepository) GetSesiHariIni(ctx context.Context) (*entity.Ses
 	return scanSesi(row)
 }
 
-// UpsertSesiHariIni: buat sesi baru (insert) jika belum ada, tolak jika sudah ada
+// GetSesiHariIniUntukTampilan ambil sesi hari ini APAPUN statusnya
+// (aktif, udah berakhir, ditutup manual) -- dipakai KHUSUS buat kartu
+// "Sesi CFD Hari Ini" di GetStatusOperasional, biar petugas tetap lihat
+// "Sudah Berakhir" (bukan seolah gak ada sesi) begitu sesinya ditutup.
+// Filter jam_mulai IS NOT NULL nyingkirin sesi auto-hidden (dari
+// sesi.ResolveSesiHariIni) yang jamnya belum diisi petugas -- itu belum
+// pantes ditampilin sebagai "sesi hari ini" ke petugas.
+func (r *OperasionalRepository) GetSesiHariIniUntukTampilan(ctx context.Context) (*entity.Sesi, error) {
+	row := r.db.QueryRow(ctx, `
+		SELECT `+sesiColumns+`
+		FROM cfd_sessions
+		WHERE tanggal = CURRENT_DATE AND jam_mulai IS NOT NULL AND deleted_at IS NULL
+		ORDER BY created_at DESC
+		LIMIT 1
+	`)
+	return scanSesi(row)
+}
+
+// UpsertSesiHariIni: aktifkan sesi hari ini. Kalau belum ada baris
+// cfd_sessions sama sekali buat hari ini -> insert baru. Kalau SUDAH ada
+// (misal auto-created is_active=false gara-gara pedagang klaim lapak
+// duluan sebelum petugas buka sesi) -> ADOPT baris itu (update jadi
+// is_active=true + isi jam), JANGAN insert baris baru. Kalau dibiarkan
+// insert baru, klaim pedagang yang udah nempel di baris lama bakal
+// "terpisah" dari sesi yang dipakai checkout/scan-qr (lihat catatan di
+// modules/shared/sesi.ResolveSesiHariIni).
+//
+// "Sudah diatur, tidak bisa diubah" sekarang berarti: sudah ADA sesi yang
+// is_active=true hari ini (bukan sekadar ada barisnya).
 func (r *OperasionalRepository) UpsertSesiHariIni(ctx context.Context, jamMulai, jamSelesai string, createdBy *string) (*entity.Sesi, error) {
-	existing, err := r.GetSesiHariIni(ctx)
+	existingAktif, err := r.GetSesiHariIni(ctx)
 	if err != nil {
 		return nil, err
 	}
-	if existing != nil {
+	if existingAktif != nil {
 		return nil, errors.New("sesi hari ini sudah diatur, tidak bisa diubah")
 	}
 
-	// Generate nama sesi otomatis
 	namaSesi := "CFD " + time.Now().Format("02 January 2006")
 
 	row := r.db.QueryRow(ctx, `
 		INSERT INTO cfd_sessions (
 			nama_sesi, tanggal, jam_mulai, jam_selesai, status, created_by, is_active
 		) VALUES ($1, CURRENT_DATE, $2, $3, 'aktif', $4, true)
+		ON CONFLICT (tanggal) WHERE deleted_at IS NULL
+		DO UPDATE SET
+			jam_mulai          = EXCLUDED.jam_mulai,
+			jam_selesai        = EXCLUDED.jam_selesai,
+			jam_selesai_aktual = NULL,
+			status             = 'aktif',
+			created_by         = EXCLUDED.created_by,
+			is_active          = true,
+			updated_at         = now()
 		RETURNING `+sesiColumns,
 		namaSesi, jamMulai, jamSelesai, createdBy,
 	)
 	return scanSesi(row)
 }
 
-// BukaSesiManual: buka sesi baru langsung sekarang, jam selesai default
-// 23:59:59 hari ini. Dipakai buat toggle "Buka Sesi Sekarang" di petugas.
+// BukaSesiManual: buka sesi sekarang, jam selesai default 23:59:59 hari
+// ini. Dipakai buat toggle "Buka Sesi Sekarang" di petugas.
+//
+// Sama seperti UpsertSesiHariIni: kalau udah ada baris cfd_sessions buat
+// hari ini (auto-created is_active=false), ADOPT baris itu lewat
+// ON CONFLICT DO UPDATE -- jangan insert baris baru, biar sesi yang
+// dipakai checkout/scan-qr tetap sesi yang SAMA dengan tempat klaim
+// pedagang nempel.
 func (r *OperasionalRepository) BukaSesiManual(ctx context.Context, jamMulai string, createdBy *string) (*entity.Sesi, error) {
 	namaSesi := "CFD " + time.Now().Format("02 January 2006")
 
@@ -83,6 +132,15 @@ func (r *OperasionalRepository) BukaSesiManual(ctx context.Context, jamMulai str
 		INSERT INTO cfd_sessions (
 			nama_sesi, tanggal, jam_mulai, jam_selesai, status, created_by, is_active
 		) VALUES ($1, CURRENT_DATE, $2, '23:59:59', 'aktif', $3, true)
+		ON CONFLICT (tanggal) WHERE deleted_at IS NULL
+		DO UPDATE SET
+			jam_mulai          = EXCLUDED.jam_mulai,
+			jam_selesai        = '23:59:59',
+			jam_selesai_aktual = NULL,
+			status             = 'aktif',
+			created_by         = EXCLUDED.created_by,
+			is_active          = true,
+			updated_at         = now()
 		RETURNING `+sesiColumns,
 		namaSesi, jamMulai, createdBy,
 	)
@@ -111,6 +169,33 @@ func (r *OperasionalRepository) AkhiriSesiLebihAwal(ctx context.Context, id stri
 		id,
 	)
 	return scanSesi(row)
+}
+
+// BatalkanKlaimBelumCheckIn dipanggil begitu sesi ditutup (manual lewat
+// AkhiriSesiLebihAwal ATAUPUN otomatis lewat AutoSelesaikanSesi). Pedagang
+// yang udah klaim lapak tapi BELUM sempat di-scan QR petugas (gak ada baris
+// di kehadiran_pedagang) klaimnya ditandain 'batal' -- bukan dihapus, biar
+// riwayatnya masih ada. Kalau nanti petugas buka sesi ini lagi
+// (BukaSesiManual / UpsertSesiHariIni ngidupin ulang baris cfd_sessions
+// yang sama), pedagang ini otomatis bisa klaim ulang karena constraint
+// unique-nya cuma berlaku buat klaim berstatus 'aktif'
+// (lihat migrasi 000027_add_status_lapak_klaim).
+//
+// Pedagang yang UDAH check-in gak disentuh sama sekali -- mereka tetap
+// dianggap ikut CFD hari ini dan boleh checkout begitu sesi berakhir
+// (lihat modules/pedagang/checkout).
+func (r *OperasionalRepository) BatalkanKlaimBelumCheckIn(ctx context.Context, sessionID string) error {
+	_, err := r.db.Exec(ctx, `
+		UPDATE lapak_klaim
+		SET status = 'batal'
+		WHERE session_id = $1
+		  AND status = 'aktif'
+		  AND pedagang_id NOT IN (
+			SELECT pedagang_id FROM kehadiran_pedagang
+			WHERE session_id = $1 AND deleted_at IS NULL
+		  )
+	`, sessionID)
+	return err
 }
 
 // ---- Jadwal Mingguan ----
@@ -193,26 +278,27 @@ func (r *OperasionalRepository) ListJadwalMingguan(ctx context.Context) ([]entit
 func (r *OperasionalRepository) GetPengaturanPendaftaran(ctx context.Context) (*entity.PengaturanPendaftaran, error) {
 	var p entity.PengaturanPendaftaran
 	err := r.db.QueryRow(ctx, `
-		SELECT id, is_open, link_pendaftaran, jam_buka_pendaftaran::text, jam_tutup_pendaftaran::text, updated_by, updated_at
+		SELECT id, is_open, link_pendaftaran, jam_buka_pendaftaran::text, jam_tutup_pendaftaran::text, kode_event, updated_by, updated_at
 		FROM pengaturan_pendaftaran
 		LIMIT 1
-	`).Scan(&p.ID, &p.IsOpen, &p.LinkPendaftaran, &p.JamBuka, &p.JamTutup, &p.UpdatedBy, &p.UpdatedAt)
+	`).Scan(&p.ID, &p.IsOpen, &p.LinkPendaftaran, &p.JamBuka, &p.JamTutup, &p.KodeEvent, &p.UpdatedBy, &p.UpdatedAt)
 	if err != nil {
 		return nil, err
 	}
 	return &p, nil
 }
 
-func (r *OperasionalRepository) UpdatePengaturanPendaftaran(ctx context.Context, isOpen bool, jamBuka, jamTutup *string, link *string, updatedBy *string) error {
+func (r *OperasionalRepository) UpdatePengaturanPendaftaran(ctx context.Context, isOpen bool, jamBuka, jamTutup *string, link *string, kodeEvent string, updatedBy *string) error {
 	_, err := r.db.Exec(ctx, `
 		UPDATE pengaturan_pendaftaran
 		SET is_open = $1,
 			jam_buka_pendaftaran = $2,
 			jam_tutup_pendaftaran = $3,
 			link_pendaftaran = $4,
-			updated_by = $5,
+			kode_event = $5,
+			updated_by = $6,
 			updated_at = now()
-	`, isOpen, jamBuka, jamTutup, link, updatedBy)
+	`, isOpen, jamBuka, jamTutup, link, kodeEvent, updatedBy)
 	return err
 }
 
@@ -285,6 +371,7 @@ func (r *OperasionalRepository) ListSesiJalanRows(ctx context.Context) ([]entity
 		LEFT JOIN jalan_instansi ji ON ji.jalan_id = mj.id
 		LEFT JOIN master_instansi mi ON mi.id = ji.instansi_id
 		WHERE cs.deleted_at IS NULL
+			AND cs.jam_mulai IS NOT NULL
 			AND cs.tanggal >= CURRENT_DATE - INTERVAL '30 days'
 			AND cs.tanggal <= CURRENT_DATE + INTERVAL '30 days'
 		ORDER BY cs.tanggal DESC, cs.jam_mulai DESC, mi.nama_instansi, mj.nama_jalan
@@ -362,10 +449,25 @@ func (r *OperasionalRepository) CreateSesiWilayah(
 	}
 	defer tx.Rollback(ctx)
 
+	// ON CONFLICT: sama pola kayak UpsertSesiHariIni/BukaSesiManual di atas
+	// -- kalau tanggal ini udah punya baris cfd_sessions (mis. baris
+	// auto-hidden yang dibikin sesi.ResolveSesiHariIni pas ada pedagang
+	// klaim/generate-slot duluan), ADOPT baris itu, jangan insert baris
+	// baru. WAJIB begitu unique index uq_cfd_sessions_tanggal aktif --
+	// insert polos ke tanggal yang udah kepakai bakal gagal 23505.
 	row := tx.QueryRow(ctx, `
 		INSERT INTO cfd_sessions (
 			nama_sesi, tanggal, jam_mulai, jam_selesai, status, created_by, is_active
 		) VALUES ($1, $2, $3, $4, 'aktif', $5, true)
+		ON CONFLICT (tanggal) WHERE deleted_at IS NULL
+		DO UPDATE SET
+			nama_sesi   = EXCLUDED.nama_sesi,
+			jam_mulai   = EXCLUDED.jam_mulai,
+			jam_selesai = EXCLUDED.jam_selesai,
+			status      = 'aktif',
+			created_by  = EXCLUDED.created_by,
+			is_active   = true,
+			updated_at  = now()
 		RETURNING `+sesiColumns,
 		namaSesi, tanggal, jamMulai, jamSelesai, createdBy,
 	)

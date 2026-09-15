@@ -3,20 +3,18 @@ package repository
 import (
 	"context"
 	"errors"
-	"fmt"
 	"time"
 
 	"cfd-backend/modules/pedagang/lapak/entity"
+	"cfd-backend/modules/shared/kodelapak"
+	"cfd-backend/modules/shared/sesi"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 var (
-	ErrTidakAdaSesiAktif      = errors.New("tidak ada sesi CFD yang aktif sekarang")
-	ErrCheckInDitutup         = errors.New("check-in pedagang sedang ditutup oleh petugas")
-	ErrDiluarJamCheckIn       = errors.New("saat ini di luar jam check-in yang ditentukan petugas")
-	ErrLapakPenuh             = errors.New("lapak di jalan ini sudah penuh")
+	ErrLapakBelumDiacak       = errors.New("lapak belum diacak petugas, silakan coba lagi nanti")
 	ErrSudahKlaim             = errors.New("kamu sudah klaim lapak di sesi ini")
 	ErrPedagangTidakDitemukan = errors.New("profil pedagang tidak ditemukan")
 )
@@ -29,68 +27,11 @@ func NewLapakRepository(db *pgxpool.Pool) *LapakRepository {
 	return &LapakRepository{db: db}
 }
 
-// GetActiveSessionID ambil ID sesi CFD hari ini (dibutuhin buat foreign key
-// di lapak_klaim/jalan_kapasitas_sesi -- klaim harus nempel ke sesi yang
-// mana). Sesi HARUS ada dulu (petugas udah bikin jadwal), tapi kelayakan
-// check-in-nya (boleh klaim nomor stand sekarang atau belum) ditentuin oleh
-// Pengaturan Check-in Pedagang (pengaturan_pendaftaran.is_open +
-// jam_buka_pendaftaran/jam_tutup_pendaftaran) -- BUKAN dari jam_mulai/
-// jam_selesai di cfd_sessions. Itu urusan beda: jam_mulai/jam_selesai
-// cfd_sessions nentuin kapan PETUGAS boleh scan QR buat verifikasi
-// kehadiran fisik pedagang (lihat modules/petugas/scan-qr), yang jatuhnya
-// belakangan setelah pedagang check-in dan dapet nomor stand.
-func (r *LapakRepository) GetActiveSessionID(ctx context.Context) (string, error) {
-	var id string
-	err := r.db.QueryRow(ctx,
-		`SELECT id FROM cfd_sessions
-		 WHERE is_active = true AND deleted_at IS NULL AND tanggal = CURRENT_DATE
-		 ORDER BY created_at DESC
-		 LIMIT 1`,
-	).Scan(&id)
-	if err != nil {
-		if err == pgx.ErrNoRows {
-			return "", ErrTidakAdaSesiAktif
-		}
-		return "", err
-	}
-
-	isOpen, jamBuka, jamTutup, err := r.getStatusCheckIn(ctx)
-	if err != nil {
-		return "", err
-	}
-	if !isOpen {
-		return "", ErrCheckInDitutup
-	}
-
-	now := time.Now().Format("15:04:05")
-if jamBuka != nil && now < *jamBuka {
-	return "", fmt.Errorf("%w: check-in baru dibuka jam %s", ErrDiluarJamCheckIn, formatJamSingkat(*jamBuka))
-}
-if jamTutup != nil && now >= *jamTutup {
-	return "", fmt.Errorf("%w: check-in sudah ditutup sejak jam %s", ErrDiluarJamCheckIn, formatJamSingkat(*jamTutup))
-}
-
-return id, nil
-}
-
-func formatJamSingkat(jam string) string {
-	if len(jam) >= 5 {
-		return jam[:5]
-	}
-	return jam
-}
-
-// getStatusCheckIn baca Pengaturan Check-in Pedagang (tabel yang sama
-// yang dulu dipakai buat gate pendaftaran -- pengaturan_pendaftaran).
-// jam_buka/jam_tutup nullable: kalau NULL berarti gak ada batas jam,
-// cuma is_open doang yang ngontrol.
-func (r *LapakRepository) getStatusCheckIn(ctx context.Context) (isOpen bool, jamBuka, jamTutup *string, err error) {
-	err = r.db.QueryRow(ctx,
-		`SELECT is_open, jam_buka_pendaftaran::text, jam_tutup_pendaftaran::text
-		 FROM pengaturan_pendaftaran
-		 LIMIT 1`,
-	).Scan(&isOpen, &jamBuka, &jamTutup)
-	return isOpen, jamBuka, jamTutup, err
+// GetOrCreateSessionHariIni delegasi ke resolver bersama -- lihat
+// modules/shared/sesi.ResolveSesiHariIni buat penjelasan lengkap kenapa
+// row auto-hidden (is_active=false) ini dibutuhkan.
+func (r *LapakRepository) GetOrCreateSessionHariIni(ctx context.Context) (string, error) {
+	return sesi.ResolveSesiHariIni(ctx, r.db)
 }
 
 // GetPedagangProfileIDByUserID nerjemahin user_id (dari token JWT) ke
@@ -168,85 +109,156 @@ func (r *LapakRepository) ListJalanByKecamatan(ctx context.Context, kecamatanID,
 	return list, rows.Err()
 }
 
-// ClaimLapak adalah jantung fitur "war" -- transaksi ini yang mastiin gak
-// ada 2 pedagang rebutan jalan yang sama dapet nomor yang sama, walau
-// request-nya masuk nyaris bersamaan.
-func (r *LapakRepository) ClaimLapak(ctx context.Context, pedagangID, sessionID, jalanID string) (nomorLapak string, namaJalan string, claimedAt time.Time, err error) {
+// GetKodeEvent baca kode event aktif sekarang (mis. "CFD") dari Pengaturan
+// Pendaftaran -- field yang sama yang diisi petugas di halaman Jam
+// Operasional. Dipakai sebagai prefix nomor_lapak.
+func (r *LapakRepository) GetKodeEvent(ctx context.Context) (string, error) {
+	var kode string
+	err := r.db.QueryRow(ctx,
+		`SELECT kode_event FROM pengaturan_pendaftaran LIMIT 1`,
+	).Scan(&kode)
+	if err != nil {
+		return "", err
+	}
+	return kode, nil
+}
+
+const maxPercobaanSlot = 5
+
+// ClaimSlot: ambil 1 slot 'tersedia' dari pool lapak_slot (yang udah
+// disiapin petugas lewat "Acak Lapak" -- lihat modules/petugas/acak-lapak
+// GenerateSlot), tandain 'terpakai', DAN tetap nulis row baru ke
+// lapak_klaim persis kayak alur lama -- biar checkout, check-in
+// (scan-qr), laporan, dan widget Sisa Lapak yang udah jalan sekarang
+// SEMUA gak perlu diubah sama sekali (mereka baca dari lapak_klaim /
+// jalan_kapasitas_sesi, bukan dari lapak_slot).
+//
+// FOR UPDATE SKIP LOCKED di SELECT slot-nya: kalau 2 pedagang klaim
+// nyaris bersamaan, yang kedua otomatis lompat ke slot lain yang belum
+// dikunci transaksi pertama -- gak saling nunggu/nabrak.
+func (r *LapakRepository) ClaimSlot(ctx context.Context, pedagangID, sessionID string) (nomorLapak, namaJalan, namaKecamatan string, claimedAt time.Time, err error) {
+	var sudahKlaim bool
+	err = r.db.QueryRow(ctx,
+		`SELECT EXISTS(SELECT 1 FROM lapak_klaim WHERE pedagang_id = $1 AND session_id = $2 AND status = 'aktif')`,
+		pedagangID, sessionID,
+	).Scan(&sudahKlaim)
+	if err != nil {
+		return "", "", "", time.Time{}, err
+	}
+	if sudahKlaim {
+		return "", "", "", time.Time{}, ErrSudahKlaim
+	}
+
+	for percobaan := 0; percobaan < maxPercobaanSlot; percobaan++ {
+		nomor, jalan, kecamatan, claimedAtRow, errTry := r.tryClaimSatuSlot(ctx, pedagangID, sessionID)
+		if errTry == nil {
+			return nomor, jalan, kecamatan, claimedAtRow, nil
+		}
+		if errors.Is(errTry, errSlotKalahRace) {
+			continue // slot yang kepilih keburu diambil transaksi lain, coba lagi
+		}
+		return "", "", "", time.Time{}, errTry
+	}
+
+	return "", "", "", time.Time{}, ErrLapakBelumDiacak
+}
+
+// errSlotKalahRace: sinyal internal doang (gak pernah keluar dari
+// ClaimSlot) -- dipakai buat mbedain "slot yang kepilih ternyata udah
+// keambil orang lain, coba slot lain" dari error yang beneran fatal.
+var errSlotKalahRace = errors.New("slot kalah race")
+
+func (r *LapakRepository) tryClaimSatuSlot(ctx context.Context, pedagangID, sessionID string) (nomorLapak, namaJalan, namaKecamatan string, claimedAt time.Time, err error) {
 	tx, err := r.db.Begin(ctx)
 	if err != nil {
-		return "", "", time.Time{}, err
+		return "", "", "", time.Time{}, err
 	}
-	defer tx.Rollback(ctx) // aman dipanggil walau udah Commit, jadi no-op
+	defer tx.Rollback(ctx)
 
-	// Pastikan ada baris kapasitas buat jalan+sesi ini (kalau ini klaim
-	// pertama di jalan itu untuk sesi ini, baris belum tentu ada).
-	_, err = tx.Exec(ctx,
+	var slotID, jalanID, kode string
+	err = tx.QueryRow(ctx,
+		`SELECT ls.id, ls.jalan_id, ls.nomor_lapak, mj.nama_jalan, mi.nama_instansi
+		 FROM lapak_slot ls
+		 JOIN master_jalan mj ON mj.id = ls.jalan_id
+		 JOIN jalan_instansi ji ON ji.jalan_id = mj.id
+		 JOIN master_instansi mi ON mi.id = ji.instansi_id AND mi.nama_unit = 'Kecamatan'
+		 WHERE ls.session_id = $1 AND ls.status = 'tersedia'
+		 ORDER BY random()
+		 LIMIT 1
+		 FOR UPDATE OF ls SKIP LOCKED`,
+		sessionID,
+	).Scan(&slotID, &jalanID, &kode, &namaJalan, &namaKecamatan)
+	if err != nil {
+		if err == pgx.ErrNoRows {
+			return "", "", "", time.Time{}, ErrLapakBelumDiacak
+		}
+		return "", "", "", time.Time{}, err
+	}
+
+	// Slot ini bisa aja udah dipakein (status berubah) di antara SELECT
+	// di atas selesai dan UPDATE di bawah jalan -- praktis gak mungkin
+	// berkat FOR UPDATE SKIP LOCKED, tapi tetap dicek biar aman kalau
+	// suatu saat locking-nya berubah.
+	tag, err := tx.Exec(ctx,
+		`UPDATE lapak_slot SET status = 'terpakai', updated_at = now()
+		 WHERE id = $1 AND status = 'tersedia'`,
+		slotID,
+	)
+	if err != nil {
+		return "", "", "", time.Time{}, err
+	}
+	if tag.RowsAffected() == 0 {
+		return "", "", "", time.Time{}, errSlotKalahRace
+	}
+
+	var klaimID string
+	err = tx.QueryRow(ctx,
+		`INSERT INTO lapak_klaim (pedagang_id, session_id, jalan_id, nomor_lapak, claimed_at)
+		 VALUES ($1, $2, $3, $4, now())
+		 RETURNING id, claimed_at`,
+		pedagangID, sessionID, jalanID, kode,
+	).Scan(&klaimID, &claimedAt)
+	if err != nil {
+		if kodelapak.IsUniqueViolation(err, "") {
+			// Constraint (pedagang_id, session_id) -- pedagang ini udah
+			// klaim duluan di tx lain nyaris bersamaan.
+			return "", "", "", time.Time{}, ErrSudahKlaim
+		}
+		return "", "", "", time.Time{}, err
+	}
+
+	if _, err := tx.Exec(ctx,
+		`UPDATE lapak_slot SET lapak_klaim_id = $1 WHERE id = $2`,
+		klaimID, slotID,
+	); err != nil {
+		return "", "", "", time.Time{}, err
+	}
+
+	// jalan_kapasitas_sesi tetap di-increment kayak alur lama -- ini yang
+	// dibaca widget Sisa Lapak (petugas & publik), BUKAN dihitung dari
+	// lapak_slot.
+	if _, err := tx.Exec(ctx,
 		`INSERT INTO jalan_kapasitas_sesi (jalan_id, session_id, terisi)
 		 VALUES ($1, $2, 0)
 		 ON CONFLICT (jalan_id, session_id) DO NOTHING`,
 		jalanID, sessionID,
-	)
-	if err != nil {
-		return "", "", time.Time{}, err
+	); err != nil {
+		return "", "", "", time.Time{}, err
 	}
-
-	// KUNCI baris ini. Kalau ada request lain yang lagi klaim jalan yang
-	// SAMA di saat bersamaan, dia bakal nunggu di baris ini sampai
-	// transaksi kita commit/rollback.
-	var terisi, kapasitas int
-	var namaJalanRow string
-	err = tx.QueryRow(ctx,
-		`SELECT jks.terisi, j.kapasitas, j.nama_jalan
-		 FROM jalan_kapasitas_sesi jks
-		 JOIN master_jalan j ON j.id = jks.jalan_id
-		 WHERE jks.jalan_id = $1 AND jks.session_id = $2
-		 FOR UPDATE`,
+	if _, err := tx.Exec(ctx,
+		`UPDATE jalan_kapasitas_sesi SET terisi = terisi + 1, updated_at = now()
+		 WHERE jalan_id = $1 AND session_id = $2`,
 		jalanID, sessionID,
-	).Scan(&terisi, &kapasitas, &namaJalanRow)
-	if err != nil {
-		return "", "", time.Time{}, err
-	}
-
-	if terisi >= kapasitas {
-		return "", "", time.Time{}, ErrLapakPenuh
-	}
-
-	nomorBaru := terisi + 1
-
-	_, err = tx.Exec(ctx,
-		`UPDATE jalan_kapasitas_sesi
-		 SET terisi = $1, updated_at = now()
-		 WHERE jalan_id = $2 AND session_id = $3`,
-		nomorBaru, jalanID, sessionID,
-	)
-	if err != nil {
-		return "", "", time.Time{}, err
-	}
-
-	nomorLapakStr := itoa(nomorBaru)
-
-	var claimedAtRow time.Time
-	err = tx.QueryRow(ctx,
-		`INSERT INTO lapak_klaim (pedagang_id, session_id, jalan_id, nomor_lapak, claimed_at)
-		 VALUES ($1, $2, $3, $4, now())
-		 RETURNING claimed_at`,
-		pedagangID, sessionID, jalanID, nomorLapakStr,
-	).Scan(&claimedAtRow)
-	if err != nil {
-		// Kemungkinan besar unique constraint (pedagang_id, session_id) --
-		// pedagang ini udah pernah klaim di sesi ini sebelumnya.
-		return "", "", time.Time{}, ErrSudahKlaim
+	); err != nil {
+		return "", "", "", time.Time{}, err
 	}
 
 	if err := tx.Commit(ctx); err != nil {
-		return "", "", time.Time{}, err
+		return "", "", "", time.Time{}, err
 	}
-
-	return nomorLapakStr, namaJalanRow, claimedAtRow, nil
+	return kode, namaJalan, namaKecamatan, claimedAt, nil
 }
 
-// GetKlaimByPedagangSession cek apakah pedagang ini udah klaim lapak di sesi
-// yang dikasih.
 func (r *LapakRepository) GetKlaimByPedagangSession(ctx context.Context, pedagangID, sessionID string) (nomorLapak, namaJalan, namaKecamatan string, claimedAt time.Time, found bool, err error) {
 	err = r.db.QueryRow(ctx,
 		`SELECT lk.nomor_lapak, j.nama_jalan, mi.nama_instansi, lk.claimed_at
@@ -254,7 +266,7 @@ func (r *LapakRepository) GetKlaimByPedagangSession(ctx context.Context, pedagan
 		 JOIN master_jalan j ON j.id = lk.jalan_id
 		 JOIN jalan_instansi ji ON ji.jalan_id = j.id
 		 JOIN master_instansi mi ON mi.id = ji.instansi_id AND mi.nama_unit = 'Kecamatan'
-		 WHERE lk.pedagang_id = $1 AND lk.session_id = $2`,
+		 WHERE lk.pedagang_id = $1 AND lk.session_id = $2 AND lk.status = 'aktif'`,
 		pedagangID, sessionID,
 	).Scan(&nomorLapak, &namaJalan, &namaKecamatan, &claimedAt)
 	if err != nil {
@@ -264,23 +276,4 @@ func (r *LapakRepository) GetKlaimByPedagangSession(ctx context.Context, pedagan
 		return "", "", "", time.Time{}, false, err
 	}
 	return nomorLapak, namaJalan, namaKecamatan, claimedAt, true, nil
-}
-
-func itoa(n int) string {
-	if n == 0 {
-		return "0"
-	}
-	neg := n < 0
-	if neg {
-		n = -n
-	}
-	var b []byte
-	for n > 0 {
-		b = append([]byte{byte('0' + n%10)}, b...)
-		n /= 10
-	}
-	if neg {
-		b = append([]byte{'-'}, b...)
-	}
-	return string(b)
 }

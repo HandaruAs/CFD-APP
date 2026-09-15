@@ -122,12 +122,12 @@ class PedagangNotifier extends StateNotifier<PedagangState> {
     }
   }
 
-  Future<bool> klaimLapak({required String jalanId, required String namaKecamatan}) async {
+  Future<bool> klaimLapak({required String mode, String? kecamatanId}) async {
     state = state.copyWith(isClaiming: true, error: null);
     try {
       final hasil = await PedagangRemoteDatasource.klaimLapak(
-        jalanId: jalanId,
-        namaKecamatan: namaKecamatan,
+        mode: mode,
+        kecamatanId: kecamatanId,
       );
       state = state.copyWith(isClaiming: false, hasilKlaim: hasil);
       return true;

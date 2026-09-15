@@ -31,6 +31,9 @@ import (
 	// ===== TAMBAHKAN: Repository Sisa Lapak =====
 	sisaLapakRepo "cfd-backend/modules/petugas/sisa-lapak/repository"
 
+	// Repository Acak Lapak (generate-slot -- isi pool lapak_slot)
+	acakLapakRepo "cfd-backend/modules/petugas/acak-lapak/repository"
+
 	// Modul Usecase
 	authUsecase "cfd-backend/modules/auth/usecase"
 	menuUsecase "cfd-backend/modules/menu/usecase"
@@ -53,6 +56,9 @@ import (
 	// ===== TAMBAHKAN: Usecase Sisa Lapak =====
 	sisaLapakUsecase "cfd-backend/modules/petugas/sisa-lapak/usecase"
 
+	// Usecase Acak Lapak
+	acakLapakUsecase "cfd-backend/modules/petugas/acak-lapak/usecase"
+
 	// Modul Controller
 	authController "cfd-backend/modules/auth/controller"
 	menuController "cfd-backend/modules/menu/controller"
@@ -74,6 +80,9 @@ import (
 
 	// ===== TAMBAHKAN: Controller Sisa Lapak =====
 	sisaLapakController "cfd-backend/modules/petugas/sisa-lapak/controller"
+
+	// Controller Acak Lapak
+	acakLapakController "cfd-backend/modules/petugas/acak-lapak/controller"
 
 	"github.com/gofiber/fiber/v3"
 	"github.com/gofiber/fiber/v3/middleware/cors"
@@ -111,6 +120,9 @@ func main() {
 	// ===== TAMBAHKAN: Repository Sisa Lapak =====
 	sisaLapakRepository := sisaLapakRepo.NewRepository(db)
 
+	// Repository Acak Lapak
+	acakLapakRepository := acakLapakRepo.NewAcakLapakRepository(db)
+
 	// ============================================================
 	// 2. INIT USECASES
 	// ============================================================
@@ -135,6 +147,9 @@ func main() {
 	// ===== TAMBAHKAN: Usecase Sisa Lapak =====
 	sisaLapakUsecase := sisaLapakUsecase.NewUsecase(sisaLapakRepository)
 
+	// Usecase Acak Lapak
+	acakLapakUsecase := acakLapakUsecase.NewAcakLapakUsecase(acakLapakRepository)
+
 	// ============================================================
 	// 3. INIT CONTROLLERS
 	// ============================================================
@@ -158,6 +173,9 @@ func main() {
 
 	// ===== TAMBAHKAN: Controller Sisa Lapak =====
 	sisaLapakController := sisaLapakController.NewController(sisaLapakUsecase)
+
+	// Controller Acak Lapak
+	acakLapakController := acakLapakController.NewAcakLapakController(acakLapakUsecase)
 
 	// ============================================================
 	// 4. INIT FIBER APP
@@ -190,6 +208,7 @@ func main() {
 	// ============================================================
 	app.Post("/api/register", authController.RegisterPedagang)
 	app.Post("/api/login", authController.Login)
+	app.Get("/api/public/sisa-lapak", sisaLapakController.GetSisaLapak)
 
 	// ============================================================
 	// 6. ENDPOINT PROTECTED (BUTUH LOGIN)
@@ -356,18 +375,13 @@ func main() {
 		middleware.PermissionMiddleware(permissionRepository, "jadwal.manage"),
 		operasionalController.BuatSesiWilayah,
 	)
-		app.Post("/api/petugas/jam-operasional/sesi-wilayah",
-		middleware.AuthMiddleware(cfg.JWTSecret),
-		middleware.PermissionMiddleware(permissionRepository, "jadwal.manage"),
-		operasionalController.BuatSesiWilayah,
-	)
 
 	app.Delete("/api/petugas/jam-operasional/sesi-wilayah/:id",
 		middleware.AuthMiddleware(cfg.JWTSecret),
 		middleware.PermissionMiddleware(permissionRepository, "jadwal.manage"),
 		operasionalController.HapusSesiWilayah,
 	)
-	
+
 	// ============================================================
 	// 10. ENDPOINT PETUGAS - SCAN QR
 	// ============================================================
@@ -435,6 +449,18 @@ func main() {
 		middleware.AuthMiddleware(cfg.JWTSecret),
 		middleware.PermissionMiddleware(permissionRepository, "pedagang.read"),
 		sisaLapakController.DeleteJalan,
+	)
+
+	// ============================================================
+	// 12b. ENDPOINT PETUGAS - ACAK LAPAK
+	// (isi pool lokasi lapak_slot SEBELUM ada pedagang yang daftar --
+	// endpoint reshuffle lama sudah dihapus, "Acak Ulang" gak diperlukan
+	// lagi karena sistem udah ngacak lokasi pas GenerateSlot/ClaimSlot)
+	// ============================================================
+	app.Post("/api/petugas/acak-lapak/generate-slot",
+		middleware.AuthMiddleware(cfg.JWTSecret),
+		middleware.PermissionMiddleware(permissionRepository, "pedagang.read"),
+		acakLapakController.GenerateSlot,
 	)
 
 	// ============================================================

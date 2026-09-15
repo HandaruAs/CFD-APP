@@ -4,7 +4,14 @@ import { usePathname } from "next/navigation";
 import { Sidebar } from "@/components/sidebar";
 import { Topbar } from "@/components/topbar";
 
-const PUBLIC_PATHS = ["/", "/auth/login", "/auth/register", "/auth/forgot-password", "/auth/verify"];
+const PUBLIC_PATHS = [
+  "/",
+  "/daftar-lapak",
+  "/auth/login",
+  "/auth/register",
+  "/auth/forgot-password",
+  "/auth/verify",
+];
 
 export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();

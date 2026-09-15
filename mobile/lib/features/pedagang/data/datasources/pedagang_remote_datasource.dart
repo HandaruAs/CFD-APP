@@ -171,9 +171,12 @@ class PedagangRemoteDatasource {
   /// [namaKecamatan] gak dibalikin backend di respons klaim (cuma
   /// nomor_lapak + nama_jalan), jadi diselipin dari list kecamatan yang
   /// udah di-load di sisi client -- sama persis kayak web.
+  /// POST /api/pedagang/lapak/klaim -- mode "se_surabaya" (kecamatanId
+  /// diabaikan) atau "kecamatan" (kecamatanId wajib). Jalan udah gak
+  /// dikirim dari sini lagi -- backend yang milih acak.
   static Future<HasilKlaim> klaimLapak({
-    required String jalanId,
-    required String namaKecamatan,
+    required String mode,
+    String? kecamatanId,
   }) async {
     final headers = await _authHeaders();
     final url = '${ApiConfig.baseUrl}/api/pedagang/lapak/klaim';
@@ -181,7 +184,10 @@ class PedagangRemoteDatasource {
     final res = await http.post(
       Uri.parse(url),
       headers: headers,
-      body: jsonEncode({'jalan_id': jalanId}),
+      body: jsonEncode({
+        'mode': mode,
+        if (kecamatanId != null) 'kecamatan_id': kecamatanId,
+      }),
     );
     final data = jsonDecode(res.body) as Map<String, dynamic>;
 
@@ -192,7 +198,10 @@ class PedagangRemoteDatasource {
 
     return HasilKlaim(
       nomorStand: data['nomor_lapak'] as String? ?? '-',
-      kecamatan: namaKecamatan,
+      // Backend sekarang selalu balikin nama_kecamatan -- penting buat
+      // mode se_surabaya karena pedagang gak milih kecamatan sendiri,
+      // jadi gak ada nilai dari sisi app yang bisa dipakai.
+      kecamatan: data['nama_kecamatan'] as String? ?? '-',
       namaJalan: data['nama_jalan'] as String? ?? '-',
     );
   }

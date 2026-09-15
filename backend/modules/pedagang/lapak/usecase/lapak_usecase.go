@@ -2,26 +2,24 @@ package usecase
 
 import (
 	"context"
-	"errors"
 	"time"
 
 	"cfd-backend/modules/pedagang/lapak/entity"
-	"cfd-backend/modules/pedagang/lapak/repository"
 )
 
 type LapakRepository interface {
-	GetActiveSessionID(ctx context.Context) (string, error)
+	GetOrCreateSessionHariIni(ctx context.Context) (string, error)
 	GetPedagangProfileIDByUserID(ctx context.Context, userID string) (string, error)
 	ListKecamatan(ctx context.Context) ([]entity.KecamatanDTO, error)
 	ListJalanByKecamatan(ctx context.Context, kecamatanID, sessionID string) ([]entity.JalanDTO, error)
-	ClaimLapak(ctx context.Context, pedagangID, sessionID, jalanID string) (nomorLapak string, namaJalan string, claimedAt time.Time, err error)
+	ClaimSlot(ctx context.Context, pedagangID, sessionID string) (nomorLapak, namaJalan, namaKecamatan string, claimedAt time.Time, err error)
 	GetKlaimByPedagangSession(ctx context.Context, pedagangID, sessionID string) (nomorLapak, namaJalan, namaKecamatan string, claimedAt time.Time, found bool, err error)
 }
 
 type LapakUsecase interface {
 	ListKecamatan(ctx context.Context) ([]entity.KecamatanDTO, error)
 	ListJalan(ctx context.Context, kecamatanID string) ([]entity.JalanDTO, error)
-	ClaimLapak(ctx context.Context, userID, jalanID string) (*entity.ClaimLapakResponse, error)
+	ClaimLapak(ctx context.Context, userID string) (*entity.ClaimLapakResponse, error)
 	GetStatus(ctx context.Context, userID string) (*entity.StatusLapakResponse, error)
 }
 
@@ -38,15 +36,15 @@ func (u *lapakUsecase) ListKecamatan(ctx context.Context) ([]entity.KecamatanDTO
 }
 
 func (u *lapakUsecase) ListJalan(ctx context.Context, kecamatanID string) ([]entity.JalanDTO, error) {
-	sessionID, err := u.repo.GetActiveSessionID(ctx)
+	sessionID, err := u.repo.GetOrCreateSessionHariIni(ctx)
 	if err != nil {
 		return nil, err
 	}
 	return u.repo.ListJalanByKecamatan(ctx, kecamatanID, sessionID)
 }
 
-func (u *lapakUsecase) ClaimLapak(ctx context.Context, userID, jalanID string) (*entity.ClaimLapakResponse, error) {
-	sessionID, err := u.repo.GetActiveSessionID(ctx)
+func (u *lapakUsecase) ClaimLapak(ctx context.Context, userID string) (*entity.ClaimLapakResponse, error) {
+	sessionID, err := u.repo.GetOrCreateSessionHariIni(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -56,38 +54,31 @@ func (u *lapakUsecase) ClaimLapak(ctx context.Context, userID, jalanID string) (
 		return nil, err
 	}
 
-	nomorLapak, namaJalan, claimedAt, err := u.repo.ClaimLapak(ctx, pedagangID, sessionID, jalanID)
+	nomorLapak, namaJalan, namaKecamatan, claimedAt, err := u.repo.ClaimSlot(ctx, pedagangID, sessionID)
 	if err != nil {
 		return nil, err
 	}
 
 	return &entity.ClaimLapakResponse{
-		NomorLapak: nomorLapak,
-		NamaJalan:  namaJalan,
-		ClaimedAt:  claimedAt,
+		NomorLapak:    nomorLapak,
+		NamaJalan:     namaJalan,
+		NamaKecamatan: namaKecamatan,
+		ClaimedAt:     claimedAt,
 	}, nil
 }
 
 // GetStatus dipakai frontend buat 2 hal sekaligus: (1) nentuin apakah form
-// klaim boleh ditampilin sama sekali (SesiAktif), dan (2) kalau boleh, apakah
-// pedagang ini udah pernah klaim (SudahKlaim). Kalau sesi belum aktif (belum
-// dibuka petugas / belum masuk jam / udah lewat jam), ini TETAP return 200
-// dengan SesiAktif: false + pesan alasannya -- bukan error, biar frontend
-// gampang nampilin banner tanpa perlu parsing error response.
+// klaim boleh ditampilin sama sekali (SesiAktif), dan (2) kalau boleh,
+// apakah pedagang ini udah pernah klaim (SudahKlaim).
+//
+// SesiAktif sekarang SELALU true -- pedagang boleh klaim kapan aja gak
+// peduli petugas udah buka sesi manual atau belum (lihat komentar di
+// GetOrCreateSessionHariIni). Field ini dipertahankan (bukan dihapus) biar
+// kontrak response ke frontend gak berubah; PesanSesi juga gak akan pernah
+// keisi lagi dari jalur ini.
 func (u *lapakUsecase) GetStatus(ctx context.Context, userID string) (*entity.StatusLapakResponse, error) {
-	sessionID, err := u.repo.GetActiveSessionID(ctx)
+	sessionID, err := u.repo.GetOrCreateSessionHariIni(ctx)
 	if err != nil {
-		switch {
-		case errors.Is(err, repository.ErrTidakAdaSesiAktif),
-			errors.Is(err, repository.ErrCheckInDitutup),
-			errors.Is(err, repository.ErrDiluarJamCheckIn):
-			pesan := err.Error()
-			return &entity.StatusLapakResponse{
-				SudahKlaim: false,
-				SesiAktif:  false,
-				PesanSesi:  &pesan,
-			}, nil
-		}
 		return nil, err
 	}
 

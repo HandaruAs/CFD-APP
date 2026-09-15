@@ -37,20 +37,6 @@ func (ctrl *LapakController) ListJalan(c fiber.Ctx) error {
 
 	list, err := ctrl.usecase.ListJalan(c.Context(), kecamatanID)
 	if err != nil {
-		switch {
-		case errors.Is(err, repository.ErrTidakAdaSesiAktif):
-			return c.Status(fiber.StatusConflict).JSON(fiber.Map{
-				"error": "belum ada sesi CFD yang dibuka petugas hari ini",
-			})
-		case errors.Is(err, repository.ErrCheckInDitutup):
-			return c.Status(fiber.StatusConflict).JSON(fiber.Map{
-				"error": "check-in pedagang sedang ditutup oleh petugas",
-			})
-		case errors.Is(err, repository.ErrDiluarJamCheckIn):
-			return c.Status(fiber.StatusConflict).JSON(fiber.Map{
-				"error": "saat ini di luar jam check-in yang ditentukan petugas",
-			})
-		}
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
 			"error": "gagal mengambil daftar jalan",
 		})
@@ -58,6 +44,11 @@ func (ctrl *LapakController) ListJalan(c fiber.Ctx) error {
 	return c.Status(fiber.StatusOK).JSON(fiber.Map{"jalan": list})
 }
 
+// ClaimLapak - POST /api/pedagang/lapak/klaim
+//
+// Gak ada request body sama sekali sekarang -- jalan & nomor lapaknya
+// diambil dari pool yang udah disiapin petugas (lihat
+// modules/petugas/acak-lapak GenerateSlot), bukan dipilih/diacak di sini.
 func (ctrl *LapakController) ClaimLapak(c fiber.Ctx) error {
 	userID, exists := c.Locals("user_id").(string)
 	if !exists || userID == "" {
@@ -66,27 +57,11 @@ func (ctrl *LapakController) ClaimLapak(c fiber.Ctx) error {
 		})
 	}
 
-	var req struct {
-		JalanID string `json:"jalan_id"`
-	}
-	if err := c.Bind().Body(&req); err != nil {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": err.Error()})
-	}
-	if req.JalanID == "" {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "jalan_id wajib diisi"})
-	}
-
-	result, err := ctrl.usecase.ClaimLapak(c.Context(), userID, req.JalanID)
+	result, err := ctrl.usecase.ClaimLapak(c.Context(), userID)
 	if err != nil {
 		switch {
-		case errors.Is(err, repository.ErrTidakAdaSesiAktif):
-			return c.Status(fiber.StatusConflict).JSON(fiber.Map{"error": "belum ada sesi CFD yang dibuka petugas hari ini"})
-		case errors.Is(err, repository.ErrCheckInDitutup):
-			return c.Status(fiber.StatusConflict).JSON(fiber.Map{"error": "check-in pedagang sedang ditutup oleh petugas"})
-		case errors.Is(err, repository.ErrDiluarJamCheckIn):
-			return c.Status(fiber.StatusConflict).JSON(fiber.Map{"error": "saat ini di luar jam check-in yang ditentukan petugas"})
-		case errors.Is(err, repository.ErrLapakPenuh):
-			return c.Status(fiber.StatusConflict).JSON(fiber.Map{"error": "lapak di jalan ini sudah penuh, coba jalan lain"})
+		case errors.Is(err, repository.ErrLapakBelumDiacak):
+			return c.Status(fiber.StatusConflict).JSON(fiber.Map{"error": "lapak belum diacak petugas, silakan coba lagi nanti"})
 		case errors.Is(err, repository.ErrSudahKlaim):
 			return c.Status(fiber.StatusConflict).JSON(fiber.Map{"error": "kamu sudah klaim lapak di sesi ini"})
 		case errors.Is(err, repository.ErrPedagangTidakDitemukan):
