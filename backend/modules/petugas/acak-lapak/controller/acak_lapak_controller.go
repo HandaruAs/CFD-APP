@@ -3,6 +3,7 @@ package controller
 import (
 	"errors"
 
+	"cfd-backend/modules/petugas/acak-lapak/entity"
 	"cfd-backend/modules/petugas/acak-lapak/repository"
 	"cfd-backend/modules/petugas/acak-lapak/usecase"
 
@@ -19,10 +20,6 @@ func NewAcakLapakController(usecase usecase.AcakLapakUsecase) *AcakLapakControll
 
 func mapAcakLapakError(c fiber.Ctx, err error) error {
 	switch {
-	case errors.Is(err, repository.ErrTidakAdaSesiAktif):
-		return c.Status(fiber.StatusConflict).JSON(fiber.Map{
-			"error": "belum ada sesi CFD yang aktif hari ini",
-		})
 	case errors.Is(err, repository.ErrJalanTidakDitemukan):
 		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{
 			"error": "jalan tidak ditemukan",
@@ -31,55 +28,54 @@ func mapAcakLapakError(c fiber.Ctx, err error) error {
 		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{
 			"error": "kecamatan tidak ditemukan",
 		})
+	case errors.Is(err, repository.ErrScopeTidakValid), errors.Is(err, usecase.ErrScopeTidakValid):
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"error": "cakupan tidak valid",
+		})
+	case errors.Is(err, repository.ErrKecamatanWajibDiisi):
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"error": "kecamatan_id wajib diisi untuk scope kecamatan",
+		})
+	case errors.Is(err, repository.ErrJalanWajibDiisi):
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"error": "jalan_id wajib diisi untuk scope jalan",
+		})
+	case errors.Is(err, usecase.ErrWilayahTidakBerhak):
+		return c.Status(fiber.StatusForbidden).JSON(fiber.Map{
+			"error": "kamu tidak punya akses untuk generate slot di wilayah ini",
+		})
 	default:
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
-			"error": "gagal mengacak lapak: " + err.Error(),
+			"error": "gagal generate slot lapak: " + err.Error(),
 		})
 	}
 }
 
-// AcakJalan - POST /api/petugas/acak-lapak/jalan/:jalanId
-func (ctrl *AcakLapakController) AcakJalan(c fiber.Ctx) error {
-	jalanID := c.Params("jalanId")
-	if jalanID == "" {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "jalanId wajib diisi"})
+// GenerateSlot - POST /api/petugas/acak-lapak/generate-slot
+//
+// Petugas nyiapin pool lokasi (lapak_slot) buat scope yang dipilih
+// (kota/kecamatan/jalan), SEBELUM ada pedagang yang daftar. Idempotent --
+// klik ulang gak over-provision, cuma nambahin kekurangannya aja.
+func (ctrl *AcakLapakController) GenerateSlot(c fiber.Ctx) error {
+	userID, exists := c.Locals("user_id").(string)
+	if !exists || userID == "" {
+		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "unauthorized"})
 	}
 
-	result, err := ctrl.usecase.AcakJalan(c.Context(), jalanID)
+	var req entity.GenerateSlotRequest
+	if err := c.Bind().Body(&req); err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": err.Error()})
+	}
+	if req.Scope == "" {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "scope wajib diisi (kota, kecamatan, atau jalan)"})
+	}
+
+	result, err := ctrl.usecase.GenerateSlot(c.Context(), userID, &req)
 	if err != nil {
 		return mapAcakLapakError(c, err)
 	}
 	return c.Status(fiber.StatusOK).JSON(fiber.Map{
-		"message": "nomor lapak berhasil diacak",
-		"data":    result,
-	})
-}
-
-// AcakKecamatan - POST /api/petugas/acak-lapak/kecamatan/:kecamatanId
-func (ctrl *AcakLapakController) AcakKecamatan(c fiber.Ctx) error {
-	kecamatanID := c.Params("kecamatanId")
-	if kecamatanID == "" {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "kecamatanId wajib diisi"})
-	}
-
-	result, err := ctrl.usecase.AcakKecamatan(c.Context(), kecamatanID)
-	if err != nil {
-		return mapAcakLapakError(c, err)
-	}
-	return c.Status(fiber.StatusOK).JSON(fiber.Map{
-		"message": "nomor lapak se-kecamatan berhasil diacak",
-		"data":    result,
-	})
-}
-
-// AcakSemua - POST /api/petugas/acak-lapak/semua
-func (ctrl *AcakLapakController) AcakSemua(c fiber.Ctx) error {
-	result, err := ctrl.usecase.AcakSemua(c.Context())
-	if err != nil {
-		return mapAcakLapakError(c, err)
-	}
-	return c.Status(fiber.StatusOK).JSON(fiber.Map{
-		"message": "nomor lapak se-Surabaya berhasil diacak",
+		"message": "pool lapak berhasil disiapkan",
 		"data":    result,
 	})
 }

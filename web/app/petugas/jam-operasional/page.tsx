@@ -2,26 +2,21 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import {
   Clock,
-  Hourglass,
   History,
-  Lock,
-  LockOpen,
   Check,
   AlertTriangle,
   Loader2,
   X,
   Info,
   Edit,
-  MapPin,
-  Store,
   Plus,
-  CalendarDays,
-  Save,
-  Trash2,
+  Shuffle,
   ChevronUp,
   ChevronDown,
+  Tag,
 } from "lucide-react";
 
 // ========== TYPES ==========
@@ -33,6 +28,24 @@ type Riwayat = {
   jamSelesai: string;
   durasi: string;
   status: StatusRiwayat;
+};
+// Sesi CFD hari ini yang beneran ngegate check-in (scan QR) & checkout --
+// ini SATU-SATUNYA sesi yang dipakai backend buat validasi (lihat
+// modules/shared/sesi.ResolveSesiHariIni). Sebelumnya halaman ini punya
+// "Sesi CFD per Wilayah" yang bikin baris cfd_sessions terpisah per
+// kota/kecamatan/jalan, tapi ternyata gak pernah dicek di alur klaim
+// lapak/check-in/checkout sama sekali -- jadi fitur itu (dan endpoint
+// wilayah-saya / sesi-wilayah di backend) sudah dinonaktifkan. Timer &
+// kontrol di halaman ini sekarang pakai sesi global ini.
+type SesiHariIni = {
+  id: string;
+  tanggal: string;
+  jamMulai: string;
+  jamSelesaiRencana: string;
+  status: string;
+  aktif: boolean;
+  sisaMenit: number;
+  totalMenit: number;
 };
 type StatusOperasional = {
   // NOTE: nama field "pendaftaran" ini kontrak API dari backend
@@ -46,61 +59,10 @@ type StatusOperasional = {
     linkPendaftaran: string | null;
     jamBuka?: string | null;
     jamTutup?: string | null;
+    kodeEvent: string;
   };
+  sesi: SesiHariIni | null;
   riwayat: Riwayat[];
-};
-
-// ========== TIPE SESI PER-WILAYAH (BARU) ==========
-type Scope = "kota" | "kecamatan" | "jalan";
-type JalanRingkas = {
-  id: string;
-  nama: string;
-  kecamatanId: string;
-  kecamatanNama: string;
-};
-type SesiWilayah = {
-  id: string;
-  namaSesi: string;
-  tanggal: string;
-  jamMulai: string;
-  jamSelesaiRencana: string;
-  status: "berlangsung" | "selesai_normal" | "diperpanjang" | "diakhiri_awal" | string;
-  aktif: boolean;
-  sisaMenit: number;
-  totalMenit: number;
-  scope: Scope;
-  scopeLabel: string;
-  jalan: JalanRingkas[];
-};
-type WilayahSaya = {
-  kecamatanId: string | null;
-  kecamatanNama: string | null;
-  jalanId: string | null;
-  jalanNama: string | null;
-  bebas: boolean;
-};
-
-// ========== TIPE JADWAL MINGGUAN (BARU) ==========
-type HariValue = "senin" | "selasa" | "rabu" | "kamis" | "jumat" | "sabtu" | "minggu";
-type JadwalMingguan = {
-  hari: HariValue;
-  jamMulai: string;
-  jamSelesaiRencana: string;
-  isActive: boolean;
-};
-
-// ========== TIPE UNTUK SISA LAPAK ==========
-type JalanData = {
-  id: string;
-  kode_jalan: string;
-  nama: string;
-  kuota: number;
-  terisi: number;
-};
-type KecamatanData = {
-  kecamatanId: string | null;
-  kecamatan: string;
-  jalan: JalanData[];
 };
 
 // ========== STYLE (class pt-pill-* didefinisikan di petugas.css) ==========
@@ -109,24 +71,6 @@ const STATUS_STYLE: Record<StatusRiwayat, { label: string; pill: string; icon: t
   diperpanjang: { label: "Diperpanjang", pill: "pt-pill-warning", icon: Clock },
   "diakhiri-awal": { label: "Diakhiri Awal", pill: "pt-pill-danger", icon: AlertTriangle },
 };
-
-const SESI_WILAYAH_STATUS_STYLE: Record<string, { label: string; pill: string }> = {
-  berlangsung: { label: "Berlangsung", pill: "pt-pill-success" },
-  diperpanjang: { label: "Diperpanjang", pill: "pt-pill-warning" },
-  selesai_normal: { label: "Selesai Normal", pill: "pt-pill-neutral" },
-  diakhiri_awal: { label: "Diakhiri Awal", pill: "pt-pill-danger" },
-};
-const SESI_WILAYAH_STATUS_DEFAULT = { label: "-", pill: "pt-pill-neutral" };
-
-const HARI_LIST: { value: HariValue; label: string }[] = [
-  { value: "senin", label: "Senin" },
-  { value: "selasa", label: "Selasa" },
-  { value: "rabu", label: "Rabu" },
-  { value: "kamis", label: "Kamis" },
-  { value: "jumat", label: "Jumat" },
-  { value: "sabtu", label: "Sabtu" },
-  { value: "minggu", label: "Minggu" },
-];
 
 const RADIUS = 54;
 const CIRC = 2 * Math.PI * RADIUS;
@@ -141,12 +85,6 @@ function formatSisaWaktu(totalMenit: number) {
 }
 function formatWaktuTabel(waktu: string) {
   return waktu.split(".")[0];
-}
-function todayISO() {
-  const d = new Date();
-  const offset = d.getTimezoneOffset();
-  const local = new Date(d.getTime() - offset * 60_000);
-  return local.toISOString().slice(0, 10);
 }
 function apiUrl(path: string) {
   const base = process.env.NEXT_PUBLIC_API_URL;
@@ -293,42 +231,21 @@ export default function JamOperasionalPage() {
   const [loadError, setLoadError] = useState<string | null>(null);
   const [toast, setToast] = useState<{ message: string; type: "success" | "error" } | null>(null);
 
-  // ===== STATE SESI PER-WILAYAH (BARU) =====
-  const [wilayahSaya, setWilayahSaya] = useState<WilayahSaya | null>(null);
-  const [sesiWilayahList, setSesiWilayahList] = useState<SesiWilayah[]>([]);
-  const [isLoadingSesiWilayah, setIsLoadingSesiWilayah] = useState(true);
-  const [sesiWilayahError, setSesiWilayahError] = useState<string | null>(null);
-
-  const [showBuatSesiModal, setShowBuatSesiModal] = useState(false);
-  const [formScope, setFormScope] = useState<Scope>("jalan");
-  const [formKecamatanId, setFormKecamatanId] = useState("");
-  const [formJalanId, setFormJalanId] = useState("");
-  const [formTanggal, setFormTanggal] = useState(todayISO());
+  // ===== STATE SESI CFD HARI INI =====
+  const [showAturSesiModal, setShowAturSesiModal] = useState(false);
   const [formJamMulai, setFormJamMulai] = useState("06:00");
   const [formJamSelesai, setFormJamSelesai] = useState("11:00");
   const [isSubmittingSesi, setIsSubmittingSesi] = useState(false);
-
-  // ===== STATE JADWAL MINGGUAN (BARU) =====
-  const [jadwalList, setJadwalList] = useState<JadwalMingguan[]>([]);
-  const [isLoadingJadwal, setIsLoadingJadwal] = useState(true);
-  const [jadwalError, setJadwalError] = useState<string | null>(null);
-  const [editingHari, setEditingHari] = useState<HariValue | null>(null);
-  const [jadwalDraft, setJadwalDraft] = useState({ jamMulai: "06:00", jamSelesaiRencana: "11:00", isActive: true });
-  const [savingHari, setSavingHari] = useState<HariValue | null>(null);
+  const [isBukaSesi, setIsBukaSesi] = useState(false);
 
   // "checkIn*" di sini map ke field API "pendaftaran" (lihat catatan di
   // tipe StatusOperasional di atas) -- ini jendela waktu buat pedagang
   // check-in / ambil nomor stand, bukan buat isi form pendaftaran akun.
   const [checkInJamBuka, setCheckInJamBuka] = useState("00:00");
   const [checkInJamTutup, setCheckInJamTutup] = useState("23:59");
-  const [isTogglingCheckIn, setIsTogglingCheckIn] = useState(false);
+  const [kodeEvent, setKodeEvent] = useState("CFD");
   const [isSavingCheckIn, setIsSavingCheckIn] = useState(false);
   const [showEditJamCheckInModal, setShowEditJamCheckInModal] = useState(false);
-
-  // ===== STATE UNTUK SISA LAPAK =====
-  const [lapakData, setLapakData] = useState<KecamatanData[]>([]);
-  const [isLoadingLapak, setIsLoadingLapak] = useState(true);
-  const [lapakError, setLapakError] = useState<string | null>(null);
 
   const [confirmDialog, setConfirmDialog] = useState<{
     title: string;
@@ -346,7 +263,7 @@ export default function JamOperasionalPage() {
     setTimeout(() => setToast(null), 4000);
   };
 
-  // ===== LOAD STATUS (pendaftaran / check-in + riwayat) =====
+  // ===== LOAD STATUS (sesi hari ini + pendaftaran/check-in + riwayat) =====
   const loadStatus = async () => {
     try {
       const data = (await apiFetch("/api/petugas/jam-operasional")) as StatusOperasional;
@@ -358,6 +275,9 @@ export default function JamOperasionalPage() {
       if (data.pendaftaran.jamTutup) {
         setCheckInJamTutup(data.pendaftaran.jamTutup.slice(0, 5));
       }
+      if (data.pendaftaran.kodeEvent) {
+        setKodeEvent(data.pendaftaran.kodeEvent);
+      }
       setCheckInSudahDiubahHariIni(false);
     } catch (err) {
       setLoadError(err instanceof Error ? err.message : "gagal memuat data");
@@ -366,259 +286,99 @@ export default function JamOperasionalPage() {
     }
   };
 
-  // ===== LOAD WILAYAH SAYA =====
-  const loadWilayahSaya = async () => {
-    try {
-      const data = (await apiFetch("/api/petugas/wilayah-saya")) as WilayahSaya;
-      setWilayahSaya(data);
-    } catch {
-      // non-fatal -- form buat sesi baru cuma dibatasi kalau ini gagal
-      setWilayahSaya(null);
-    }
-  };
-
-  // ===== LOAD SESI PER-WILAYAH =====
-  const loadSesiWilayah = async () => {
-    try {
-      const data = await apiFetch("/api/petugas/jam-operasional/sesi-wilayah");
-      setSesiWilayahList(Array.isArray(data.sesi) ? data.sesi : []);
-      setSesiWilayahError(null);
-    } catch (err) {
-      setSesiWilayahError(err instanceof Error ? err.message : "gagal memuat sesi wilayah");
-      setSesiWilayahList([]);
-    } finally {
-      setIsLoadingSesiWilayah(false);
-    }
-  };
-
-  // ===== LOAD JADWAL MINGGUAN =====
-  const loadJadwalMingguan = async () => {
-    try {
-      const data = await apiFetch("/api/petugas/jam-operasional/jadwal-mingguan");
-      setJadwalList(Array.isArray(data.jadwal) ? data.jadwal : []);
-      setJadwalError(null);
-    } catch (err) {
-      setJadwalError(err instanceof Error ? err.message : "gagal memuat jadwal mingguan");
-    } finally {
-      setIsLoadingJadwal(false);
-    }
-  };
-
-  // ===== FETCH SISA LAPAK =====
-  const loadSisaLapak = async () => {
-    try {
-      const data = await apiFetch("/api/petugas/sisa-lapak");
-      setLapakData(Array.isArray(data) ? data : []);
-      setLapakError(null);
-    } catch (err) {
-      setLapakError(err instanceof Error ? err.message : "gagal memuat data sisa lapak");
-      setLapakData([]);
-    } finally {
-      setIsLoadingLapak(false);
-    }
-  };
-
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect
     loadStatus();
-    loadWilayahSaya();
-    loadSesiWilayah();
-    loadJadwalMingguan();
-    loadSisaLapak();
-    const interval = setInterval(() => {
-      loadStatus();
-      loadSesiWilayah();
-      loadSisaLapak();
-    }, 60_000);
+    const interval = setInterval(loadStatus, 60_000);
     return () => clearInterval(interval);
   }, []);
 
-  // ===== HANDLER: BUAT SESI WILAYAH BARU =====
-  const scopeOptionsTersedia: { value: Scope; label: string }[] = !wilayahSaya
-    ? []
-    : wilayahSaya.bebas
-    ? [
-        { value: "kota", label: "Se-Surabaya" },
-        { value: "kecamatan", label: "1 Kecamatan" },
-        { value: "jalan", label: "1 Jalan" },
-      ]
-    : wilayahSaya.jalanId
-    ? [{ value: "jalan", label: `Jl. ${wilayahSaya.jalanNama ?? ""}` }]
-    : wilayahSaya.kecamatanId
-    ? [
-        { value: "kecamatan", label: `Kec. ${wilayahSaya.kecamatanNama ?? ""}` },
-        { value: "jalan", label: "1 Jalan di kecamatan saya" },
-      ]
-    : [];
-
-  const daftarKecamatanForm = lapakData
-    .filter((k) => k.kecamatanId)
-    .map((k) => ({ id: k.kecamatanId as string, nama: k.kecamatan }));
-
-  const daftarJalanForm = wilayahSaya?.jalanId
-    ? []
-    : wilayahSaya?.bebas
-    ? lapakData.flatMap((k) => k.jalan.map((j) => ({ id: j.id, label: `${j.nama} — ${k.kecamatan}` })))
-    : lapakData
-        .filter((k) => k.kecamatanId === wilayahSaya?.kecamatanId)
-        .flatMap((k) => k.jalan.map((j) => ({ id: j.id, label: j.nama })));
-
-  const openBuatSesiModal = () => {
-    if (!wilayahSaya) {
-      showToast("Data wilayah petugas belum siap, coba lagi sebentar", "error");
-      return;
+  // ===== HANDLER: BUKA SESI SEKARANG (jam mulai = sekarang, selesai 23:59) =====
+  const handleBukaSesiManual = async () => {
+    setIsBukaSesi(true);
+    try {
+      await apiFetch("/api/petugas/jam-operasional/sesi/buka", { method: "PATCH" });
+      showToast("✅ Sesi CFD berhasil dibuka", "success");
+      await loadStatus();
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : "gagal membuka sesi", "error");
+    } finally {
+      setIsBukaSesi(false);
     }
-    const defaultScope: Scope = wilayahSaya.bebas
-      ? "kota"
-      : wilayahSaya.kecamatanId && !wilayahSaya.jalanId
-      ? "kecamatan"
-      : "jalan";
-    setFormScope(defaultScope);
-    setFormKecamatanId(wilayahSaya.kecamatanId ?? "");
-    setFormJalanId(wilayahSaya.jalanId ?? "");
-    setFormTanggal(todayISO());
-    setFormJamMulai("06:00");
-    setFormJamSelesai("11:00");
-    setShowBuatSesiModal(true);
   };
 
-  const handleSubmitSesiWilayah = async () => {
-    if (!formTanggal || !formJamMulai || !formJamSelesai) {
-      showToast("Lengkapi tanggal dan jam terlebih dahulu", "error");
+  // ===== HANDLER: ATUR JAM SESI (bikin baru / update jam yang sudah ada) =====
+  const openAturSesiModal = () => {
+    setFormJamMulai(status?.sesi ? formatJamTampilan(status.sesi.jamMulai).replace(".", ":") : "06:00");
+    setFormJamSelesai(
+      status?.sesi ? formatJamTampilan(status.sesi.jamSelesaiRencana).replace(".", ":") : "11:00"
+    );
+    setShowAturSesiModal(true);
+  };
+
+  const handleSimpanSesi = async () => {
+    if (!formJamMulai || !formJamSelesai) {
+      showToast("Lengkapi jam mulai dan jam selesai", "error");
       return;
     }
-    const body: Record<string, unknown> = {
-      scope: formScope,
-      tanggal: formTanggal,
-      jamMulai: formJamMulai,
-      jamSelesaiRencana: formJamSelesai,
-    };
-    if (formScope === "kecamatan") {
-      const kecId = wilayahSaya?.bebas ? formKecamatanId : wilayahSaya?.kecamatanId;
-      if (!kecId) {
-        showToast("Pilih kecamatan terlebih dahulu", "error");
-        return;
-      }
-      body.kecamatanId = kecId;
-    }
-    if (formScope === "jalan") {
-      const jalId = wilayahSaya?.jalanId ?? formJalanId;
-      if (!jalId) {
-        showToast("Pilih jalan terlebih dahulu", "error");
-        return;
-      }
-      body.jalanId = jalId;
-    }
-
     setIsSubmittingSesi(true);
     try {
-      await apiFetch("/api/petugas/jam-operasional/sesi-wilayah", {
-        method: "POST",
-        body: JSON.stringify(body),
+      await apiFetch("/api/petugas/jam-operasional/sesi", {
+        method: "PATCH",
+        body: JSON.stringify({ jamMulai: formJamMulai, jamSelesaiRencana: formJamSelesai }),
       });
-      showToast("✅ Sesi CFD berhasil dibuat", "success");
-      setShowBuatSesiModal(false);
-      await loadSesiWilayah();
+      showToast("✅ Jam sesi CFD berhasil disimpan", "success");
+      setShowAturSesiModal(false);
+      await loadStatus();
     } catch (err) {
-      showToast(err instanceof Error ? err.message : "gagal membuat sesi", "error");
+      showToast(err instanceof Error ? err.message : "gagal menyimpan jam sesi", "error");
     } finally {
       setIsSubmittingSesi(false);
     }
   };
 
-  // ===== HANDLER: HAPUS SESI WILAYAH =====
-  const handleHapusSesi = (sesi: SesiWilayah) => {
+  // ===== HANDLER: AKHIRI SESI LEBIH AWAL =====
+  // Teks konfirmasi ini SENGAJA dirombak dari versi sebelumnya -- versi
+  // lama bilang "sesi tidak bisa dibuka lagi hari ini", padahal itu udah
+  // gak akurat lagi: BukaSesiManual/SimpanSesi sekarang reaktivasi baris
+  // cfd_sessions yang sama (ON CONFLICT DO UPDATE), jadi sesi ini BISA
+  // dibuka lagi kalau memang perlu. Yang beneran permanen & perlu
+  // diketahui petugas SEBELUM klik itu soal klaim pedagang yang belum
+  // check-in -- itu yang dibatalkan otomatis (lihat
+  // BatalkanKlaimBelumCheckIn di modules/operasional).
+  const handleAkhiriSesi = () => {
     setConfirmDialog({
-      title: "Hapus Sesi CFD",
-      message: `Yakin ingin menghapus sesi "${sesi.namaSesi}"? Tindakan ini tidak bisa dibatalkan.`,
-      confirmLabel: "Ya, Hapus",
+      title: "Akhiri Sesi Lebih Awal",
+      message:
+        "Sesi CFD hari ini akan langsung ditutup. Pedagang yang SUDAH check-in tetap aman dan bisa langsung check-out. Pedagang yang BELUM check-in klaim lapaknya otomatis dibatalkan (mereka perlu klaim ulang kalau sesi ini dibuka lagi). Sesi ini masih bisa dibuka ulang lewat \"Buka Sesi Sekarang\" atau \"Atur Jam Sesi\" kalau ternyata masih diperlukan hari ini. Lanjutkan?",
+      confirmLabel: "Ya, Akhiri Sesi",
       danger: true,
       onConfirm: async () => {
         setConfirmDialog(null);
         try {
-          await apiFetch(`/api/petugas/jam-operasional/sesi-wilayah/${sesi.id}`, {
-            method: "DELETE",
-          });
-          showToast("✅ Sesi CFD berhasil dihapus", "success");
-          await loadSesiWilayah();
-        } catch (err) {
-          showToast(err instanceof Error ? err.message : "gagal menghapus sesi", "error");
-        }
-      },
-    });
-  };
-
-  // ===== HANDLER: JADWAL MINGGUAN =====
-  const startEditJadwal = (hari: HariValue, row?: JadwalMingguan) => {
-    setEditingHari(hari);
-    setJadwalDraft({
-      jamMulai: row ? row.jamMulai.slice(0, 5) : "06:00",
-      jamSelesaiRencana: row ? row.jamSelesaiRencana.slice(0, 5) : "11:00",
-      isActive: row ? row.isActive : true,
-    });
-  };
-
-  const handleSimpanJadwalHari = async (hari: HariValue) => {
-    setSavingHari(hari);
-    try {
-      await apiFetch("/api/petugas/jam-operasional/jadwal-mingguan", {
-        method: "PATCH",
-        body: JSON.stringify({
-          hari,
-          jamMulai: jadwalDraft.jamMulai,
-          jamSelesaiRencana: jadwalDraft.jamSelesaiRencana,
-          isActive: jadwalDraft.isActive,
-        }),
-      });
-      showToast("✅ Jadwal mingguan berhasil disimpan", "success");
-      setEditingHari(null);
-      await loadJadwalMingguan();
-    } catch (err) {
-      showToast(err instanceof Error ? err.message : "gagal menyimpan jadwal mingguan", "error");
-    } finally {
-      setSavingHari(null);
-    }
-  };
-
-  // ===== HANDLER CHECK-IN PEDAGANG =====
-  const handleToggleCheckIn = async () => {
-    if (!status) return;
-    const newState = !status.pendaftaran.isOpen;
-    const jamTutupDisplay = status.pendaftaran.jamTutup
-      ? ` pada jam ${formatJamTampilan(status.pendaftaran.jamTutup)} WIB`
-      : "";
-
-    setConfirmDialog({
-      title: `Konfirmasi ${newState ? "Buka" : "Tutup"} Check-in`,
-      message: newState
-        ? "Apakah Anda yakin ingin membuka check-in pedagang?"
-        : `Apakah Anda yakin ingin menutup check-in pedagang${jamTutupDisplay}?`,
-      confirmLabel: `Ya, ${newState ? "Buka" : "Tutup"}`,
-      danger: !newState,
-      onConfirm: async () => {
-        setConfirmDialog(null);
-        setIsTogglingCheckIn(true);
-        try {
-          await apiFetch("/api/petugas/jam-operasional/pendaftaran", {
-            method: "PATCH",
-            body: JSON.stringify({ isOpen: newState }),
-          });
-          showToast(`Check-in ${newState ? "dibuka" : "ditutup"} ✅`, "success");
+          await apiFetch("/api/petugas/jam-operasional/sesi/akhiri", { method: "PATCH" });
+          showToast("✅ Sesi CFD berhasil diakhiri lebih awal", "success");
           await loadStatus();
         } catch (err) {
-          showToast(err instanceof Error ? err.message : "Gagal mengubah status check-in", "error");
-        } finally {
-          setIsTogglingCheckIn(false);
+          showToast(err instanceof Error ? err.message : "gagal mengakhiri sesi", "error");
         }
       },
     });
   };
 
+  // ===== HANDLER KODE EVENT =====
+  // "Pengaturan Check-in Pedagang" (toggle buka/tutup + jendela jam)
+  // udah gak ngefek apa-apa lagi di backend -- ClaimLapak sekarang SELALU
+  // boleh diklaim kapan aja (lihat komentar GetStatus di
+  // modules/pedagang/lapak/usecase). Yang masih beneran dipakai di sini
+  // cuma Kode Event (prefix nomor lapak acak) -- isOpen/jamBuka/jamTutup
+  // tetap dikirim APA ADANYA (gak diubah) biar kontrak PATCH ke backend
+  // gak perlu disentuh.
   const handleSimpanCheckIn = async () => {
     if (!status) return;
     setConfirmDialog({
-      title: "Konfirmasi Perubahan Check-in",
-      message: "Apakah Anda yakin dengan perubahan pengaturan check-in ini?",
+      title: "Konfirmasi Perubahan Kode Event",
+      message: "Apakah Anda yakin dengan perubahan kode event ini?",
       confirmLabel: "Ya, Simpan",
       onConfirm: async () => {
         setConfirmDialog(null);
@@ -630,13 +390,14 @@ export default function JamOperasionalPage() {
               isOpen: status.pendaftaran.isOpen,
               jamBuka: checkInJamBuka,
               jamTutup: checkInJamTutup,
+              kodeEvent,
             }),
           });
-          showToast("✅ Pengaturan check-in berhasil disimpan", "success");
+          showToast("✅ Kode event berhasil disimpan", "success");
           setShowEditJamCheckInModal(false);
           await loadStatus();
         } catch (err) {
-          showToast(err instanceof Error ? err.message : "Gagal menyimpan pengaturan check-in", "error");
+          showToast(err instanceof Error ? err.message : "Gagal menyimpan kode event", "error");
         } finally {
           setIsSavingCheckIn(false);
         }
@@ -664,27 +425,9 @@ export default function JamOperasionalPage() {
 
   const canEditCheckIn = !(isFriday && checkInSudahDiubahHariIni);
 
-  // Sesi wilayah yang lagi aktif (buat ditampilin di timer) -- kalau
-  // ada lebih dari satu yang aktif bersamaan, ambil yang paling
-  // cepat berakhir (sisaMenit terkecil).
-  const sesiAktifWilayah = sesiWilayahList
-    .filter((s) => s.aktif)
-    .sort((a, b) => a.sisaMenit - b.sisaMenit)[0];
-  const progress =
-    sesiAktifWilayah && sesiAktifWilayah.totalMenit > 0
-      ? (sesiAktifWilayah.sisaMenit / sesiAktifWilayah.totalMenit) * CIRC
-      : 0;
-
-  // ===== SISA LAPAK =====
-  const totalKuota = lapakData.reduce((acc, k) => {
-    for (const j of k.jalan) acc += j.kuota;
-    return acc;
-  }, 0);
-  const totalTerisi = lapakData.reduce((acc, k) => {
-    for (const j of k.jalan) acc += j.terisi;
-    return acc;
-  }, 0);
-  const sisaTotal = totalKuota - totalTerisi;
+  const sesi = status.sesi;
+  const progress = sesi && sesi.totalMenit > 0 ? (sesi.sisaMenit / sesi.totalMenit) * CIRC : 0;
+  const sesiSudahLewat = !!sesi && !sesi.aktif && sesi.status !== "aktif";
 
   return (
     <div className="flex flex-col gap-lg pb-xl">
@@ -702,162 +445,132 @@ export default function JamOperasionalPage() {
       <div>
         <h2 className="text-headline-lg text-on-surface">Jam Operasional</h2>
         <p className="mt-xs max-w-2xl text-body-md text-on-surface-variant">
-          Atur sesi CFD per wilayah (kota / kecamatan / jalan) dan jadwal mingguan otomatis. Kelola check-in pedagang
-          secara terpisah.
+          Atur sesi CFD hari ini dan kelola check-in pedagang.
         </p>
       </div>
 
       <div className="grid grid-cols-1 gap-md lg:grid-cols-[1fr_300px]">
-        {/* ===== SESI CFD PER WILAYAH + CHECK-IN (satu card, timer di samping) ===== */}
+        {/* ===== SESI CFD HARI INI + CHECK-IN (satu card, timer di samping) ===== */}
         <div className="pt-card">
           <div className="flex flex-wrap items-center justify-between gap-sm">
-            <h3 className="pt-section-title">Sesi CFD per Wilayah</h3>
-            <button type="button" onClick={openBuatSesiModal} className="pt-btn pt-btn-primary">
-              <Plus className="h-4 w-4" strokeWidth={2} />
-              Buat Sesi Baru
-            </button>
+            <h3 className="pt-section-title">Sesi CFD Hari Ini</h3>
+            <div className="flex items-center gap-sm">
+              <Link href="/petugas/acak-lapak" className="pt-btn pt-btn-secondary">
+                <Shuffle className="h-4 w-4" strokeWidth={2} />
+                Acak Lapak
+              </Link>
+              {sesi && (
+                <button type="button" onClick={openAturSesiModal} className="pt-btn pt-btn-ghost">
+                  <Edit className="h-4 w-4" strokeWidth={2} />
+                  Ubah Jam
+                </button>
+              )}
+            </div>
           </div>
 
-          {isLoadingSesiWilayah ? (
-            <div className="pt-loading">
-              <Loader2 className="h-6 w-6 animate-spin" strokeWidth={2} />
-              <p className="text-body-sm">Memuat sesi...</p>
+          {!sesi ? (
+            <div className="mt-md flex flex-col items-center gap-sm py-8 text-center">
+              <p className="text-body-md text-on-surface-variant">Belum ada sesi CFD untuk hari ini.</p>
+              <div className="flex flex-wrap justify-center gap-sm">
+                <button
+                  type="button"
+                  onClick={handleBukaSesiManual}
+                  disabled={isBukaSesi}
+                  className="pt-btn pt-btn-primary"
+                >
+                  {isBukaSesi ? (
+                    <Loader2 className="h-4 w-4 animate-spin" strokeWidth={2} />
+                  ) : (
+                    <Plus className="h-4 w-4" strokeWidth={2} />
+                  )}
+                  Buka Sesi Sekarang
+                </button>
+                <button type="button" onClick={openAturSesiModal} className="pt-btn pt-btn-secondary">
+                  <Clock className="h-4 w-4" strokeWidth={2} />
+                  Atur Jam Sesi
+                </button>
+              </div>
             </div>
-          ) : sesiWilayahError ? (
-            <div className="mt-sm rounded-xl border border-error-container bg-error-container/20 px-md py-sm text-body-sm text-on-error-container">
-              Gagal memuat sesi: {sesiWilayahError}
-            </div>
-          ) : sesiWilayahList.length === 0 ? (
-            <p className="mt-sm py-8 text-center text-body-md text-on-surface-variant">
-              Belum ada sesi CFD yang diatur untuk wilayahmu.
-            </p>
           ) : (
-            <div className="mt-md flex flex-col gap-sm">
-              {sesiWilayahList.map((s) => {
-                const style = SESI_WILAYAH_STATUS_STYLE[s.status] ?? SESI_WILAYAH_STATUS_DEFAULT;
-                return (
-                  <div
-                    key={s.id}
-                    className="flex flex-col gap-sm rounded-xl border border-outline-variant bg-surface-container-low p-md sm:flex-row sm:items-center sm:justify-between"
-                  >
-                    <div className="min-w-0">
-                      <div className="flex flex-wrap items-center gap-sm">
-                        <p className="text-title-md text-on-surface">{s.namaSesi}</p>
-                        <span className={`pt-pill ${style.pill}`}>
-                          <span className={`pt-pill-dot ${s.aktif ? "is-pulse" : ""}`} />
-                          {style.label}
-                        </span>
-                      </div>
-                      <p className="mt-1 flex items-center gap-1 text-body-sm text-on-surface-variant">
-                        <MapPin className="h-3.5 w-3.5 shrink-0" strokeWidth={2} />
-                        {s.scopeLabel} · {s.tanggal}
-                      </p>
-                      <p className="mt-0.5 text-body-sm text-on-surface-variant">
-                        {formatJamTampilan(s.jamMulai)} – {formatJamTampilan(s.jamSelesaiRencana)} WIB
-                        {s.aktif && (
-                          <>
-                            {" "}
-                            · sisa <strong className="text-on-surface">{formatSisaWaktu(s.sisaMenit)}</strong>
-                          </>
-                        )}
-                      </p>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => handleHapusSesi(s)}
-                      title={`Hapus sesi ${s.namaSesi}`}
-                      aria-label={`Hapus sesi ${s.namaSesi}`}
-                      className="pt-btn pt-btn-icon pt-btn-ghost-danger self-end sm:self-center"
-                    >
-                      <Trash2 className="h-4 w-4" strokeWidth={2} />
-                    </button>
-                  </div>
-                );
-              })}
+            <div className="mt-md flex flex-col gap-sm rounded-xl border border-outline-variant bg-surface-container-low p-md sm:flex-row sm:items-center sm:justify-between">
+              <div className="min-w-0">
+                <div className="flex flex-wrap items-center gap-sm">
+                  <p className="text-title-md text-on-surface">CFD {sesi.tanggal}</p>
+                  <span className={`pt-pill ${sesi.aktif ? "pt-pill-success" : "pt-pill-neutral"}`}>
+                    <span className={`pt-pill-dot ${sesi.aktif ? "is-pulse" : ""}`} />
+                    {sesi.aktif ? "Berlangsung" : sesiSudahLewat ? "Sudah Berakhir" : "Belum Mulai"}
+                  </span>
+                </div>
+                <p className="mt-0.5 text-body-sm text-on-surface-variant">
+                  {formatJamTampilan(sesi.jamMulai)} – {formatJamTampilan(sesi.jamSelesaiRencana)} WIB
+                  {sesi.aktif && (
+                    <>
+                      {" "}
+                      · sisa <strong className="text-on-surface">{formatSisaWaktu(sesi.sisaMenit)}</strong>
+                    </>
+                  )}
+                </p>
+              </div>
+              {sesi.aktif && (
+                <button
+                  type="button"
+                  onClick={handleAkhiriSesi}
+                  className="pt-btn pt-btn-ghost-danger self-end sm:self-center"
+                >
+                  <AlertTriangle className="h-4 w-4" strokeWidth={2} />
+                  Akhiri Lebih Awal
+                </button>
+              )}
             </div>
           )}
 
-          {/* ===== CHECK-IN PEDAGANG (nested di card yang sama) ===== */}
+          {/* Catatan singkat di bawah card, biar petugas ngerti konsekuensi
+              "Akhiri Lebih Awal" TANPA harus klik dulu -- gak ganggu alur
+              normal (cuma nongol pas ada sesi aktif). */}
+          {sesi && sesi.aktif && (
+            <p className="mt-sm flex items-start gap-1.5 text-label-sm text-on-surface-variant">
+              <Info className="h-3.5 w-3.5 shrink-0 translate-y-0.5" strokeWidth={2} />
+              Kalau sesi diakhiri lebih awal, pedagang yang belum check-in klaim lapaknya otomatis
+              dibatalkan. Sesi tetap bisa dibuka lagi kalau ternyata masih diperlukan.
+            </p>
+          )}
+
+          {/* ===== KODE EVENT (nested di card yang sama) ===== */}
           <div className="mt-lg border-t border-outline-variant pt-lg">
             <div className="flex flex-wrap items-center justify-between gap-sm">
-              <h4 className="pt-section-title">Pengaturan Check-in Pedagang</h4>
+              <h4 className="pt-section-title">Kode Event</h4>
               <button
                 type="button"
                 onClick={() => setShowEditJamCheckInModal(true)}
                 className="pt-btn pt-btn-ghost"
               >
                 <Edit className="h-4 w-4" strokeWidth={2} />
-                Edit Jam
+                Edit
               </button>
             </div>
 
             <div className="mt-sm rounded-xl border border-outline-variant bg-surface-container-lowest p-md">
-              {/* Baris status + toggle buka/tutup */}
-              <div className="flex flex-col gap-sm sm:flex-row sm:items-center sm:justify-between">
-                <div className="flex flex-wrap items-center gap-sm">
-                  {status.pendaftaran.isOpen ? (
-                    <LockOpen className="h-5 w-5 shrink-0 text-secondary" strokeWidth={2} />
-                  ) : (
-                    <Lock className="h-5 w-5 shrink-0 text-error" strokeWidth={2} />
-                  )}
-                  <span className="text-label-md font-medium">
-                    Status:{" "}
-                    <strong className={status.pendaftaran.isOpen ? "text-secondary" : "text-error"}>
-                      {status.pendaftaran.isOpen ? "Terbuka" : "Tertutup"}
-                    </strong>
-                  </span>
-                  {status.pendaftaran.linkPendaftaran && (
-                    <a
-                      href={status.pendaftaran.linkPendaftaran}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="text-label-sm text-primary underline hover:opacity-80"
-                    >
-                      Link Pendaftaran
-                    </a>
-                  )}
-                </div>
-                <div className="flex items-center gap-sm self-end sm:self-center">
-                  {isTogglingCheckIn && <Loader2 className="h-4 w-4 animate-spin text-on-surface-variant" strokeWidth={2} />}
-                  <span className="text-label-md text-on-surface-variant">
-                    {status.pendaftaran.isOpen ? "Tutup" : "Buka"}
-                  </span>
-                  <button
-                    type="button"
-                    role="switch"
-                    aria-checked={status.pendaftaran.isOpen}
-                    aria-label={status.pendaftaran.isOpen ? "Tutup check-in pedagang" : "Buka check-in pedagang"}
-                    onClick={handleToggleCheckIn}
-                    disabled={isTogglingCheckIn}
-                    className={`pt-switch ${status.pendaftaran.isOpen ? "is-on" : ""}`}
+              <div className="flex flex-wrap items-center gap-sm">
+                <span className="inline-flex items-center gap-1 rounded-full bg-primary-container px-2.5 py-0.5 text-label-sm font-medium text-on-primary-container">
+                  <Tag className="h-3 w-3" strokeWidth={2.5} />
+                  Kode: {status.pendaftaran.kodeEvent || "CFD"}
+                </span>
+                {status.pendaftaran.linkPendaftaran && (
+                  <a
+                    href={status.pendaftaran.linkPendaftaran}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-label-sm text-primary underline hover:opacity-80"
                   >
-                    <span className="pt-switch-knob" />
-                  </button>
-                </div>
+                    Link Pendaftaran
+                  </a>
+                )}
               </div>
-
-              {/* Ringkasan jam saat ini -- kotak sama seperti sebelumnya, tapi
-                  cuma tampilan (baca saja); ubahnya lewat tombol "Edit Jam" di atas */}
-              <div className="mt-md grid grid-cols-1 gap-sm border-t border-outline-variant pt-md sm:grid-cols-2">
-                <div className="flex items-center gap-sm rounded-lg bg-surface-container-low p-md">
-                  <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-secondary-container text-on-secondary-container">
-                    <Clock className="h-[18px] w-[18px]" strokeWidth={2} />
-                  </span>
-                  <div>
-                    <p className="text-label-sm uppercase tracking-wide text-on-surface-variant">Jam Buka Check-in</p>
-                    <p className="text-title-lg font-semibold text-on-surface">{formatJamTampilan(checkInJamBuka)}</p>
-                  </div>
-                </div>
-                <div className="flex items-center gap-sm rounded-lg bg-error-container/30 p-md">
-                  <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-error-container text-on-error-container">
-                    <Hourglass className="h-[18px] w-[18px]" strokeWidth={2} />
-                  </span>
-                  <div>
-                    <p className="text-label-sm uppercase tracking-wide text-on-surface-variant">Jam Tutup Check-in</p>
-                    <p className="text-title-lg font-semibold text-on-surface">{formatJamTampilan(checkInJamTutup)}</p>
-                  </div>
-                </div>
-              </div>
+              <p className="mt-sm text-label-sm text-on-surface-variant">
+                Prefix nomor lapak acak pedagang, mis. &quot;{status.pendaftaran.kodeEvent || "CFD"}-001234&quot;.
+                Check-in kehadiran pedagang di lokasi tetap dilakukan petugas lewat Scan QR -- kode
+                ini cuma buat prefix nomor lapak.
+              </p>
             </div>
           </div>
         </div>
@@ -882,134 +595,22 @@ export default function JamOperasionalPage() {
             </svg>
             <div className="absolute flex flex-col items-center">
               <span className="text-title-lg font-semibold text-on-surface">
-                {sesiAktifWilayah ? formatSisaWaktu(sesiAktifWilayah.sisaMenit) : "--:--"}
+                {sesi && sesi.aktif ? formatSisaWaktu(sesi.sisaMenit) : "--:--"}
               </span>
               <span className="text-label-sm text-on-surface-variant">Sisa Waktu CFD</span>
             </div>
           </div>
           <p className="text-label-sm text-on-surface-variant">
-            {sesiAktifWilayah ? (
+            {sesi && sesi.aktif ? (
               <>
-                {sesiAktifWilayah.scopeLabel} akan berakhir pada{" "}
-                <strong className="text-on-surface">{formatJamTampilan(sesiAktifWilayah.jamSelesaiRencana)} WIB</strong>
+                Sesi hari ini akan berakhir pada{" "}
+                <strong className="text-on-surface">{formatJamTampilan(sesi.jamSelesaiRencana)} WIB</strong>
               </>
             ) : (
               "Belum ada sesi yang sedang berlangsung"
             )}
           </p>
         </div>
-      </div>
-
-      {/* ===== JADWAL MINGGUAN (BARU) ===== */}
-      <div className="pt-card">
-        <div className="mb-md flex flex-wrap items-center gap-sm">
-          <CalendarDays className="h-[18px] w-[18px] text-on-surface-variant" strokeWidth={2} />
-          <h3 className="pt-section-title">Jadwal Mingguan (Otomatis)</h3>
-          <span className="ml-auto text-label-sm text-on-surface-variant">
-            Dipakai sistem buat auto-mulai/selesai sesi tiap minggu
-          </span>
-        </div>
-
-        {isLoadingJadwal ? (
-          <div className="pt-loading">
-            <Loader2 className="h-6 w-6 animate-spin" strokeWidth={2} />
-            <p className="text-body-sm">Memuat jadwal...</p>
-          </div>
-        ) : jadwalError ? (
-          <div className="rounded-xl border border-error-container bg-error-container/20 px-md py-sm text-body-sm text-on-error-container">
-            Gagal memuat jadwal mingguan: {jadwalError}
-          </div>
-        ) : (
-          <div className="flex flex-col gap-sm">
-            {HARI_LIST.map((hari) => {
-              const row = jadwalList.find((j) => j.hari === hari.value);
-              const isEditing = editingHari === hari.value;
-              return (
-                <div key={hari.value} className="rounded-xl border border-outline-variant bg-surface-container-low p-md">
-                  {isEditing ? (
-                    <div className="flex flex-col gap-sm">
-                      <p className="text-title-md text-on-surface">{hari.label}</p>
-                      <div className="grid grid-cols-1 gap-sm sm:grid-cols-2">
-                        <div>
-                          <span className="pt-field-label">Jam Mulai</span>
-                          <div className="mt-1">
-                            <TimeStepper
-                              value={jadwalDraft.jamMulai}
-                              onChange={(next) => setJadwalDraft((d) => ({ ...d, jamMulai: next }))}
-                            />
-                          </div>
-                        </div>
-                        <div>
-                          <span className="pt-field-label">Jam Selesai</span>
-                          <div className="mt-1">
-                            <TimeStepper
-                              value={jadwalDraft.jamSelesaiRencana}
-                              onChange={(next) => setJadwalDraft((d) => ({ ...d, jamSelesaiRencana: next }))}
-                            />
-                          </div>
-                        </div>
-                      </div>
-                      <label className="flex cursor-pointer items-center gap-sm text-body-sm text-on-surface-variant">
-                        <input
-                          type="checkbox"
-                          checked={jadwalDraft.isActive}
-                          onChange={(e) => setJadwalDraft((d) => ({ ...d, isActive: e.target.checked }))}
-                          className="h-5 w-5 accent-primary"
-                        />
-                        Aktifkan jadwal hari ini
-                      </label>
-                      <div className="flex justify-end gap-sm pt-1">
-                        <button type="button" onClick={() => setEditingHari(null)} className="pt-btn pt-btn-ghost">
-                          Batal
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => handleSimpanJadwalHari(hari.value)}
-                          disabled={savingHari === hari.value}
-                          className="pt-btn pt-btn-primary"
-                        >
-                          {savingHari === hari.value ? (
-                            <Loader2 className="h-4 w-4 animate-spin" strokeWidth={2} />
-                          ) : (
-                            <Save className="h-4 w-4" strokeWidth={2} />
-                          )}
-                          Simpan
-                        </button>
-                      </div>
-                    </div>
-                  ) : (
-                    <div className="flex flex-wrap items-center justify-between gap-sm">
-                      <div className="flex flex-wrap items-center gap-sm sm:gap-md">
-                        <p className="w-24 shrink-0 text-title-md text-on-surface">{hari.label}</p>
-                        <p className="text-body-md text-on-surface-variant">
-                          {row ? (
-                            <>
-                              {formatWaktuTabel(formatJamTampilan(row.jamMulai))} –{" "}
-                              {formatWaktuTabel(formatJamTampilan(row.jamSelesaiRencana))}
-                            </>
-                          ) : (
-                            "Belum diatur"
-                          )}
-                        </p>
-                        <span className={`pt-pill ${row?.isActive ? "pt-pill-success" : "pt-pill-neutral"}`}>
-                          {row?.isActive ? "Aktif" : "Nonaktif"}
-                        </span>
-                      </div>
-                      <button
-                        type="button"
-                        onClick={() => startEditJadwal(hari.value, row)}
-                        className="pt-btn pt-btn-ghost"
-                      >
-                        <Edit className="h-4 w-4" strokeWidth={2} />
-                        Edit
-                      </button>
-                    </div>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-        )}
       </div>
 
       {/* ===== RIWAYAT OPERASIONAL ===== */}
@@ -1087,188 +688,52 @@ export default function JamOperasionalPage() {
         )}
       </div>
 
-      {/* ===== SISA KUOTA LAPAK PER WILAYAH ===== */}
-      <div className="pt-card">
-        <div className="mb-md flex items-center gap-sm">
-          <Store className="h-[18px] w-[18px] text-on-surface-variant" strokeWidth={2} />
-          <h3 className="pt-section-title">Sisa Kuota Lapak per Wilayah</h3>
-          <span className="ml-auto text-label-sm text-on-surface-variant">
-            {isLoadingLapak ? "Memuat..." : `Total ${totalKuota} lapak, ${sisaTotal} tersisa`}
-          </span>
-        </div>
-
-        {isLoadingLapak ? (
-          <div className="pt-loading">
-            <Loader2 className="h-6 w-6 animate-spin" strokeWidth={2} />
-            <p className="text-body-sm">Memuat data lapak...</p>
-          </div>
-        ) : lapakError ? (
-          <div className="rounded-xl border border-error-container bg-error-container/20 px-md py-sm text-body-sm text-on-error-container">
-            Gagal memuat data lapak: {lapakError}
-          </div>
-        ) : lapakData.length === 0 ? (
-          <p className="text-center text-body-md text-on-surface-variant">Belum ada data kuota lapak yang diatur.</p>
-        ) : (
-          <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
-            {lapakData.map((kec) => {
-              const totalKuotaKec = kec.jalan.reduce((s, j) => s + j.kuota, 0);
-              const totalTerisiKec = kec.jalan.reduce((s, j) => s + j.terisi, 0);
-              const sisaKec = totalKuotaKec - totalTerisiKec;
-              return (
-                <div key={kec.kecamatan} className="rounded-lg border border-outline-variant bg-surface-container-low p-md">
-                  <h4 className="text-title-md text-on-surface flex items-center gap-1">
-                    <MapPin className="h-4 w-4" strokeWidth={2} />
-                    {kec.kecamatan}
-                  </h4>
-                  <p className="text-label-sm text-on-surface-variant mt-1">
-                    {sisaKec} dari {totalKuotaKec} lapak tersisa
-                  </p>
-                  <div className="mt-2 space-y-2">
-                    {kec.jalan.map((jalan) => {
-                      const sisa = jalan.kuota - jalan.terisi;
-                      const persen = jalan.kuota > 0 ? (jalan.terisi / jalan.kuota) * 100 : 0;
-                      const levelColor = sisa === 0 ? "bg-error" : sisa / jalan.kuota <= 0.2 ? "bg-tertiary" : "bg-secondary";
-                      return (
-                        <div key={jalan.id} className="rounded border border-outline-variant bg-surface-container-lowest p-2">
-                          <div className="flex justify-between">
-                            <span className="text-label-sm text-on-surface">{jalan.nama}</span>
-                            <span className="text-label-sm font-semibold text-on-surface">{sisa}</span>
-                          </div>
-                          <div className="mt-1 h-1.5 w-full overflow-hidden rounded-full bg-surface-container-high">
-                            <div
-                              className={`h-full rounded-full ${levelColor} transition-all duration-500`}
-                              style={{ width: `${Math.min(100, persen)}%` }}
-                            />
-                          </div>
-                          <p className="mt-0.5 text-label-xs text-on-surface-variant">
-                            {jalan.terisi} terisi dari {jalan.kuota}
-                          </p>
-                        </div>
-                      );
-                    })}
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        )}
-      </div>
-
-      {/* Modal Buat Sesi Wilayah Baru */}
-      {showBuatSesiModal && (
+      {/* Modal Atur Jam Sesi Hari Ini */}
+      {showAturSesiModal && (
         <ModalShell
-          onClose={() => setShowBuatSesiModal(false)}
-          title="Buat Sesi CFD Baru"
-          description="Sesi menentukan kapan pedagang bisa check-in di wilayah yang dipilih."
+          onClose={() => setShowAturSesiModal(false)}
+          title={sesi ? "Ubah Jam Sesi CFD" : "Atur Jam Sesi CFD"}
+          description="Sesi ini menentukan kapan pedagang bisa check-in (scan QR) dan kapan mereka baru boleh check-out."
           footer={
             <div className="flex justify-end gap-sm">
-              <button type="button" onClick={() => setShowBuatSesiModal(false)} className="pt-btn pt-btn-ghost">
+              <button type="button" onClick={() => setShowAturSesiModal(false)} className="pt-btn pt-btn-ghost">
                 Batal
               </button>
               <button
                 type="button"
-                onClick={handleSubmitSesiWilayah}
+                onClick={handleSimpanSesi}
                 disabled={isSubmittingSesi}
                 className="pt-btn pt-btn-primary"
               >
                 {isSubmittingSesi && <Loader2 className="h-4 w-4 animate-spin" strokeWidth={2} />}
-                {isSubmittingSesi ? "Menyimpan..." : "Buat Sesi"}
+                {isSubmittingSesi ? "Menyimpan..." : "Simpan"}
               </button>
             </div>
           }
         >
-          <div className="flex flex-col gap-sm">
-            {scopeOptionsTersedia.length > 1 && (
-              <div>
-                <label className="pt-field-label">Cakupan Sesi</label>
-                <select
-                  value={formScope}
-                  onChange={(e) => setFormScope(e.target.value as Scope)}
-                  className="pt-input mt-1"
-                >
-                  {scopeOptionsTersedia.map((o) => (
-                    <option key={o.value} value={o.value}>
-                      {o.label}
-                    </option>
-                  ))}
-                </select>
-              </div>
-            )}
-            {scopeOptionsTersedia.length === 1 && (
-              <div className="rounded-md bg-surface-container-low px-sm py-2 text-label-sm text-on-surface-variant">
-                Cakupan: <strong className="text-on-surface">{scopeOptionsTersedia[0].label}</strong>
-              </div>
-            )}
-
-            {formScope === "kecamatan" && wilayahSaya?.bebas && (
-              <div>
-                <label className="pt-field-label">Kecamatan</label>
-                <select
-                  value={formKecamatanId}
-                  onChange={(e) => setFormKecamatanId(e.target.value)}
-                  className="pt-input mt-1"
-                >
-                  <option value="">Pilih kecamatan</option>
-                  {daftarKecamatanForm.map((k) => (
-                    <option key={k.id} value={k.id}>
-                      {k.nama}
-                    </option>
-                  ))}
-                </select>
-              </div>
-            )}
-
-            {formScope === "jalan" && !wilayahSaya?.jalanId && (
-              <div>
-                <label className="pt-field-label">Jalan</label>
-                <select
-                  value={formJalanId}
-                  onChange={(e) => setFormJalanId(e.target.value)}
-                  className="pt-input mt-1"
-                >
-                  <option value="">Pilih jalan</option>
-                  {daftarJalanForm.map((j) => (
-                    <option key={j.id} value={j.id}>
-                      {j.label}
-                    </option>
-                  ))}
-                </select>
-              </div>
-            )}
-
+          <div className="grid grid-cols-1 gap-sm sm:grid-cols-2">
             <div>
-              <label className="pt-field-label">Tanggal</label>
-              <input
-                type="date"
-                value={formTanggal}
-                onChange={(e) => setFormTanggal(e.target.value)}
-                className="pt-input mt-1"
-              />
-            </div>
-            <div className="grid grid-cols-1 gap-sm sm:grid-cols-2">
-              <div>
-                <label className="pt-field-label">Jam Mulai</label>
-                <div className="mt-1">
-                  <TimeStepper value={formJamMulai} onChange={setFormJamMulai} />
-                </div>
+              <label className="pt-field-label">Jam Mulai</label>
+              <div className="mt-1">
+                <TimeStepper value={formJamMulai} onChange={setFormJamMulai} />
               </div>
-              <div>
-                <label className="pt-field-label">Jam Selesai</label>
-                <div className="mt-1">
-                  <TimeStepper value={formJamSelesai} onChange={setFormJamSelesai} />
-                </div>
+            </div>
+            <div>
+              <label className="pt-field-label">Jam Selesai</label>
+              <div className="mt-1">
+                <TimeStepper value={formJamSelesai} onChange={setFormJamSelesai} />
               </div>
             </div>
           </div>
         </ModalShell>
       )}
 
-      {/* Modal Edit Jam Check-in */}
+      {/* Modal Edit Kode Event */}
       {showEditJamCheckInModal && (
         <ModalShell
           onClose={() => setShowEditJamCheckInModal(false)}
-          title="Edit Jam Check-in"
-          description="Atur jendela waktu pedagang bisa check-in dan mengambil nomor stand."
+          title="Edit Kode Event"
+          description="Prefix nomor lapak acak pedagang -- ganti sesuai event yang sedang berjalan (CFD, MRT, dst)."
           footer={
             <div className="flex justify-end gap-sm">
               <button
@@ -1290,35 +755,32 @@ export default function JamOperasionalPage() {
             </div>
           }
         >
-          <div className="grid grid-cols-1 gap-sm sm:grid-cols-2">
-            <div className="rounded-lg bg-surface-container-low p-md">
-              <div className="flex items-center gap-sm">
-                <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-secondary-container text-on-secondary-container">
-                  <Clock className="h-[18px] w-[18px]" strokeWidth={2} />
-                </span>
-                <p className="text-label-sm uppercase tracking-wide text-on-surface-variant">Jam Buka Check-in</p>
-              </div>
-              <div className="mt-sm">
-                <TimeStepper value={checkInJamBuka} onChange={setCheckInJamBuka} disabled={!canEditCheckIn} />
-              </div>
+          <div className="rounded-lg bg-surface-container-low p-md">
+            <div className="flex items-center gap-sm">
+              <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-primary-container text-on-primary-container">
+                <Tag className="h-[18px] w-[18px]" strokeWidth={2} />
+              </span>
+              <p className="text-label-sm uppercase tracking-wide text-on-surface-variant">Kode Event</p>
             </div>
-            <div className="rounded-lg bg-error-container/30 p-md">
-              <div className="flex items-center gap-sm">
-                <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-error-container text-on-error-container">
-                  <Hourglass className="h-[18px] w-[18px]" strokeWidth={2} />
-                </span>
-                <p className="text-label-sm uppercase tracking-wide text-on-surface-variant">Jam Tutup Check-in</p>
-              </div>
-              <div className="mt-sm">
-                <TimeStepper value={checkInJamTutup} onChange={setCheckInJamTutup} disabled={!canEditCheckIn} />
-              </div>
+            <div className="mt-sm">
+              <input
+                type="text"
+                value={kodeEvent}
+                onChange={(e) => setKodeEvent(e.target.value.toUpperCase().slice(0, 10))}
+                disabled={!canEditCheckIn}
+                placeholder="CFD"
+                className="pt-input w-full uppercase"
+              />
+              <p className="mt-xs text-label-sm text-on-surface-variant">
+                Prefix nomor lapak acak pedagang, mis. &quot;{kodeEvent || "CFD"}-001234&quot;. Ganti sesuai event yang sedang berjalan (CFD, MRT, dst).
+              </p>
             </div>
           </div>
 
           {isFriday && checkInSudahDiubahHariIni && (
             <div className="mt-sm flex items-center gap-sm rounded-lg bg-surface-container-high px-md py-sm text-label-sm text-on-surface-variant">
               <Info className="h-4 w-4 shrink-0" strokeWidth={2} />
-              Pengaturan check-in sudah diubah hari ini (hanya sekali pada hari Jumat)
+              Pengaturan sudah diubah hari ini (hanya sekali pada hari Jumat)
             </div>
           )}
         </ModalShell>

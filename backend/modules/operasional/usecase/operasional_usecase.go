@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log"
 	"time"
 
 	"cfd-backend/modules/operasional/entity"
@@ -19,13 +20,15 @@ var (
 
 type OperasionalRepository interface {
 	GetSesiHariIni(ctx context.Context) (*entity.Sesi, error)
+	GetSesiHariIniUntukTampilan(ctx context.Context) (*entity.Sesi, error)
 	UpsertSesiHariIni(ctx context.Context, jamMulai, jamSelesai string, createdBy *string) (*entity.Sesi, error)
 	BukaSesiManual(ctx context.Context, jamMulai string, createdBy *string) (*entity.Sesi, error)
 	UpdateSesi(ctx context.Context, id, jamMulai, jamSelesai string, updatedBy *string) (*entity.Sesi, error)
 	AkhiriSesiLebihAwal(ctx context.Context, id string) (*entity.Sesi, error)
+	BatalkanKlaimBelumCheckIn(ctx context.Context, sessionID string) error
 	ListRiwayat(ctx context.Context, limit int) ([]entity.Sesi, error)
 	GetPengaturanPendaftaran(ctx context.Context) (*entity.PengaturanPendaftaran, error)
-	UpdatePengaturanPendaftaran(ctx context.Context, isOpen bool, jamBuka, jamTutup *string, link *string, updatedBy *string) error
+	UpdatePengaturanPendaftaran(ctx context.Context, isOpen bool, jamBuka, jamTutup *string, link *string, kodeEvent string, updatedBy *string) error
 	GetJadwalHariIni(ctx context.Context, hari entity.Hari) (*entity.JadwalMingguan, error)
 	AutoSelesaikanSesi(ctx context.Context, id, jamSelesai string) (*entity.Sesi, error)
 	ListJadwalMingguan(ctx context.Context) ([]entity.JadwalMingguan, error)
@@ -163,7 +166,7 @@ func (u *operasionalUsecase) GetStatusOperasional(ctx context.Context) (*entity.
 	if err != nil {
 		return nil, err
 	}
-	sesiHariIni, err := u.repo.GetSesiHariIni(ctx)
+	sesiHariIni, err := u.repo.GetSesiHariIniUntukTampilan(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -189,6 +192,7 @@ func (u *operasionalUsecase) GetStatusOperasional(ctx context.Context) (*entity.
 			LinkPendaftaran: pengaturan.LinkPendaftaran,
 			JamBuka:         pengaturan.JamBuka,
 			JamTutup:        pengaturan.JamTutup,
+			KodeEvent:       pengaturan.KodeEvent,
 		},
 		Sesi:    sesiDTO,
 		Riwayat: riwayatDTO,
@@ -274,6 +278,16 @@ func (u *operasionalUsecase) AkhiriSesiLebihAwal(ctx context.Context) (*entity.S
 	if sesi == nil {
 		return nil, ErrSesiTidakBisaDiakhiri
 	}
+
+	// Pedagang yang udah klaim tapi belum sempat check-in dianggap gak jadi
+	// ikut CFD hari ini -- klaimnya dibatalin biar mereka bisa klaim ulang
+	// kalau sesi ini dibuka lagi. Kegagalan di sini SENGAJA gak nge-gagalin
+	// permintaan akhiri-sesi -- sesi tetap ditutup meski pembersihan klaim
+	// gagal, biar petugas gak keblok cuma gara-gara langkah ini error.
+	if err := u.repo.BatalkanKlaimBelumCheckIn(ctx, sesi.ID); err != nil {
+		log.Printf("gagal batalin klaim belum check-in buat sesi %s: %v", sesi.ID, err)
+	}
+
 	return toSesiAktifDTO(sesi)
 }
 
@@ -292,18 +306,27 @@ func (u *operasionalUsecase) UpdatePendaftaran(ctx context.Context, userID strin
 		}
 	}
 
+	pengaturan, err := u.repo.GetPengaturanPendaftaran(ctx)
+	if err != nil {
+		return err
+	}
+
 	if now.Weekday() == time.Friday {
-		pengaturan, err := u.repo.GetPengaturanPendaftaran(ctx)
-		if err != nil {
-			return err
-		}
 		if pengaturan.UpdatedAt.Year() == now.Year() &&
 			pengaturan.UpdatedAt.YearDay() == now.YearDay() {
 			return ErrPendaftaranSudahDiubah
 		}
 	}
 
-	return u.repo.UpdatePengaturanPendaftaran(ctx, req.IsOpen, req.JamBuka, req.JamTutup, req.Link, &userID)
+	// KodeEvent opsional di request -- kosongin field-nya di form berarti
+	// "gak diubah", bukan "dikosongkan" (nomor lapak wajib selalu punya
+	// prefix kode event yang valid).
+	kodeEvent := pengaturan.KodeEvent
+	if req.KodeEvent != nil && *req.KodeEvent != "" {
+		kodeEvent = *req.KodeEvent
+	}
+
+	return u.repo.UpdatePengaturanPendaftaran(ctx, req.IsOpen, req.JamBuka, req.JamTutup, req.Link, kodeEvent, &userID)
 }
 
 // Jadwal Mingguan (tidak berubah)
@@ -679,36 +702,24 @@ func (u *operasionalUsecase) TickJadwalOtomatis(ctx context.Context) error {
 			return err
 		}
 		if nowMenit >= selesaiMenit {
-			if _, err := u.repo.AutoSelesaikanSesi(ctx, sesiHariIni.ID, sesiHariIni.JamSelesaiRencana); err != nil {
-				return err
-			}
-		}
-	}
-
-	// 2. Auto-buat sesi jika belum ada dan jadwal mingguan aktif
-	sesiHariIni, _ = u.repo.GetSesiHariIni(ctx)
-	if sesiHariIni == nil {
-		hari := entity.HariDariWeekday(now.Weekday())
-		jadwal, err := u.repo.GetJadwalHariIni(ctx, hari)
-		if err != nil {
-			return err
-		}
-		if jadwal != nil {
-			mulaiMenit, err := parseJamKeMenit(jadwal.JamMulai)
+			sesiSelesai, err := u.repo.AutoSelesaikanSesi(ctx, sesiHariIni.ID, sesiHariIni.JamSelesaiRencana)
 			if err != nil {
 				return err
 			}
-			selesaiMenit, err := parseJamKeMenit(jadwal.JamSelesaiRencana)
-			if err != nil {
-				return err
-			}
-			if nowMenit >= mulaiMenit && nowMenit < selesaiMenit {
-				if _, err := u.repo.UpsertSesiHariIni(ctx, jadwal.JamMulai, jadwal.JamSelesaiRencana, nil); err != nil {
-					return err
+			if sesiSelesai != nil {
+				if err := u.repo.BatalkanKlaimBelumCheckIn(ctx, sesiSelesai.ID); err != nil {
+					log.Printf("gagal batalin klaim belum check-in buat sesi %s: %v", sesiSelesai.ID, err)
 				}
 			}
 		}
 	}
+
+	// 2. (dicabut) Dulu di sini ada "auto-buat sesi jika belum ada dan jadwal
+	// mingguan aktif". Sesuai keputusan: buka sesi CFD sekarang murni manual
+	// lewat tombol "Buat Sesi Baru" / "Buka Sesi Manual" -- jadwal_mingguan
+	// gak dipakai lagi buat nyalain sesi otomatis. Tabel & endpoint jadwal
+	// mingguan dibiarkan ada dulu (gak dipanggil dari sini), boleh dibersihkan
+	// belakangan kalau memang sudah pasti gak dipakai lagi.
 
 	// 3. Otomatis buka pendaftaran setiap Jumat
 	if hariIni == time.Friday {
@@ -723,6 +734,7 @@ func (u *operasionalUsecase) TickJadwalOtomatis(ctx context.Context) error {
 				pengaturan.JamBuka,
 				pengaturan.JamTutup,
 				pengaturan.LinkPendaftaran,
+				pengaturan.KodeEvent,
 				nil,
 			); err != nil {
 				return err
@@ -748,6 +760,7 @@ func (u *operasionalUsecase) TickJadwalOtomatis(ctx context.Context) error {
 					pengaturan.JamBuka,
 					pengaturan.JamTutup,
 					pengaturan.LinkPendaftaran,
+					pengaturan.KodeEvent,
 					nil,
 				); err != nil {
 					return err
