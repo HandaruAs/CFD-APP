@@ -176,7 +176,8 @@ export default function ScanQrPage() {
 
     scanner
       .start(
-        { facingMode: "environment" }, // pakai kamera belakang di HP
+        { facingMode: { exact: "environment" } }, // paksa kamera belakang di HP -- "environment" tanpa
+        // "exact" cuma preferensi lunak, jadi beberapa HP/browser tetap bisa milih kamera depan
         { fps: 10, qrbox: { width: 250, height: 250 } },
         (decodedText) => {
           if (isCancelled) return;
@@ -189,12 +190,30 @@ export default function ScanQrPage() {
           // callback error per-frame saat QR belum ketemu, sengaja dibiarkan kosong
         }
       )
-      .catch((err) => {
-        setCameraError(
-          "Tidak bisa mengakses kamera: " +
-            (err instanceof Error ? err.message : String(err))
-        );
-        setCameraActive(false);
+      .catch(() => {
+        // Kalau device beneran nggak punya kamera belakang (mis. laptop),
+        // constraint "exact" di atas bakal gagal -- coba sekali lagi tanpa
+        // "exact" (kamera apapun yang ada) sebelum nyerah nampilin error.
+        scanner
+          .start(
+            { facingMode: "environment" },
+            { fps: 10, qrbox: { width: 250, height: 250 } },
+            (decodedText) => {
+              if (isCancelled) return;
+              isCancelled = true;
+              setQrCodeInput(decodedText);
+              setCameraActive(false);
+              handleScan(decodedText);
+            },
+            () => {}
+          )
+          .catch((fallbackErr) => {
+            setCameraError(
+              "Tidak bisa mengakses kamera: " +
+                (fallbackErr instanceof Error ? fallbackErr.message : String(fallbackErr))
+            );
+            setCameraActive(false);
+          });
       });
 
     return () => {

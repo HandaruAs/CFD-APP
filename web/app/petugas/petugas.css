@@ -372,14 +372,20 @@
     @apply absolute right-3 top-3 flex h-9 w-9 items-center justify-center rounded-full text-on-surface-variant transition hover:bg-surface-container-high;
   }
 
-  /* Time stepper -- ganti input type="time" bawaan browser. Jam &
-     menit cuma bisa diubah lewat tombol panah (lihat komponen
-     TimeStepper di page.tsx), tidak bisa diketik. */
+  /* Time stepper -- ganti input type="time" bawaan browser. Jam,
+     menit & detik bisa diubah lewat tombol panah ATAU diklik lalu
+     diketik langsung (lihat komponen TimeStepper di page.tsx). */
   [data-petugas-scope] .pt-time-btn {
     @apply flex h-8 w-11 items-center justify-center rounded-lg text-on-surface-variant transition hover:bg-surface-container-high disabled:cursor-not-allowed disabled:opacity-40;
   }
   [data-petugas-scope] .pt-time-value {
     @apply w-11 text-center text-title-lg font-semibold tabular-nums text-on-surface;
+  }
+  [data-petugas-scope] .pt-time-value-editable {
+    @apply cursor-pointer rounded-md transition hover:bg-surface-container-high disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent;
+  }
+  [data-petugas-scope] .pt-time-input {
+    @apply w-11 rounded-md border border-primary bg-transparent text-center text-title-lg font-semibold tabular-nums text-on-surface outline-none ring-2 ring-primary/30;
   }
 
   /* Toast -- di tengah atas layar (bukan pojok kanan bawah) supaya

@@ -323,6 +323,11 @@ export default function PetugasHomePage() {
               <p className="mt-xs text-title-lg font-semibold text-on-surface">
                 {status?.pendaftaran.isOpen ? "Dibuka" : "Ditutup"}
               </p>
+              {status?.pendaftaran.isOpen && status.pendaftaran.jamBuka && status.pendaftaran.jamTutup && (
+                <p className="mt-1 text-body-sm text-on-surface-variant">
+                  {status.pendaftaran.jamBuka.slice(0, 5)} – {status.pendaftaran.jamTutup.slice(0, 5)} WIB
+                </p>
+              )}
               <Link
                 href="/petugas/jam-operasional"
                 className="mt-sm inline-flex items-center gap-xs text-label-sm text-primary hover:underline"
