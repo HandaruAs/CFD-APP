@@ -17,29 +17,28 @@ import {
   CameraOff,
   Sparkles,
   Loader2,
-  AlertCircle,
 } from "lucide-react";
 
 // ID elemen DOM tempat video kamera akan dirender oleh html5-qrcode
 const QR_READER_ELEMENT_ID = "qr-reader";
 
 // ============================================================
-// TYPES - sesuai dengan response backend
+// TYPES - sesuai dengan response backend (snake_case, persis JSON dari Go)
 // ============================================================
 
 type StatusScan = "idle" | "scanning" | "terdaftar" | "tidak-terdaftar";
 
 type PedagangDetail = {
   id: string;
-  namaUsaha: string;
+  nama_usaha: string;
   pemilik: string;
   inisial: string;
   kategori: string;
-  lokasiLapak: string;
-  statusPendaftaran: string;
+  lokasi_lapak: string;
+  status_pendaftaran: string;
   nik?: string;
   alamat?: string;
-  perkiraanHarga?: string;
+  perkiraan_harga?: string;
 };
 
 type VerifyQRResponse = {
@@ -60,9 +59,10 @@ type CheckInResponse = {
 
 type RiwayatScanItem = {
   waktu: string;
-  namaUsaha: string;
+  nama_usaha: string;
+  lokasi_lapak: string;
   status: "berhasil" | "gagal";
-  pedagangId?: string;
+  pedagang_id?: string;
 };
 
 type RiwayatScanResponse = {
@@ -114,13 +114,13 @@ export default function ScanQrPage() {
   const [pedagang, setPedagang] = useState<PedagangDetail | null>(null);
   const [sudahCheckin, setSudahCheckin] = useState(false);
   const [checkInAt, setCheckInAt] = useState<string | null>(null);
-  
+
   // State untuk loading & error
   const [isScanning, setIsScanning] = useState(false);
   const [isCheckingIn, setIsCheckingIn] = useState(false);
   const [isLoadingRiwayat, setIsLoadingRiwayat] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  
+
   // State untuk toast & riwayat
   const [toast, setToast] = useState<{ message: string; type: "success" | "error" } | null>(null);
   const [riwayat, setRiwayat] = useState<RiwayatScanItem[]>([]);
@@ -131,13 +131,19 @@ export default function ScanQrPage() {
   const [cameraError, setCameraError] = useState<string | null>(null);
   const scannerRef = useRef<Html5Qrcode | null>(null);
 
+  // Ref yang selalu menyimpan versi terbaru dari handleScan. Dipakai supaya
+  // efek kamera di bawah bisa memanggil handleScan tanpa harus memasukkannya
+  // ke dependency array -- kalau dimasukkan langsung, effect kamera akan
+  // restart tiap kali handleScan dibuat ulang (tiap render), yang bisa bikin
+  // kamera "restart" berkali-kali saat sedang aktif scanning.
+  const handleScanRef = useRef<(codeOverride?: string) => void>(() => {});
+
   // ============================================================
   // FUNGSI API
   // ============================================================
 
   const loadRiwayat = async () => {
     try {
-      setIsLoadingRiwayat(true);
       const data = await apiFetch<RiwayatScanResponse>("/api/petugas/riwayat-scan");
       setRiwayat(data.riwayat || []);
     } catch (err) {
@@ -150,6 +156,12 @@ export default function ScanQrPage() {
 
   // Load riwayat saat halaman pertama kali dimuat
   useEffect(() => {
+    // loadRiwayat memang memanggil setState, tapi baru dieksekusi SETELAH
+    // `await apiFetch(...)` selesai -- bukan langsung/synchronous saat efek
+    // jalan. Ini pola "fetch data di effect" yang direkomendasikan React
+    // sendiri. eslint-nya belum bisa membedakan setState setelah await vs
+    // yang benar-benar synchronous, jadi tetap ditandai meskipun aman.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     loadRiwayat();
     // Auto refresh riwayat tiap 30 detik
     const interval = setInterval(loadRiwayat, 30000);
@@ -184,7 +196,7 @@ export default function ScanQrPage() {
           isCancelled = true; // cegah decodedText ganda saat masih proses stop
           setQrCodeInput(decodedText);
           setCameraActive(false);
-          handleScan(decodedText);
+          handleScanRef.current(decodedText);
         },
         () => {
           // callback error per-frame saat QR belum ketemu, sengaja dibiarkan kosong
@@ -203,7 +215,7 @@ export default function ScanQrPage() {
               isCancelled = true;
               setQrCodeInput(decodedText);
               setCameraActive(false);
-              handleScan(decodedText);
+              handleScanRef.current(decodedText);
             },
             () => {}
           )
@@ -266,7 +278,7 @@ export default function ScanQrPage() {
         setSudahCheckin(data.sudah_check_in);
         setCheckInAt(data.check_in_at || null);
         showToast("✅ QR Code berhasil diverifikasi!", "success");
-        
+
         // Refresh riwayat setelah scan berhasil
         await loadRiwayat();
       } else {
@@ -282,6 +294,12 @@ export default function ScanQrPage() {
       setIsScanning(false);
     }
   };
+
+  // Jaga handleScanRef selalu menunjuk ke versi terbaru handleScan
+  // (lihat komentar di deklarasi handleScanRef di atas kenapa ini perlu).
+  useEffect(() => {
+    handleScanRef.current = handleScan;
+  });
 
   // ============================================================
   // HANDLER CHECK-IN
@@ -301,7 +319,7 @@ export default function ScanQrPage() {
         setSudahCheckin(true);
         setCheckInAt(data.check_in_at);
         showToast("✅ Check-in berhasil dicatat!", "success");
-        
+
         // Refresh riwayat setelah check-in
         await loadRiwayat();
       } else {
@@ -508,7 +526,7 @@ export default function ScanQrPage() {
                     {pedagang.inisial || "??"}
                   </span>
                   <div className="flex-1">
-                    <p className="text-title-lg text-on-surface">{pedagang.namaUsaha}</p>
+                    <p className="text-title-lg text-on-surface">{pedagang.nama_usaha}</p>
                     <p className="text-label-sm text-on-surface-variant">{pedagang.id}</p>
 
                     <div className="mt-sm grid grid-cols-1 gap-xs sm:grid-cols-2">
@@ -522,18 +540,18 @@ export default function ScanQrPage() {
                       </div>
                       <div className="flex items-center gap-xs text-label-sm text-on-surface-variant sm:col-span-2">
                         <MapPin className="h-3.5 w-3.5" strokeWidth={2} />
-                        {pedagang.lokasiLapak}
+                        {pedagang.lokasi_lapak || "Lokasi belum diisi"}
                       </div>
-                      {pedagang.perkiraanHarga && (
+                      {pedagang.perkiraan_harga && (
                         <div className="flex items-center gap-xs text-label-sm text-on-surface-variant sm:col-span-2">
                           <span className="font-semibold">Perkiraan Harga:</span>
-                          {pedagang.perkiraanHarga}
+                          {pedagang.perkiraan_harga}
                         </div>
                       )}
                     </div>
 
                     <span className="mt-sm inline-flex items-center rounded-full bg-secondary-container/40 px-sm py-1 text-label-sm text-on-secondary-container">
-                      {pedagang.statusPendaftaran}
+                      {pedagang.status_pendaftaran}
                     </span>
                   </div>
                 </div>
@@ -623,19 +641,13 @@ export default function ScanQrPage() {
                     ) : (
                       <XCircle className="h-4 w-4 shrink-0 text-error" strokeWidth={2} />
                     )}
-                    <span className="flex-1 truncate text-label-md text-on-surface">
-                      {item.namaUsaha}
-                    </span>
-                    <span className="shrink-0 text-label-sm text-on-surface-variant">{item.waktu}</span>
-                    <span
-                      className={`shrink-0 rounded-full px-sm py-0.5 text-[10px] font-semibold ${
-                        item.status === "berhasil"
-                          ? "bg-secondary-container/40 text-on-secondary-container"
-                          : "bg-error-container/60 text-on-error-container"
-                      }`}
-                    >
-                      {item.status === "berhasil" ? "Berhasil" : "Gagal"}
-                    </span>
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-label-md text-on-surface">{item.nama_usaha}</p>
+                      <p className="flex items-center gap-1 truncate text-label-sm text-on-surface-variant">
+                        <MapPin className="h-3 w-3 shrink-0" strokeWidth={2} />
+                        {item.lokasi_lapak || "Lokasi belum diisi"}
+                      </p>
+                    </div>
                   </li>
                 ))}
               </ul>

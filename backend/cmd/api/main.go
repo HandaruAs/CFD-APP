@@ -28,11 +28,14 @@ import (
 	// Modul Repository - Laporan
 	laporanRepo "cfd-backend/modules/petugas/laporan/repository"
 
-	// ===== TAMBAHKAN: Repository Sisa Lapak =====
+	// Repository Sisa Lapak
 	sisaLapakRepo "cfd-backend/modules/petugas/sisa-lapak/repository"
 
 	// Repository Acak Lapak (generate-slot -- isi pool lapak_slot)
 	acakLapakRepo "cfd-backend/modules/petugas/acak-lapak/repository"
+
+	// Repository Manajemen Lapak
+	manajemenLapakRepo "cfd-backend/modules/petugas/manajemen-lapak/repository"
 
 	// Modul Usecase
 	authUsecase "cfd-backend/modules/auth/usecase"
@@ -53,11 +56,14 @@ import (
 	// Modul Usecase - Laporan
 	laporanUsecase "cfd-backend/modules/petugas/laporan/usecase"
 
-	// ===== TAMBAHKAN: Usecase Sisa Lapak =====
+	// Usecase Sisa Lapak
 	sisaLapakUsecase "cfd-backend/modules/petugas/sisa-lapak/usecase"
 
 	// Usecase Acak Lapak
 	acakLapakUsecase "cfd-backend/modules/petugas/acak-lapak/usecase"
+
+	// Usecase Manajemen Lapak
+	manajemenLapakUsecase "cfd-backend/modules/petugas/manajemen-lapak/usecase"
 
 	// Modul Controller
 	authController "cfd-backend/modules/auth/controller"
@@ -78,11 +84,14 @@ import (
 	// Modul Controller - Laporan
 	laporanController "cfd-backend/modules/petugas/laporan/controller"
 
-	// ===== TAMBAHKAN: Controller Sisa Lapak =====
+	// Controller Sisa Lapak
 	sisaLapakController "cfd-backend/modules/petugas/sisa-lapak/controller"
 
 	// Controller Acak Lapak
 	acakLapakController "cfd-backend/modules/petugas/acak-lapak/controller"
+
+	// Controller Manajemen Lapak
+	manajemenLapakController "cfd-backend/modules/petugas/manajemen-lapak/controller"
 
 	"github.com/gofiber/fiber/v3"
 	"github.com/gofiber/fiber/v3/middleware/cors"
@@ -117,11 +126,14 @@ func main() {
 	// 1c. Repository Laporan
 	laporanRepository := laporanRepo.NewLaporanRepository(db)
 
-	// ===== TAMBAHKAN: Repository Sisa Lapak =====
+	// Repository Sisa Lapak
 	sisaLapakRepository := sisaLapakRepo.NewRepository(db)
 
 	// Repository Acak Lapak
 	acakLapakRepository := acakLapakRepo.NewAcakLapakRepository(db)
+
+	// Repository Manajemen Lapak
+	manajemenLapakRepository := manajemenLapakRepo.NewRepository(db)
 
 	// ============================================================
 	// 2. INIT USECASES
@@ -144,11 +156,14 @@ func main() {
 	// 2c. Usecase Laporan
 	laporanUsecase := laporanUsecase.NewLaporanUsecase(laporanRepository)
 
-	// ===== TAMBAHKAN: Usecase Sisa Lapak =====
+	// Usecase Sisa Lapak
 	sisaLapakUsecase := sisaLapakUsecase.NewUsecase(sisaLapakRepository)
 
 	// Usecase Acak Lapak
 	acakLapakUsecase := acakLapakUsecase.NewAcakLapakUsecase(acakLapakRepository)
+
+	// Usecase Manajemen Lapak
+	manajemenLapakUC := manajemenLapakUsecase.NewManajemenLapakUsecase(manajemenLapakRepository)
 
 	// ============================================================
 	// 3. INIT CONTROLLERS
@@ -171,11 +186,14 @@ func main() {
 	// 3c. Controller Laporan
 	laporanController := laporanController.NewLaporanController(laporanUsecase)
 
-	// ===== TAMBAHKAN: Controller Sisa Lapak =====
+	// Controller Sisa Lapak
 	sisaLapakController := sisaLapakController.NewController(sisaLapakUsecase)
 
 	// Controller Acak Lapak
 	acakLapakController := acakLapakController.NewAcakLapakController(acakLapakUsecase)
+
+	// Controller Manajemen Lapak
+	manajemenLapakCtrl := manajemenLapakController.NewManajemenLapakController(manajemenLapakUC)
 
 	// ============================================================
 	// 4. INIT FIBER APP
@@ -370,20 +388,18 @@ func main() {
 		operasionalController.ListSesiWilayah,
 	)
 
-	app.Post("/api/petugas/jam-operasional/sesi-wilayah",
+	// ✅ POST sesi-wilayah (FIX duplikasi + kurung nyasar)
 	app.Post("/api/petugas/jam-operasional/sesi-wilayah",
 		middleware.AuthMiddleware(cfg.JWTSecret),
 		middleware.PermissionMiddleware(permissionRepository, "jadwal.manage"),
 		operasionalController.BuatSesiWilayah,
-	),
-)
+	)
 
 	app.Delete("/api/petugas/jam-operasional/sesi-wilayah/:id",
 		middleware.AuthMiddleware(cfg.JWTSecret),
 		middleware.PermissionMiddleware(permissionRepository, "jadwal.manage"),
 		operasionalController.HapusSesiWilayah,
 	)
-
 
 	// ============================================================
 	// 10. ENDPOINT PETUGAS - SCAN QR
@@ -422,7 +438,7 @@ func main() {
 	)
 
 	// ============================================================
-	// 12. ENDPOINT PETUGAS - SISA LAPAK (BARU)
+	// 12. ENDPOINT PETUGAS - SISA LAPAK
 	// ============================================================
 	app.Get("/api/petugas/sisa-lapak",
 		middleware.AuthMiddleware(cfg.JWTSecret),
@@ -456,14 +472,137 @@ func main() {
 
 	// ============================================================
 	// 12b. ENDPOINT PETUGAS - ACAK LAPAK
-	// (isi pool lokasi lapak_slot SEBELUM ada pedagang yang daftar --
-	// endpoint reshuffle lama sudah dihapus, "Acak Ulang" gak diperlukan
-	// lagi karena sistem udah ngacak lokasi pas GenerateSlot/ClaimSlot)
 	// ============================================================
 	app.Post("/api/petugas/acak-lapak/generate-slot",
 		middleware.AuthMiddleware(cfg.JWTSecret),
 		middleware.PermissionMiddleware(permissionRepository, "pedagang.read"),
 		acakLapakController.GenerateSlot,
+	)
+
+	// ============================================================
+	// 12c. ENDPOINT PETUGAS - MANAJEMEN LAPAK
+	// ============================================================
+
+	// ----- Wilayah lengkap (kecamatan -> jalan -> ruas) -----
+	app.Get("/api/petugas/manajemen-lapak/wilayah",
+		middleware.AuthMiddleware(cfg.JWTSecret),
+		middleware.PermissionMiddleware(permissionRepository, "jadwal.read"),
+		manajemenLapakCtrl.GetWilayah,
+	)
+
+	// ----- Event (CRUD + aktif/nonaktif + kuota) -----
+	app.Get("/api/petugas/manajemen-lapak/event",
+		middleware.AuthMiddleware(cfg.JWTSecret),
+		middleware.PermissionMiddleware(permissionRepository, "jadwal.read"),
+		manajemenLapakCtrl.ListEvents,
+	)
+
+	app.Post("/api/petugas/manajemen-lapak/event",
+		middleware.AuthMiddleware(cfg.JWTSecret),
+		middleware.PermissionMiddleware(permissionRepository, "jadwal.manage"),
+		manajemenLapakCtrl.CreateEvent,
+	)
+
+	app.Delete("/api/petugas/manajemen-lapak/event/:id",
+		middleware.AuthMiddleware(cfg.JWTSecret),
+		middleware.PermissionMiddleware(permissionRepository, "jadwal.manage"),
+		manajemenLapakCtrl.DeleteEvent,
+	)
+
+	app.Patch("/api/petugas/manajemen-lapak/event/:id/aktif",
+		middleware.AuthMiddleware(cfg.JWTSecret),
+		middleware.PermissionMiddleware(permissionRepository, "jadwal.manage"),
+		manajemenLapakCtrl.SetEventAktif,
+	)
+
+	app.Get("/api/petugas/manajemen-lapak/event/:id/kuota",
+		middleware.AuthMiddleware(cfg.JWTSecret),
+		middleware.PermissionMiddleware(permissionRepository, "jadwal.read"),
+		manajemenLapakCtrl.GetKuotaEvent,
+	)
+
+	// ----- Edit kuota jalan di event tertentu (aktif atau tidak) -----
+	app.Patch("/api/petugas/manajemen-lapak/event/:id/jalan/:jalanId",
+		middleware.AuthMiddleware(cfg.JWTSecret),
+		middleware.PermissionMiddleware(permissionRepository, "jadwal.manage"),
+		manajemenLapakCtrl.UpdateKuotaJalanEvent,
+	)
+
+	// ----- Ruas jalan (CRUD) -----
+	app.Post("/api/petugas/manajemen-lapak/ruas",
+		middleware.AuthMiddleware(cfg.JWTSecret),
+		middleware.PermissionMiddleware(permissionRepository, "penataan.manage"),
+		manajemenLapakCtrl.CreateRuas,
+	)
+
+	app.Put("/api/petugas/manajemen-lapak/ruas/:id",
+		middleware.AuthMiddleware(cfg.JWTSecret),
+		middleware.PermissionMiddleware(permissionRepository, "penataan.manage"),
+		manajemenLapakCtrl.UpdateRuas,
+	)
+
+	app.Delete("/api/petugas/manajemen-lapak/ruas/:id",
+		middleware.AuthMiddleware(cfg.JWTSecret),
+		middleware.PermissionMiddleware(permissionRepository, "penataan.manage"),
+		manajemenLapakCtrl.DeleteRuas,
+	)
+
+	// ----- Pedagang lama / tambah / import -----
+	app.Get("/api/petugas/manajemen-lapak/pedagang-lama",
+		middleware.AuthMiddleware(cfg.JWTSecret),
+		middleware.PermissionMiddleware(permissionRepository, "pedagang.read"),
+		manajemenLapakCtrl.GetPedagangLama,
+	)
+
+	app.Post("/api/petugas/manajemen-lapak/pedagang",
+		middleware.AuthMiddleware(cfg.JWTSecret),
+		middleware.PermissionMiddleware(permissionRepository, "users.create"),
+		manajemenLapakCtrl.CreatePedagang,
+	)
+
+	app.Post("/api/petugas/manajemen-lapak/pedagang/import",
+		middleware.AuthMiddleware(cfg.JWTSecret),
+		middleware.PermissionMiddleware(permissionRepository, "users.create"),
+		manajemenLapakCtrl.ImportPedagang,
+	)
+
+	// ----- Kecamatan (CRUD) -----
+	app.Post("/api/petugas/manajemen-lapak/kecamatan",
+		middleware.AuthMiddleware(cfg.JWTSecret),
+		middleware.PermissionMiddleware(permissionRepository, "penataan.manage"),
+		manajemenLapakCtrl.CreateKecamatan,
+	)
+
+	app.Delete("/api/petugas/manajemen-lapak/kecamatan/:id",
+		middleware.AuthMiddleware(cfg.JWTSecret),
+		middleware.PermissionMiddleware(permissionRepository, "penataan.manage"),
+		manajemenLapakCtrl.DeleteKecamatan,
+	)
+
+	// ----- Jalan baru (CRUD) -----
+	app.Post("/api/petugas/manajemen-lapak/jalan",
+		middleware.AuthMiddleware(cfg.JWTSecret),
+		middleware.PermissionMiddleware(permissionRepository, "penataan.manage"),
+		manajemenLapakCtrl.CreateJalanBaru,
+	)
+
+	app.Put("/api/petugas/manajemen-lapak/jalan/:id",
+		middleware.AuthMiddleware(cfg.JWTSecret),
+		middleware.PermissionMiddleware(permissionRepository, "penataan.manage"),
+		manajemenLapakCtrl.UpdateJalanBaru,
+	)
+
+	app.Delete("/api/petugas/manajemen-lapak/jalan/:id",
+		middleware.AuthMiddleware(cfg.JWTSecret),
+		middleware.PermissionMiddleware(permissionRepository, "penataan.manage"),
+		manajemenLapakCtrl.DeleteJalanBaru,
+	)
+
+	// ----- Assign jalan ke event aktif -----
+	app.Post("/api/petugas/manajemen-lapak/jalan/:id/assign-event",
+		middleware.AuthMiddleware(cfg.JWTSecret),
+		middleware.PermissionMiddleware(permissionRepository, "jadwal.manage"),
+		manajemenLapakCtrl.AssignJalanKeEventAktif,
 	)
 
 	// ============================================================
@@ -481,7 +620,7 @@ func main() {
 		pedagangController.StatusPengajuan,
 	)
 
-	// 12a. Lapak (klaim nomor stand / "war")
+	// Lapak (klaim nomor stand / "war")
 	app.Get("/api/pedagang/lapak/kecamatan",
 		middleware.AuthMiddleware(cfg.JWTSecret),
 		middleware.RoleMiddleware(userRepository, "pedagang"),
@@ -506,7 +645,7 @@ func main() {
 		lapakController.GetStatus,
 	)
 
-	// 12b. Checkout (cek-out akhir sesi + input omset)
+	// Checkout (cek-out akhir sesi + input omset)
 	app.Get("/api/pedagang/checkout",
 		middleware.AuthMiddleware(cfg.JWTSecret),
 		middleware.RoleMiddleware(userRepository, "pedagang"),

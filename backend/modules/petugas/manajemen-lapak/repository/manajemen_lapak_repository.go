@@ -1,9 +1,5 @@
 // OPSI B: implementasi Repository yang menyimpan ruas sebagai kolom
 // JSONB (master_jalan.ruas) alih-alih tabel terpisah (jalan_ruas).
-//
-// CARA PAKAI: file ini adalah PENGGANTI dari
-// modules/petugas/manajemen-lapak/repository/manajemen_lapak_repository.go
-// (opsi A) -- bukan tambahan yang jalan bersamaan.
 package repository
 
 import (
@@ -29,9 +25,6 @@ var (
 	ErrEventTidakDitemukan     = errors.New("event tidak ditemukan")
 	ErrTidakAdaEventAktif      = errors.New("tidak ada event CFD yang aktif")
 	ErrKecamatanTidakDitemukan = errors.New("kecamatan tidak ditemukan")
-	// ErrJalanBelumDiikutkanEvent -- beda dari ErrJalanTidakDitemukan:
-	// jalannya ADA, tapi belum pernah di-assign kuota ke event ini
-	// (gak ada baris di jalan_kapasitas_sesi buat kombinasi ini).
 	ErrJalanBelumDiikutkanEvent = errors.New("jalan ini belum diikutkan ke event ini")
 )
 
@@ -66,13 +59,6 @@ func (r *Repository) GetWilayahLengkap(ctx context.Context) ([]entity.KecamatanL
 		ORDER BY created_at DESC LIMIT 1
 	`).Scan(&eventID)
 
-	// PENTING: query ini di-drive dari master_instansi (pakai FULL OUTER
-	// JOIN), BUKAN dari master_jalan. Kalau di-drive dari master_jalan,
-	// kecamatan yang belum punya jalan sama sekali gak akan pernah muncul
-	// di hasil -- padahal kecamatan yang baru dibuat SELALU dalam kondisi
-	// itu, jadi user gak bisa nambahin jalan ke kecamatan barunya.
-	// FULL OUTER JOIN dipakai supaya jalan yatim (gak punya baris di
-	// jalan_instansi) tetap kelihatan sebagai "Tanpa Kecamatan".
 	rows, err := r.db.Query(ctx, `
 		SELECT
 			mi.id AS kecamatan_id,
@@ -106,9 +92,6 @@ func (r *Repository) GetWilayahLengkap(ctx context.Context) ([]entity.KecamatanL
 	for rows.Next() {
 		var kecID *string
 		var kec string
-		// Semua kolom dari mj bisa NULL: baris kecamatan yang belum punya
-		// jalan (atau jalannya sudah di-soft-delete) tetap ikut kebawa
-		// karena FULL OUTER JOIN di atas.
 		var id, kode, nama *string
 		var kapasitas *int
 		var kuotaEvent, terisi int
@@ -117,8 +100,6 @@ func (r *Repository) GetWilayahLengkap(ctx context.Context) ([]entity.KecamatanL
 			return nil, err
 		}
 
-		// Kunci grup pakai ID kecamatan, bukan namanya -- dua kecamatan
-		// dengan nama sama gak lagi ketimpa jadi satu baris.
 		kunci := "\x00tanpa-kecamatan"
 		if kecID != nil {
 			kunci = *kecID
@@ -132,8 +113,6 @@ func (r *Repository) GetWilayahLengkap(ctx context.Context) ([]entity.KecamatanL
 			}{id: kecID, nama: kec, jalan: []entity.JalanLengkapData{}}
 		}
 
-		// Baris kecamatan kosong: gak ada jalan yang perlu ditambahkan,
-		// tapi kecamatannya sendiri tetap masuk hasil (dengan jalan: []).
 		if id == nil {
 			continue
 		}
@@ -155,8 +134,6 @@ func (r *Repository) GetWilayahLengkap(ctx context.Context) ([]entity.KecamatanL
 	result := make([]entity.KecamatanLengkapData, 0, len(urutan))
 	for _, kunci := range urutan {
 		a := m[kunci]
-		// jalan SELALU slice kosong (bukan nil) supaya ke-marshal jadi []
-		// di JSON, bukan null -- frontend nge-map langsung tanpa crash.
 		if a.jalan == nil {
 			a.jalan = []entity.JalanLengkapData{}
 		}
@@ -165,8 +142,6 @@ func (r *Repository) GetWilayahLengkap(ctx context.Context) ([]entity.KecamatanL
 		})
 	}
 
-	// Isi TerisiLama/TerisiBaru tiap ruas -- cuma kalau ada event aktif,
-	// soalnya lapak_klaim selalu terikat ke 1 session_id (= event).
 	if eventID != nil {
 		if err := r.tandaiOkupansiRuas(ctx, *eventID, result); err != nil {
 			return nil, err
@@ -175,11 +150,6 @@ func (r *Repository) GetWilayahLengkap(ctx context.Context) ([]entity.KecamatanL
 	return result, nil
 }
 
-// tandaiOkupansiRuas -- ambil semua klaim lapak AKTIF di event ini
-// (join ke pedagang_profiles buat tau lama/baru dari submitted_at),
-// terus tempelkan hitungannya ke ruas yang rentang nomor_lapak-nya
-// cocok. Satu query buat semua jalan sekaligus (bukan per-jalan),
-// biar gak N+1 pas kecamatan/jalan-nya banyak.
 func (r *Repository) tandaiOkupansiRuas(ctx context.Context, eventID string, kecamatanList []entity.KecamatanLengkapData) error {
 	rows, err := r.db.Query(ctx, `
 		SELECT lk.jalan_id, lk.nomor_lapak, (pp.submitted_at IS NULL) AS lama
@@ -192,7 +162,6 @@ func (r *Repository) tandaiOkupansiRuas(ctx context.Context, eventID string, kec
 	}
 	defer rows.Close()
 
-	// map[jalanID] -> list nomor lapak (dipisah lama/baru)
 	type okupan struct {
 		nomor int
 		lama  bool
@@ -206,7 +175,7 @@ func (r *Repository) tandaiOkupansiRuas(ctx context.Context, eventID string, kec
 		}
 		nomor, err := strconv.Atoi(strings.TrimSpace(nomorStr))
 		if err != nil {
-			continue // nomor_lapak non-numerik (harusnya gak pernah terjadi, tapi jangan sampai bikin gagal semua)
+			continue
 		}
 		perJalan[jalanID] = append(perJalan[jalanID], okupan{nomor: nomor, lama: lama})
 	}
@@ -270,7 +239,7 @@ func decodeRuas(raw []byte) ([]entity.RuasData, error) {
 }
 
 // ============================================================
-// 2. EVENT -- gak nyentuh ruas sama sekali, gak berubah.
+// 2. EVENT
 // ============================================================
 
 func (r *Repository) CreateEvent(ctx context.Context, userID string, req *entity.CreateEventRequest) (string, error) {
@@ -319,13 +288,24 @@ func (r *Repository) CreateEvent(ctx context.Context, userID string, req *entity
 	return eventID, nil
 }
 
+// ✅ FIXED: ListEvents dengan COALESCE untuk handle NULL
 func (r *Repository) ListEvents(ctx context.Context) ([]entity.EventDTO, error) {
 	rows, err := r.db.Query(ctx, `
-		SELECT id, nama_sesi, tanggal::text, jam_mulai::text, jam_selesai::text, pendaftaran_mulai,
-		       pendaftaran_selesai, COALESCE(kuota_total, 0), COALESCE(keterangan, ''), status, is_active
+		SELECT 
+			id, 
+			nama_sesi, 
+			COALESCE(tanggal::text, '') AS tanggal, 
+			COALESCE(jam_mulai::text, '') AS jam_mulai, 
+			COALESCE(jam_selesai::text, '') AS jam_selesai, 
+			pendaftaran_mulai,
+			pendaftaran_selesai, 
+			COALESCE(kuota_total, 0), 
+			COALESCE(keterangan, ''), 
+			COALESCE(status, ''), 
+			COALESCE(is_active, false)
 		FROM cfd_sessions
 		WHERE deleted_at IS NULL
-		ORDER BY tanggal DESC, created_at DESC
+		ORDER BY tanggal DESC NULLS LAST, created_at DESC
 	`)
 	if err != nil {
 		return nil, err
@@ -405,12 +385,6 @@ func (r *Repository) GetKuotaEvent(ctx context.Context, eventID string) (*entity
 	return &dto, nil
 }
 
-// GetKuotaTotalEvent -- ambil kuota_total 1 event aja. Dipisah dari
-// ListEvents supaya usecase gak perlu narik SELURUH event (plus query
-// daftar jalan per event) cuma buat baca satu angka.
-// GetTerisiJalanEvent -- terisi 1 jalan di 1 event tertentu (BUKAN cuma
-// event aktif). "ada" false berarti jalan ini belum pernah diikutkan ke
-// event tersebut (gak ada baris jalan_kapasitas_sesi-nya).
 func (r *Repository) GetTerisiJalanEvent(ctx context.Context, jalanID, eventID string) (terisi int, ada bool, err error) {
 	err = r.db.QueryRow(ctx, `
 		SELECT terisi FROM jalan_kapasitas_sesi WHERE jalan_id = $1 AND session_id = $2
@@ -424,10 +398,6 @@ func (r *Repository) GetTerisiJalanEvent(ctx context.Context, jalanID, eventID s
 	return terisi, true, nil
 }
 
-// UpdateKuotaJalanEvent -- edit kuota 1 jalan yang SUDAH diikutkan ke 1
-// event tertentu, apa pun status aktif event itu (beda dari
-// AssignJalanKeEventAktif yang cuma jalan buat event yang lagi aktif).
-// Validasi (kapasitas, terisi, total vs kuota event) ada di usecase.
 func (r *Repository) UpdateKuotaJalanEvent(ctx context.Context, eventID, jalanID string, kuota int) error {
 	cmd, err := r.db.Exec(ctx, `
 		UPDATE jalan_kapasitas_sesi SET kuota = $1, updated_at = now()
@@ -489,9 +459,7 @@ func (r *Repository) KuotaJalanUntukEvent(ctx context.Context, jalanID, eventID 
 }
 
 // ============================================================
-// 3. RUAS JALAN -- baca-tulis lewat kolom master_jalan.ruas (JSONB).
-//    Semua logic hitung nomorMulai/nomorSelesai udah dikerjain di
-//    usecase; repository di sini cuma baca & simpen daftar mentahnya.
+// 3. RUAS JALAN
 // ============================================================
 
 func (r *Repository) JalanExists(ctx context.Context, jalanID string) (bool, error) {
@@ -502,10 +470,6 @@ func (r *Repository) JalanExists(ctx context.Context, jalanID string) (bool, err
 	return exists, err
 }
 
-// GetJalanKapasitas -- ambil kapasitas dasar 1 jalan (master_jalan.kapasitas).
-// Dipakai buat validasi supaya kuota yang dialokasikan ke sebuah event
-// gak pernah melebihi kapasitas fisik jalan itu sendiri (lihat
-// ErrKuotaLebihDariKapasitas di usecase).
 func (r *Repository) GetJalanKapasitas(ctx context.Context, jalanID string) (int, error) {
 	var kapasitas int
 	err := r.db.QueryRow(ctx, `
@@ -532,9 +496,6 @@ func (r *Repository) GetRuasByJalan(ctx context.Context, jalanID string) ([]enti
 	return decodeRuas(raw)
 }
 
-// GetRuasJalanID -- cari jalan mana yang punya ruas dengan id ini,
-// lewat operator containment JSONB (@>) buat mempersempit, terus
-// dipastikan lagi manual di kode Go.
 func (r *Repository) GetRuasJalanID(ctx context.Context, ruasID string) (string, error) {
 	rows, err := r.db.Query(ctx, `
 		SELECT id, ruas FROM master_jalan
@@ -567,8 +528,6 @@ func (r *Repository) GetRuasJalanID(ctx context.Context, ruasID string) (string,
 	return "", ErrRuasTidakDitemukan
 }
 
-// ReplaceRuasJalan -- timpa seluruh daftar ruas milik 1 jalan
-// sekaligus (dipanggil usecase setelah recompute nomorMulai/selesai).
 func (r *Repository) ReplaceRuasJalan(ctx context.Context, jalanID string, list []entity.RuasData) error {
 	if list == nil {
 		list = []entity.RuasData{}
@@ -590,7 +549,7 @@ func (r *Repository) ReplaceRuasJalan(ctx context.Context, jalanID string, list 
 }
 
 // ============================================================
-// 4. PEDAGANG LAMA -- gak berubah.
+// 4. PEDAGANG LAMA
 // ============================================================
 
 func (r *Repository) GetPedagangLama(ctx context.Context, filter entity.PedagangLamaFilter) ([]entity.PedagangLamaItem, int, error) {
@@ -603,9 +562,6 @@ func (r *Repository) GetPedagangLama(ctx context.Context, filter entity.Pedagang
 	}
 	offset := (page - 1) * limit
 
-	// Filter tambahan -- checklist #4: Pencarian, Ruas (jalanId + rentang
-	// nomor dari ruas yang dipilih), dan Status. Semuanya diterapkan di
-	// query utama (bukan query luar) karena butuh akses ke lk/mj.
 	var conds []string
 	args := []interface{}{}
 	argIdx := 1
@@ -625,13 +581,6 @@ func (r *Repository) GetPedagangLama(ctx context.Context, filter entity.Pedagang
 		args = append(args, *filter.NomorMulai, *filter.NomorSelesai)
 		argIdx += 2
 	}
-	// Status di sini artinya "lama" atau "baru" (pedagang.jpg pill di
-	// tabel Pedagang) -- BUKAN status_verifikasi (pending/approved/
-	// rejected). Dulu salah sasaran ke status_verifikasi padahal gak
-	// ada dropdown apapun di FE yang ngirim nilai itu, jadi filternya
-	// nganggur. "lama" = submitted_at NULL (dientri manual/import
-	// petugas), "baru" = submitted_at NOT NULL (daftar sendiri lewat
-	// sistem).
 	if filter.Status == "lama" {
 		conds = append(conds, `p.submitted_at IS NULL`)
 	} else if filter.Status == "baru" {
@@ -699,19 +648,9 @@ func (r *Repository) GetPedagangLama(ctx context.Context, filter entity.Pedagang
 }
 
 // ============================================================
-// 6. TAMBAH PEDAGANG (manual & import file)
+// 6. TAMBAH PEDAGANG
 // ============================================================
 
-// CreatePedagangManual -- dipakai baik dari form "Tambah Data" maupun
-// dari proses import file (dipanggil per baris). submitted_at SENGAJA
-// dibiarkan NULL -- itu yang bikin pedagang ini otomatis kekategori
-// "lama" (beda dari pedagang yang daftar sendiri lewat sistem, yang
-// submitted_at-nya otomatis keisi pas dia submit pengajuan).
-//
-// Email dari form (persis kayak pendaftaran beneran), passwordnya
-// SISTEM yang generate otomatis (petugas gak ngisi/ngarang password) --
-// password plaintext-nya dibalikin sekali di response biar bisa
-// disampein ke pedagangnya, gak disimpan di mana pun selain hash-nya.
 func (r *Repository) CreatePedagangManual(ctx context.Context, req *entity.CreatePedagangRequest) (*entity.CreatePedagangResult, error) {
 	tx, err := r.db.Begin(ctx)
 	if err != nil {
@@ -775,12 +714,6 @@ func (r *Repository) CreatePedagangManual(ctx context.Context, req *entity.Creat
 	return &entity.CreatePedagangResult{PedagangID: pedagangID, Email: req.Email, Password: randomPassword}, nil
 }
 
-// ImportPedagangBatch -- panggil CreatePedagangManual per baris. Satu
-// baris gagal (mis. NIK udah kepake) TIDAK menggagalkan baris lain --
-// errornya dikumpulin, bukan bikin seluruh proses import berhenti.
-// Password per-baris gak dibalikin ke frontend (gak praktis buat
-// banyak baris sekaligus) -- kalau perlu, pedagangnya reset password
-// sendiri lewat "lupa password" pakai email yang didaftarin di file.
 func (r *Repository) ImportPedagangBatch(ctx context.Context, rows []entity.CreatePedagangRequest) (int, int, []string) {
 	berhasil := 0
 	var errs []string
@@ -795,11 +728,8 @@ func (r *Repository) ImportPedagangBatch(ctx context.Context, rows []entity.Crea
 	return berhasil, len(errs), errs
 }
 
-
-
 // ============================================================
-// 7. KECAMATAN & JALAN BARU -- tabel "Kecamatan" & "Jalan" di UI
-// 4-tabel Ruas & Kuota.
+// 7. KECAMATAN & JALAN BARU
 // ============================================================
 
 func (r *Repository) CreateKecamatan(ctx context.Context, namaKecamatan string) (string, error) {
@@ -844,9 +774,6 @@ func (r *Repository) CreateJalanBaru(ctx context.Context, req *entity.CreateJala
 	return jalanID, nil
 }
 
-// SumKuotaRuas -- total Kuota semua ruas (mj.ruas JSONB) milik 1 jalan,
-// dipakai buat validasi pas UpdateJalanBaru: kapasitas baru gak boleh
-// diturunkan sampai di bawah ini.
 func (r *Repository) SumKuotaRuas(ctx context.Context, jalanID string) (int, error) {
 	var total int
 	err := r.db.QueryRow(ctx, `
@@ -863,10 +790,6 @@ func (r *Repository) SumKuotaRuas(ctx context.Context, jalanID string) (int, err
 	return total, nil
 }
 
-// UpdateJalanBaru -- edit kode/nama/kapasitas jalan yang sudah ada.
-// Ruas & kuota event yang udah nempel di jalan ini TIDAK ikut berubah
-// di sini -- validasi batas-bawah kapasitas baru dikerjain di usecase
-// (pakai SumKuotaRuas & KuotaJalanUntukEvent) sebelum manggil ini.
 func (r *Repository) UpdateJalanBaru(ctx context.Context, jalanID string, req *entity.UpdateJalanBaruRequest) error {
 	cmd, err := r.db.Exec(ctx, `
 		UPDATE master_jalan
@@ -882,16 +805,10 @@ func (r *Repository) UpdateJalanBaru(ctx context.Context, jalanID string, req *e
 	return nil
 }
 
-
 // ============================================================
-// 8. HAPUS EVENT, KECAMATAN, JALAN -- soft-delete (isi deleted_at),
-// gak ada migrasi baru yang dibutuhin.
+// 8. HAPUS EVENT, KECAMATAN, JALAN
 // ============================================================
 
-// DeleteEvent -- soft-delete cfd_sessions, sekalian lepas alokasi
-// kuota per-jalan-nya (jalan_kapasitas_sesi) buat event ini. Riwayat
-// kehadiran & klaim lapak (kehadiran_pedagang, lapak_klaim) SENGAJA
-// gak disentuh -- tetap aman buat dilihat di tab Laporan.
 func (r *Repository) DeleteEvent(ctx context.Context, eventID string) error {
 	tx, err := r.db.Begin(ctx)
 	if err != nil {
@@ -914,9 +831,6 @@ func (r *Repository) DeleteEvent(ctx context.Context, eventID string) error {
 	return tx.Commit(ctx)
 }
 
-// DeleteKecamatan -- soft-delete master_instansi, sekalian ikut
-// soft-delete semua master_jalan yang ada di bawah kecamatan itu
-// (ruas ikut "hilang" otomatis karena nempel di kolom jsonb jalan).
 func (r *Repository) DeleteKecamatan(ctx context.Context, kecamatanID string) error {
 	tx, err := r.db.Begin(ctx)
 	if err != nil {
@@ -948,10 +862,6 @@ func (r *Repository) DeleteKecamatan(ctx context.Context, kecamatanID string) er
 	}
 
 	for _, jalanID := range jalanIDs {
-		// Alokasi kuota jalan ini di event mana pun ikut dilepas. Kalau
-		// gak, SumKuotaJalanEvent masih ngitung kuota jalan yang udah
-		// dihapus -- kuota event jadi "bocor" dan jalan baru bisa ditolak
-		// padahal sebenarnya masih muat.
 		if _, err := tx.Exec(ctx, `DELETE FROM jalan_kapasitas_sesi WHERE jalan_id = $1`, jalanID); err != nil {
 			return err
 		}
@@ -975,8 +885,6 @@ func (r *Repository) DeleteKecamatan(ctx context.Context, kecamatanID string) er
 	return tx.Commit(ctx)
 }
 
-// DeleteJalanBaru -- soft-delete 1 master_jalan (ruas-nya ikut
-// "hilang" karena nempel di kolom jsonb-nya sendiri).
 func (r *Repository) DeleteJalanBaru(ctx context.Context, jalanID string) error {
 	tx, err := r.db.Begin(ctx)
 	if err != nil {
@@ -988,9 +896,6 @@ func (r *Repository) DeleteJalanBaru(ctx context.Context, jalanID string) error 
 		return err
 	}
 
-	// Lepas juga alokasi kuota jalan ini di event mana pun, biar kuota
-	// event gak "bocor" ke jalan yang sudah dihapus (lihat catatan di
-	// DeleteKecamatan).
 	if _, err := tx.Exec(ctx, `DELETE FROM jalan_kapasitas_sesi WHERE jalan_id = $1`, jalanID); err != nil {
 		return err
 	}
@@ -1006,11 +911,6 @@ func (r *Repository) DeleteJalanBaru(ctx context.Context, jalanID string) error 
 	return tx.Commit(ctx)
 }
 
-// AssignJalanKeEventAktif -- upsert kuota 1 jalan ke event yang lagi
-// aktif (siapa pun eventnya, ditentuin lewat GetActiveEventID). Kalau
-// jalan itu udah punya kuota di event ini, kuotanya ditimpa (bukan
-// ditambah); validasi total kuota jalan gak boleh lebih dari kuota
-// total event ada di usecase, bukan di sini.
 func (r *Repository) AssignJalanKeEventAktif(ctx context.Context, eventID, jalanID string, kuota int) error {
 	_, err := r.db.Exec(ctx, `
 		INSERT INTO jalan_kapasitas_sesi (jalan_id, session_id, kuota, terisi)
@@ -1020,9 +920,6 @@ func (r *Repository) AssignJalanKeEventAktif(ctx context.Context, eventID, jalan
 	return err
 }
 
-// SumKuotaJalanEvent -- total kuota semua jalan yang UDAH di-assign ke
-// 1 event, KECUALI 1 jalan tertentu (buat validasi "gak boleh lebih
-// dari kuota total event" pas assign/update jalan itu).
 func (r *Repository) SumKuotaJalanEvent(ctx context.Context, eventID string, kecualiJalanID string) (int, error) {
 	var total int
 	err := r.db.QueryRow(ctx, `

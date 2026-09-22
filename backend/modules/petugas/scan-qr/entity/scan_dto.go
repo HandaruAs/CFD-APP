@@ -45,10 +45,11 @@ type CheckInResponse struct {
 }
 
 type RiwayatScanItem struct {
-    Waktu      string `json:"waktu"`
-    NamaUsaha  string `json:"nama_usaha"`
-    Status     string `json:"status"` // "berhasil" | "gagal"
-    PedagangID string `json:"pedagang_id,omitempty"`
+    Waktu       string `json:"waktu"`
+    NamaUsaha   string `json:"nama_usaha"`
+    LokasiLapak string `json:"lokasi_lapak"`
+    Status      string `json:"status"` // "berhasil" | "gagal"
+    PedagangID  string `json:"pedagang_id,omitempty"`
 }
 
 type RiwayatScanResponse struct {
