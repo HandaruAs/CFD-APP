@@ -68,6 +68,16 @@ func (u *scanUsecase) VerifyQRCode(ctx context.Context, qrCode string, petugasID
         checkInAt = &existing.CheckInAt
     }
 
+    // 3b. Ambil lokasi lapak yang SUDAH DIKLAIM pedagang di sesi ini
+    // (lapak_klaim -> master_jalan) -- ini beda dari pedagang.Alamat, yang
+    // itu alamat pribadi/domisili pedagang saat daftar, bukan lokasi
+    // jualannya. Kalau pedagang belum sempat klaim lapak, namaJalan &
+    // nomorLapak dua-duanya bakal kosong.
+    namaJalan, nomorLapak, err := u.repo.GetLokasiLapak(ctx, pedagang.ID, session.ID)
+    if err != nil {
+        return nil, err
+    }
+
     // 4. Siapkan response
     detail := &entity.PedagangDetailDTO{
         ID:                pedagang.ID,
@@ -75,7 +85,7 @@ func (u *scanUsecase) VerifyQRCode(ctx context.Context, qrCode string, petugasID
         Pemilik:           pedagang.Pemilik,
         Inisial:           getInisial(pedagang.Pemilik),
         Kategori:          getString(pedagang.JenisDagangan),
-        LokasiLapak:       getString(pedagang.Alamat),
+        LokasiLapak:       formatLokasiLapak(namaJalan, nomorLapak),
         Nik:               getString(pedagang.NIK),
         Alamat:            getString(pedagang.Alamat),
         PerkiraanHarga:    getString(pedagang.PerkiraanHarga),
@@ -163,10 +173,11 @@ func (u *scanUsecase) GetRiwayatScan(ctx context.Context, petugasID string) (*en
     riwayat := make([]entity.RiwayatScanItem, 0, len(items))
     for _, item := range items {
         riwayat = append(riwayat, entity.RiwayatScanItem{
-            Waktu:      item.CheckInAt.Format("15:04"),
-            NamaUsaha:  item.NamaUsaha,
-            Status:     "berhasil",
-            PedagangID: item.PedagangID,
+            Waktu:       item.CheckInAt.Format("15:04"),
+            NamaUsaha:   item.NamaUsaha,
+            LokasiLapak: formatLokasiLapak(item.NamaJalan, item.NomorLapak),
+            Status:      "berhasil",
+            PedagangID:  item.PedagangID,
         })
     }
 
@@ -182,6 +193,23 @@ func getString(s *string) string {
         return ""
     }
     return *s
+}
+
+// formatLokasiLapak gabungin nama jalan + nomor lapak jadi satu string
+// yang enak dibaca petugas, mis. "Jl. Kertajaya - CFD-001234". Kalau
+// pedagang belum klaim lapak di sesi ini, dua-duanya kosong dan hasilnya
+// string kosong (ditangani frontend sebagai "Lokasi belum diisi").
+func formatLokasiLapak(namaJalan, nomorLapak string) string {
+    if namaJalan == "" && nomorLapak == "" {
+        return ""
+    }
+    if namaJalan == "" {
+        return nomorLapak
+    }
+    if nomorLapak == "" {
+        return "Jl. " + namaJalan
+    }
+    return "Jl. " + namaJalan + " - " + nomorLapak
 }
 
 func stringPtr(s string) *string {
@@ -233,7 +261,12 @@ func (u *scanUsecase) GetStatusCheckIn(ctx context.Context, userID string) (*ent
 		return &entity.StatusCheckInResponse{SudahCheckIn: false}, nil
 	}
 
-	session, err := u.repo.GetActiveSessionToday(ctx, time.Now())
+	// Sengaja pakai GetSessionToday (bukan GetActiveSessionToday) di sini --
+	// status "sudah check-in" pedagang harus tetap kebaca walau sesinya udah
+	// ditutup (baik lewat "Akhiri Sesi Lebih Awal" ataupun lewat jam_selesai
+	// kelewat), biar dia diarahkan ke halaman checkout dan bukan balik lagi
+	// ke halaman QR seolah belum pernah check-in.
+	session, err := u.repo.GetSessionToday(ctx, time.Now())
 	if err != nil {
 		return nil, err
 	}

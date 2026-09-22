@@ -44,7 +44,8 @@ type KehadiranWithPedagang struct {
     Pemilik       string `db:"pemilik"`
     Inisial       string `db:"inisial"`
     JenisDagangan string `db:"jenis_dagangan"`
-    LokasiLapak   string `db:"lokasi_lapak"`
+    NamaJalan     string `db:"nama_jalan"`
+    NomorLapak    string `db:"nomor_lapak"`
 }
 
 // CfdSession - model untuk tabel cfd_sessions (disetarakan dengan migrasi 26)

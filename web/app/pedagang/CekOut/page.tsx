@@ -17,12 +17,7 @@ interface DataCheckout {
   sudahCheckIn: boolean;
   sudahCheckOut: boolean;
   omset?: number;
-  // Dikirim backend sebagai timestamp ISO lengkap (tanggal hari ini + jam
-  // selesai sesi), dipakai CUMA buat nampilin hitung mundur di layar.
   jamSelesaiSesi?: string;
-  // Sumber kebenaran boleh/tidaknya submit cek-out. INI yang dipakai buat
-  // nyalain tombol, bukan hasil hitungan `now >= jamSelesaiSesi` di
-  // client -- soalnya jam di HP pedagang bisa aja beda sama jam server.
   sesiSudahSelesai: boolean;
 }
 
@@ -133,29 +128,49 @@ export default function MerchantCheckoutPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Jalanin jam yang tick tiap detik, HANYA buat nampilin teks hitung
-  // mundur. Begitu waktunya lewat, refetch ke backend supaya
-  // `sesiSudahSelesai` ke-update dari sumber yang bener (bukan diasumsikan
-  // dari jam client), lalu interval berhenti.
+  // Polling status sesi + countdown tick
   useEffect(() => {
-    if (!dataPedagang.jamSelesaiSesi || !dataPedagang.sudahCheckIn || dataPedagang.sesiSudahSelesai || submitted) {
+    // Jangan polling kalau belum check-in, sudah selesai, atau sudah submit
+    if (!dataPedagang.sudahCheckIn || dataPedagang.sesiSudahSelesai || submitted) {
       return;
     }
 
-    const target = new Date(dataPedagang.jamSelesaiSesi).getTime();
+    // Polling ke backend setiap 15 detik
+    const pollId = setInterval(() => {
+      fetchDataCheckout();
+    }, 15000);
 
-    const id = setInterval(() => {
-      const current = Date.now();
-      setNow(current);
-      if (current >= target) {
-        clearInterval(id);
-        fetchDataCheckout();
-      }
+    // Countdown tick tiap detik (cuma untuk tampilan)
+    const tickId = setInterval(() => {
+      setNow(Date.now());
     }, 1000);
 
-    return () => clearInterval(id);
+    return () => {
+      clearInterval(pollId);
+      clearInterval(tickId);
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [dataPedagang.jamSelesaiSesi, dataPedagang.sudahCheckIn, dataPedagang.sesiSudahSelesai, submitted]);
+  }, [dataPedagang.sudahCheckIn, dataPedagang.sesiSudahSelesai, submitted]);
+
+  // Refresh saat tab kembali aktif (opsional, mempercepat update)
+  useEffect(() => {
+    if (!dataPedagang.sudahCheckIn || dataPedagang.sesiSudahSelesai || submitted) {
+      return;
+    }
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "visible") {
+        fetchDataCheckout();
+      }
+    };
+
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+
+    return () => {
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dataPedagang.sudahCheckIn, dataPedagang.sesiSudahSelesai, submitted]);
 
   // Teks hitung mundur doang -- boleh dikit meleset dari jam server, gak
   // masalah karena cuma dekorasi. Yang nentuin boleh/gaknya submit tetap
@@ -216,8 +231,6 @@ export default function MerchantCheckoutPage() {
       const json = await res.json();
 
       if (!res.ok) {
-        // Backend tetap jadi penjaga terakhir (mis. race pas sesi baru
-        // aja ditutup) -- kalau ditolak, tampilkan alasannya apa adanya.
         setSubmitError(json?.error ?? "Gagal menyimpan cek-out.");
         setSubmitting(false);
         return;
