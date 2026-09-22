@@ -16,6 +16,7 @@ type ScanRepository interface {
     GetKehadiranByPedagangAndSession(ctx context.Context, pedagangID, sessionID string) (*entity.KehadiranPedagang, error)
     GetRiwayatScanHariIni(ctx context.Context, petugasID string, tanggal time.Time) ([]entity.KehadiranWithPedagang, error)
     GetActiveSessionToday(ctx context.Context, t time.Time) (*entity.CfdSession, error)
+    AdaKehadiranBelumCheckout(ctx context.Context, pedagangID string) (bool, error)
 }
 
 type scanRepository struct {
@@ -177,6 +178,23 @@ func (r *scanRepository) GetActiveSessionToday(ctx context.Context, t time.Time)
         return nil, err
     }
     return &session, nil
+}
+
+// AdaKehadiranBelumCheckout -- checklist #9: pedagang yang masih punya
+// catatan kehadiran ter-check-in tapi belum check-out (omset belum diisi)
+// gak boleh check-in baru di sesi lain, harus nyelesain checkout dulu.
+func (r *scanRepository) AdaKehadiranBelumCheckout(ctx context.Context, pedagangID string) (bool, error) {
+    var exists bool
+    err := r.db.QueryRow(ctx, `
+        SELECT EXISTS(
+            SELECT 1 FROM kehadiran_pedagang
+            WHERE pedagang_id = $1 AND check_out_at IS NULL AND deleted_at IS NULL
+        )
+    `, pedagangID).Scan(&exists)
+    if err != nil {
+        return false, err
+    }
+    return exists, nil
 }
 
 func (r *scanRepository) GetPedagangProfileIDByUserID(ctx context.Context, userID string) (string, error) {

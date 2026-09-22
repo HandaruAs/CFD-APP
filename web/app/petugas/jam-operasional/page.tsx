@@ -146,80 +146,121 @@ function ModalShell({
 }
 
 // ===== TIME STEPPER (ganti input jam bawaan browser) =====
-// Jam & menit cuma bisa diubah lewat tombol panah, tidak bisa diketik
-// sama sekali -- lebih mudah dipakai lewat sentuhan/klik dan tidak
-// memunculkan popup jam bawaan browser yang tampilannya tidak
-// konsisten dengan desain halaman.
+// Jam, menit, & detik bisa diubah lewat tombol panah, ATAU diklik
+// lalu diketik langsung angkanya (lebih cepat dari klik panah
+// berkali-kali). Tetap tidak memakai <input type="time"> bawaan
+// browser karena tampilannya tidak konsisten dengan desain halaman.
 function TimeStepper({
   value,
   onChange,
   disabled = false,
+  showSeconds = true,
 }: {
-  value: string; // format "HH:MM"
+  value: string; // format "HH:MM" atau "HH:MM:SS"
   onChange: (next: string) => void;
   disabled?: boolean;
+  showSeconds?: boolean;
 }) {
-  const [hh, mm] = value.split(":").map((n) => parseInt(n, 10) || 0);
+  const [hh, mm, ss] = value.split(":").map((n) => parseInt(n, 10) || 0);
+  const [editingUnit, setEditingUnit] = useState<"hh" | "mm" | "ss" | null>(null);
+  const [draft, setDraft] = useState("");
+
+  const build = (h: number, m: number, s: number) => {
+    const parts = [String(h).padStart(2, "0"), String(m).padStart(2, "0")];
+    if (showSeconds) parts.push(String(s).padStart(2, "0"));
+    return parts.join(":");
+  };
 
   const setHour = (next: number) => {
     const wrapped = ((next % 24) + 24) % 24;
-    onChange(`${String(wrapped).padStart(2, "0")}:${String(mm).padStart(2, "0")}`);
+    onChange(build(wrapped, mm, ss));
   };
-  // Menit melompat per 5 dan selalu "snap" ke kelipatan 5 terdekat di
-  // arah yang ditekan -- jadi dari angka aneh manapun (mis. 08 atau 59)
-  // satu klik langsung ke angka bulat (10 atau 00), bukan geser 1-1.
+  // Menit & detik melompat per 5 dan selalu "snap" ke kelipatan 5
+  // terdekat di arah yang ditekan -- jadi dari angka aneh manapun
+  // (mis. 08 atau 59) satu klik langsung ke angka bulat (10 atau 00),
+  // bukan geser 1-1. Kalau butuh angka persis, tinggal klik lalu ketik.
   const setMinute = (direction: 1 | -1) => {
-    const next =
-      direction === 1 ? Math.ceil((mm + 1) / 5) * 5 : Math.floor((mm - 1) / 5) * 5;
+    const next = direction === 1 ? Math.ceil((mm + 1) / 5) * 5 : Math.floor((mm - 1) / 5) * 5;
     const wrapped = ((next % 60) + 60) % 60;
-    onChange(`${String(hh).padStart(2, "0")}:${String(wrapped).padStart(2, "0")}`);
+    onChange(build(hh, wrapped, ss));
   };
+  const setSecond = (direction: 1 | -1) => {
+    const next = direction === 1 ? Math.ceil((ss + 1) / 5) * 5 : Math.floor((ss - 1) / 5) * 5;
+    const wrapped = ((next % 60) + 60) % 60;
+    onChange(build(hh, mm, wrapped));
+  };
+
+  const startEdit = (unit: "hh" | "mm" | "ss", current: number) => {
+    if (disabled) return;
+    setEditingUnit(unit);
+    setDraft(String(current).padStart(2, "0"));
+  };
+  const commitEdit = (unit: "hh" | "mm" | "ss") => {
+    const parsed = parseInt(draft, 10);
+    if (!isNaN(parsed)) {
+      const max = unit === "hh" ? 23 : 59;
+      const clamped = Math.min(Math.max(parsed, 0), max);
+      if (unit === "hh") onChange(build(clamped, mm, ss));
+      else if (unit === "mm") onChange(build(hh, clamped, ss));
+      else onChange(build(hh, mm, clamped));
+    }
+    setEditingUnit(null);
+  };
+
+  const renderUnit = (
+    unit: "hh" | "mm" | "ss",
+    val: number,
+    onUp: () => void,
+    onDown: () => void,
+    label: string,
+  ) => (
+    <div className="flex flex-col items-center">
+      <button type="button" onClick={onUp} disabled={disabled} aria-label={`Tambah ${label}`} className="pt-time-btn">
+        <ChevronUp className="h-4 w-4" strokeWidth={2.5} />
+      </button>
+      {editingUnit === unit ? (
+        <input
+          autoFocus
+          inputMode="numeric"
+          value={draft}
+          disabled={disabled}
+          onFocus={(e) => e.currentTarget.select()}
+          onChange={(e) => setDraft(e.target.value.replace(/\D/g, "").slice(0, 2))}
+          onBlur={() => commitEdit(unit)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") commitEdit(unit);
+            if (e.key === "Escape") setEditingUnit(null);
+          }}
+          className="pt-time-input"
+        />
+      ) : (
+        <button
+          type="button"
+          disabled={disabled}
+          onClick={() => startEdit(unit, val)}
+          aria-label={`Ketik ${label} langsung`}
+          className="pt-time-value pt-time-value-editable"
+        >
+          {String(val).padStart(2, "0")}
+        </button>
+      )}
+      <button type="button" onClick={onDown} disabled={disabled} aria-label={`Kurangi ${label}`} className="pt-time-btn">
+        <ChevronDown className="h-4 w-4" strokeWidth={2.5} />
+      </button>
+    </div>
+  );
 
   return (
     <div className="inline-flex items-center gap-sm">
-      <div className="flex flex-col items-center">
-        <button
-          type="button"
-          onClick={() => setHour(hh + 1)}
-          disabled={disabled}
-          aria-label="Tambah jam"
-          className="pt-time-btn"
-        >
-          <ChevronUp className="h-4 w-4" strokeWidth={2.5} />
-        </button>
-        <span className="pt-time-value">{String(hh).padStart(2, "0")}</span>
-        <button
-          type="button"
-          onClick={() => setHour(hh - 1)}
-          disabled={disabled}
-          aria-label="Kurangi jam"
-          className="pt-time-btn"
-        >
-          <ChevronDown className="h-4 w-4" strokeWidth={2.5} />
-        </button>
-      </div>
+      {renderUnit("hh", hh, () => setHour(hh + 1), () => setHour(hh - 1), "jam")}
       <span className="text-title-lg font-semibold text-on-surface">:</span>
-      <div className="flex flex-col items-center">
-        <button
-          type="button"
-          onClick={() => setMinute(1)}
-          disabled={disabled}
-          aria-label="Tambah menit"
-          className="pt-time-btn"
-        >
-          <ChevronUp className="h-4 w-4" strokeWidth={2.5} />
-        </button>
-        <span className="pt-time-value">{String(mm).padStart(2, "0")}</span>
-        <button
-          type="button"
-          onClick={() => setMinute(-1)}
-          disabled={disabled}
-          aria-label="Kurangi menit"
-          className="pt-time-btn"
-        >
-          <ChevronDown className="h-4 w-4" strokeWidth={2.5} />
-        </button>
-      </div>
+      {renderUnit("mm", mm, () => setMinute(1), () => setMinute(-1), "menit")}
+      {showSeconds && (
+        <>
+          <span className="text-title-lg font-semibold text-on-surface">:</span>
+          {renderUnit("ss", ss, () => setSecond(1), () => setSecond(-1), "detik")}
+        </>
+      )}
     </div>
   );
 }
@@ -270,7 +311,7 @@ export default function JamOperasionalPage() {
       setStatus(data);
       setLoadError(null);
       if (data.pendaftaran.jamBuka) {
-        setCheckInJamBuka(data.pendaftaran.jamBuka.slice(0, 5));
+        setCheckInJamBuka(data.pendaftaran.jamBuka);
       }
       if (data.pendaftaran.jamTutup) {
         setCheckInJamTutup(data.pendaftaran.jamTutup.slice(0, 5));

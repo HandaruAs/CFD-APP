@@ -2,6 +2,7 @@ package usecase
 
 import (
     "context"
+    "errors"
     "fmt"
     "time"
 
@@ -9,6 +10,11 @@ import (
     "cfd-backend/modules/petugas/scan-qr/repository"
     "github.com/google/uuid"
 )
+
+// ErrBelumCheckout -- checklist #9. Controller mengecek error ini secara
+// khusus supaya bisa balikin kode/pesan yang jelas ke frontend, biar
+// pedagangnya diarahkan (stuck) ke halaman checkout, bukan cuma pesan error biasa.
+var ErrBelumCheckout = errors.New("pedagang masih punya sesi sebelumnya yang belum checkout, harus isi omset dulu sebelum bisa check-in lagi")
 
 type ScanUsecase interface {
     VerifyQRCode(ctx context.Context, qrCode string, petugasID string) (*entity.VerifyQRResponse, error)
@@ -110,6 +116,17 @@ func (u *scanUsecase) CheckInPedagang(ctx context.Context, pedagangID, petugasID
     }
     if existing != nil {
         return nil, fmt.Errorf("pedagang sudah check-in pada pukul %s", existing.CheckInAt.Format("15:04"))
+    }
+
+    // 3b. Checklist #9: kalau pedagang ini masih punya kehadiran sesi
+    // sebelumnya yang belum check-out (omset belum diisi), tolak check-in
+    // baru -- pedagang harus nyelesain checkout dulu, gak boleh daftar lagi.
+    belumCheckout, err := u.repo.AdaKehadiranBelumCheckout(ctx, pedagangID)
+    if err != nil {
+        return nil, err
+    }
+    if belumCheckout {
+        return nil, ErrBelumCheckout
     }
 
     // 4. Simpan check-in

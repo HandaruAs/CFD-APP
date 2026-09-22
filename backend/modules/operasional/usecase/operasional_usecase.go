@@ -111,8 +111,16 @@ func toSesiAktifDTO(s *entity.Sesi) (*entity.SesiAktifDTO, error) {
 	now := time.Now()
 	nowMenit := now.Hour()*60 + now.Minute()
 
-	// Aktif = is_active = true AND jam_selesai_aktual IS NULL
-	aktif := s.IsActive && s.JamSelesaiAktual == nil && nowMenit >= mulaiMenit && nowMenit < selesaiMenit
+	// Sesi cuma dianggap "aktif" (lagi berjalan SEKARANG) kalau tanggalnya
+	// emang hari ini. Sebelumnya di sini cuma ngecek jam-nya doang (nowMenit
+	// vs mulaiMenit/selesaiMenit), jadi sesi yang tanggalnya besok/lusa atau
+	// sudah lewat ikut kepencet "aktif" kalau kebetulan jam sekarang jatuh
+	// di rentang jamMulai-jamSelesai sesi itu -- makanya timer bisa nyala
+	// duluan buat sesi yang dijadwalkan buat hari lain.
+	isHariIni := s.Tanggal == now.Format("2006-01-02")
+
+	// Aktif = is_active = true AND jam_selesai_aktual IS NULL AND tanggalnya hari ini AND jam sekarang di dalam rentang
+	aktif := s.IsActive && s.JamSelesaiAktual == nil && isHariIni && nowMenit >= mulaiMenit && nowMenit < selesaiMenit
 
 	sisaMenit := 0
 	if aktif {

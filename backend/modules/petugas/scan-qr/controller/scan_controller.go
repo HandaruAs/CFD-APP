@@ -1,6 +1,8 @@
 package controller
 
 import (
+    "errors"
+
     "cfd-backend/modules/petugas/scan-qr/entity"
     "cfd-backend/modules/petugas/scan-qr/usecase"
     "github.com/gofiber/fiber/v3"
@@ -70,6 +72,14 @@ func (c *ScanController) CheckIn(ctx fiber.Ctx) error {
 
     resp, err := c.scanUsecase.CheckInPedagang(ctx.Context(), req.PedagangID, petugasID, req.Catatan)
     if err != nil {
+        if errors.Is(err, usecase.ErrBelumCheckout) {
+            // Kode khusus biar frontend bisa arahin pedagang ke halaman
+            // checkout, bukan cuma nampilin pesan error biasa (checklist #9).
+            return ctx.Status(fiber.StatusConflict).JSON(fiber.Map{
+                "error": err.Error(),
+                "code":  "BELUM_CHECKOUT",
+            })
+        }
         return ctx.Status(fiber.StatusBadRequest).JSON(fiber.Map{
             "error": err.Error(),
         })
