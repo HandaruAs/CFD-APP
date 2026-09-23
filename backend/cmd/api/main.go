@@ -547,23 +547,34 @@ func main() {
 		manajemenLapakCtrl.DeleteRuas,
 	)
 
-	// ----- Pedagang lama / tambah / import -----
-	app.Get("/api/petugas/manajemen-lapak/pedagang-lama",
+	// ----- Data pedagang (list / tambah / import) -----
+	// Dipindah dari tab "Pedagang" di Manajemen Lapak petugas ke menu
+	// Manajemen User > Pedagang milik superadmin. Handler-nya tetap
+	// pakai ManajemenLapakController, cuma route + aksesnya yang pindah
+	// (sekarang khusus role superadmin).
+	app.Get("/api/admin/pedagang",
 		middleware.AuthMiddleware(cfg.JWTSecret),
-		middleware.PermissionMiddleware(permissionRepository, "pedagang.read"),
+		middleware.RoleMiddleware(userRepository, "superadmin"),
 		manajemenLapakCtrl.GetPedagangLama,
 	)
 
-	app.Post("/api/petugas/manajemen-lapak/pedagang",
+	app.Post("/api/admin/pedagang",
 		middleware.AuthMiddleware(cfg.JWTSecret),
-		middleware.PermissionMiddleware(permissionRepository, "users.create"),
+		middleware.RoleMiddleware(userRepository, "superadmin"),
 		manajemenLapakCtrl.CreatePedagang,
 	)
 
-	app.Post("/api/petugas/manajemen-lapak/pedagang/import",
+	app.Post("/api/admin/pedagang/import",
 		middleware.AuthMiddleware(cfg.JWTSecret),
-		middleware.PermissionMiddleware(permissionRepository, "users.create"),
+		middleware.RoleMiddleware(userRepository, "superadmin"),
 		manajemenLapakCtrl.ImportPedagang,
+	)
+
+	// Dipakai halaman superadmin buat dropdown filter ruas & lokasi lapak.
+	app.Get("/api/admin/wilayah",
+		middleware.AuthMiddleware(cfg.JWTSecret),
+		middleware.RoleMiddleware(userRepository, "superadmin"),
+		manajemenLapakCtrl.GetWilayah,
 	)
 
 	// ----- Kecamatan (CRUD) -----

@@ -7,10 +7,6 @@ import type {
   UpdateRuasRequest,
   CreateJalanBaruRequest,
   UpdateJalanBaruRequest,
-  PedagangLamaResponse,
-  CreatePedagangRequest,
-  CreatePedagangResult,
-  ImportPedagangResult,
   LaporanResponse,
   StatsResponse,
   RegistrasiResponse,
@@ -167,63 +163,7 @@ export function assignJalanKeEventAktif(jalanId: string, kuota: number) {
 }
 
 // ============================================================
-// 4. Pedagang Lama (read-only)
-// ============================================================
-
-export function getPedagangLama(params: {
-  search?: string;
-  jalanId?: string;
-  nomorMulai?: number;
-  nomorSelesai?: number;
-  status?: string;
-  page?: number;
-  limit?: number;
-}) {
-  const qs = new URLSearchParams();
-  if (params.search) qs.set("search", params.search);
-  if (params.jalanId) qs.set("jalanId", params.jalanId);
-  if (params.nomorMulai != null) qs.set("nomorMulai", String(params.nomorMulai));
-  if (params.nomorSelesai != null) qs.set("nomorSelesai", String(params.nomorSelesai));
-  if (params.status) qs.set("status", params.status);
-  qs.set("page", String(params.page ?? 1));
-  qs.set("limit", String(params.limit ?? 20));
-  return request<PedagangLamaResponse>(
-    `/api/petugas/manajemen-lapak/pedagang-lama?${qs.toString()}`
-  );
-}
-
-export function createPedagang(payload: CreatePedagangRequest) {
-  return request<{ message: string; data: CreatePedagangResult }>(
-    "/api/petugas/manajemen-lapak/pedagang",
-    { method: "POST", body: JSON.stringify(payload) }
-  );
-}
-
-// importPedagang -- upload file (.json / .csv), makanya gak lewat
-// helper request() biasa (butuh FormData, bukan JSON body).
-export async function importPedagang(file: File): Promise<ImportPedagangResult> {
-  const token = getToken();
-  const form = new FormData();
-  form.append("file", file);
-
-  const res = await fetch(`${BASE_URL}/api/petugas/manajemen-lapak/pedagang/import`, {
-    method: "POST",
-    headers: {
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
-    },
-    body: form,
-  });
-
-  const body = await res.json().catch(() => null);
-  if (!res.ok) {
-    const message = body?.error ?? `Gagal mengimpor file (${res.status})`;
-    throw new Error(message);
-  }
-  return body as ImportPedagangResult;
-}
-
-// ============================================================
-// 5. Laporan (kehadiran + omset) -- endpoint lama /api/petugas/laporan,
+// 4. Laporan (kehadiran + omset) -- endpoint lama /api/petugas/laporan,
 // sekarang cuma ditampilkan sebagai tab di sini, bukan halaman sendiri.
 // ============================================================
 

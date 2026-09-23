@@ -595,6 +595,7 @@ func (r *Repository) GetPedagangLama(ctx context.Context, filter entity.Pedagang
 	query := fmt.Sprintf(`
 		SELECT DISTINCT ON (p.id)
 			p.id AS id,
+			u.id AS user_id,
 			COALESCE(p.nik, '-') AS nik,
 			u.name AS nama_lengkap,
 			COALESCE(u.email, '-') AS email,
@@ -608,7 +609,7 @@ func (r *Repository) GetPedagangLama(ctx context.Context, filter entity.Pedagang
 		JOIN users u ON p.user_id = u.id
 		LEFT JOIN lapak_klaim lk ON lk.pedagang_id = p.id
 		LEFT JOIN master_jalan mj ON mj.id = lk.jalan_id
-		WHERE p.deleted_at IS NULL %s
+		WHERE p.deleted_at IS NULL AND u.deleted_at IS NULL %s
 		ORDER BY p.id, lk.claimed_at DESC
 	`, extraFilter)
 
@@ -619,7 +620,7 @@ func (r *Repository) GetPedagangLama(ctx context.Context, filter entity.Pedagang
 			JOIN users u ON p.user_id = u.id
 			LEFT JOIN lapak_klaim lk ON lk.pedagang_id = p.id
 			LEFT JOIN master_jalan mj ON mj.id = lk.jalan_id
-			WHERE p.deleted_at IS NULL %s
+			WHERE p.deleted_at IS NULL AND u.deleted_at IS NULL %s
 			ORDER BY p.id, lk.claimed_at DESC
 		) t`, extraFilter)
 	var total int
@@ -639,7 +640,7 @@ func (r *Repository) GetPedagangLama(ctx context.Context, filter entity.Pedagang
 	var result []entity.PedagangLamaItem
 	for rows.Next() {
 		var it entity.PedagangLamaItem
-		if err := rows.Scan(&it.PedagangID, &it.NIK, &it.NamaLengkap, &it.Email, &it.NamaUsaha, &it.Kategori, &it.Kontak, &it.Lokasi, &it.Status, &it.StatusPedagang); err != nil {
+		if err := rows.Scan(&it.PedagangID, &it.UserID, &it.NIK, &it.NamaLengkap, &it.Email, &it.NamaUsaha, &it.Kategori, &it.Kontak, &it.Lokasi, &it.Status, &it.StatusPedagang); err != nil {
 			return nil, 0, err
 		}
 		result = append(result, it)

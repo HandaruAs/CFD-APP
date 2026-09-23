@@ -107,58 +107,6 @@ export interface UpdateJalanBaruRequest {
   kapasitas: number;
 }
 
-export interface PedagangLamaItem {
-  pedagangId: string;
-  nik: string;
-  namaLengkap: string;
-  namaUsaha: string;
-  kategori: string;
-  kontak: string;
-  lokasi: string;
-  status: string;
-  statusPedagang: "lama" | "baru";
-}
-
-export interface PedagangLamaResponse {
-  data: PedagangLamaItem[];
-  total: number;
-  page: number;
-  limit: number;
-}
-
-// ============================================================
-// Tambah pedagang -- manual ("Tambah Data") atau import file
-// (JSON/CSV). Keduanya bikin pedagang berstatus "lama".
-// ============================================================
-
-export interface CreatePedagangRequest {
-  namaLengkap: string;
-  nik: string;
-  email: string;
-  namaUsaha: string;
-  jenisDagangan?: string; // "makanan_minuman" | "bukan_makanan_minuman"
-  phone?: string;
-  alamat?: string;
-  lokasiLapak?: string;
-  tanggalLahir?: string; // YYYY-MM-DD
-  jenisLapak?: string; // "rombong" | "meja"
-}
-
-// CreatePedagangResult -- passwordnya di-generate sistem (bukan
-// petugas yang ngarang), dibalikin sekali di sini biar bisa
-// disampein ke pedagangnya.
-export interface CreatePedagangResult {
-  pedagangId: string;
-  email: string;
-  password: string;
-}
-
-export interface ImportPedagangResult {
-  berhasil: number;
-  gagal: number;
-  errors: string[];
-}
-
 // ============================================================
 // Laporan (kehadiran + omset) -- endpoint /api/petugas/laporan,
 // bukan bagian dari modul manajemen-lapak backend, tapi sekarang
@@ -202,7 +150,7 @@ export interface StatsResponse {
   persenHadir: number;
 }
 
-export type TabKey = "event" | "ruas-kuota" | "pedagang-lama" | "laporan";
+export type TabKey = "event" | "ruas-kuota" | "laporan";
 
 // ============================================================
 // Registrasi -- dipakai RegistrasiTab.tsx. Endpoint backend-nya
