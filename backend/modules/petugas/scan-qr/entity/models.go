@@ -45,6 +45,7 @@ type KehadiranWithPedagang struct {
     Inisial       string `db:"inisial"`
     JenisDagangan string `db:"jenis_dagangan"`
     NamaJalan     string `db:"nama_jalan"`
+    NamaRuas      string `db:"nama_ruas"`
     NomorLapak    string `db:"nomor_lapak"`
 }
 

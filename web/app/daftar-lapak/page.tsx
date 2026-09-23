@@ -42,6 +42,14 @@ import {
 
 type Step = 1 | 2 | 3;
 
+interface HasilAlokasi {
+  nomorStand: string;
+  kecamatan: string;
+  namaJalan: string;
+  // Kosong kalau lapaknya dari jalan yang belum dibagi ruas.
+  namaRuas: string;
+}
+
 const KATEGORI_OPTIONS = [
   { value: "makanan_minuman", label: "Makanan dan Minuman" },
   { value: "bukan_makanan_minuman", label: "Bukan Makanan dan Minuman" },
@@ -107,9 +115,7 @@ export default function DaftarLapakPage() {
 
   // ---- Step 3: hasil ----
   const [pedagangId, setPedagangId] = useState("");
-  const [hasil, setHasil] = useState<{ nomorStand: string; kecamatan: string; namaJalan: string } | null>(
-    null
-  );
+  const [hasil, setHasil] = useState<HasilAlokasi | null>(null);
 
   // ---------- STEP 1: Register + auto-login ----------
   const handleStep1 = async (e: FormEvent) => {
@@ -165,12 +171,11 @@ export default function DaftarLapakPage() {
     }
   };
 
-  // ---------- STEP 2: Pendaftaran usaha ----------
   // ---------- STEP 2: Data usaha, LANGSUNG lanjut klaim lokasi ----------
   // Mode/kecamatan picker dihapus -- lokasi & nomor stan sekarang diambil
-  // otomatis dari pool yang udah disiapin petugas (lihat
-  // app/petugas/acak-lapak, tab "Siapkan Lokasi Lapak"). Jadi begitu data
-  // usaha kesimpan, langsung lanjut klaim tanpa jeda form tambahan.
+  // otomatis dari pool yang udah disiapin admin (lihat app/admin/acak-lapak).
+  // Jadi begitu data usaha kesimpan, langsung lanjut klaim tanpa jeda form
+  // tambahan.
   const handleStep2 = async (e: FormEvent) => {
     e.preventDefault();
     setError(null);
@@ -222,6 +227,7 @@ export default function DaftarLapakPage() {
         nomorStand: dataKlaim.nomor_lapak,
         kecamatan: dataKlaim.nama_kecamatan,
         namaJalan: dataKlaim.nama_jalan,
+        namaRuas: dataKlaim.nama_ruas ?? "",
       });
       setPedagangId(dataPengajuan.pengajuan_id ?? "");
       setStep(3);
@@ -458,6 +464,13 @@ export default function DaftarLapakPage() {
                       <span className="text-[12px] text-[#a3743f]">Nama Jalan</span>
                       <span className="text-[13px] font-semibold text-[#1a1d29]">{hasil.namaJalan}</span>
                     </div>
+                    {/* Baris Ruas cuma muncul kalau lapaknya memang punya ruas. */}
+                    {hasil.namaRuas && (
+                      <div className="flex items-center justify-between">
+                        <span className="text-[12px] text-[#a3743f]">Ruas</span>
+                        <span className="text-[13px] font-semibold text-[#1a1d29]">{hasil.namaRuas}</span>
+                      </div>
+                    )}
                   </div>
                 </div>
               </div>

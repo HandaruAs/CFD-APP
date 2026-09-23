@@ -12,7 +12,7 @@ import (
 type ScanRepository interface {
 	GetPedagangByID(ctx context.Context, id string) (*entity.PedagangProfile, error)
 	GetPedagangProfileIDByUserID(ctx context.Context, userID string) (string, error)
-	GetLokasiLapak(ctx context.Context, pedagangID, sessionID string) (namaJalan, nomorLapak string, err error)
+	GetLokasiLapak(ctx context.Context, pedagangID, sessionID string) (namaJalan, namaRuas, nomorLapak string, err error)
 	CreateKehadiran(ctx context.Context, kehadiran *entity.KehadiranPedagang) error
 	GetKehadiranByPedagangAndSession(ctx context.Context, pedagangID, sessionID string) (*entity.KehadiranPedagang, error)
 	GetRiwayatScanHariIni(ctx context.Context, petugasID string, tanggal time.Time) ([]entity.KehadiranWithPedagang, error)
@@ -64,21 +64,30 @@ func (r *scanRepository) GetPedagangByID(ctx context.Context, id string) (*entit
 // daftar. Pola query sama persis dengan checkout_repository.GetDataCheckout
 // -- lihat modules/pedagang/checkout. Kalau pedagang belum klaim lapak di
 // sesi ini, dikembalikan string kosong (bukan error).
-func (r *scanRepository) GetLokasiLapak(ctx context.Context, pedagangID, sessionID string) (string, string, error) {
-	var namaJalan, nomorLapak string
+//
+// Nama ruas diambil dari JSONB master_jalan.ruas, dicocokkan lewat
+// lapak_klaim.ruas_id. Kosong kalau klaimnya dari jalan tanpa ruas.
+func (r *scanRepository) GetLokasiLapak(ctx context.Context, pedagangID, sessionID string) (string, string, string, error) {
+	var namaJalan, namaRuas, nomorLapak string
 	err := r.db.QueryRow(ctx, `
-        SELECT COALESCE(mj.nama_jalan, ''), COALESCE(lk.nomor_lapak, '')
+        SELECT
+            COALESCE(mj.nama_jalan, ''),
+            COALESCE((
+                SELECT e->>'namaRuas' FROM jsonb_array_elements(mj.ruas) e
+                WHERE e->>'id' = lk.ruas_id LIMIT 1
+            ), ''),
+            COALESCE(lk.nomor_lapak, '')
         FROM lapak_klaim lk
         JOIN master_jalan mj ON mj.id = lk.jalan_id
         WHERE lk.pedagang_id = $1 AND lk.session_id = $2 AND lk.status = 'aktif'
-    `, pedagangID, sessionID).Scan(&namaJalan, &nomorLapak)
+    `, pedagangID, sessionID).Scan(&namaJalan, &namaRuas, &nomorLapak)
 	if err != nil {
 		if err == pgx.ErrNoRows {
-			return "", "", nil
+			return "", "", "", nil
 		}
-		return "", "", err
+		return "", "", "", err
 	}
-	return namaJalan, nomorLapak, nil
+	return namaJalan, namaRuas, nomorLapak, nil
 }
 
 func (r *scanRepository) CreateKehadiran(ctx context.Context, kehadiran *entity.KehadiranPedagang) error {
@@ -140,6 +149,10 @@ func (r *scanRepository) GetRiwayatScanHariIni(ctx context.Context, petugasID st
             ) AS inisial,
             COALESCE(p.jenis_dagangan::text, '') AS jenis_dagangan,
             COALESCE(mj.nama_jalan, '') AS nama_jalan,
+            COALESCE((
+                SELECT e->>'namaRuas' FROM jsonb_array_elements(mj.ruas) e
+                WHERE e->>'id' = lk.ruas_id LIMIT 1
+            ), '') AS nama_ruas,
             COALESCE(lk.nomor_lapak, '') AS nomor_lapak
         FROM kehadiran_pedagang k
         JOIN pedagang_profiles p ON k.pedagang_id = p.id
@@ -165,7 +178,7 @@ func (r *scanRepository) GetRiwayatScanHariIni(ctx context.Context, petugasID st
 		err := rows.Scan(
 			&k.ID, &k.PedagangID, &k.SessionID, &k.CheckInAt, &k.ScannedBy,
 			&k.Catatan, &k.CreatedAt, &k.UpdatedAt, &k.DeletedAt,
-			&k.NamaUsaha, &k.Pemilik, &k.Inisial, &k.JenisDagangan, &k.NamaJalan, &k.NomorLapak,
+			&k.NamaUsaha, &k.Pemilik, &k.Inisial, &k.JenisDagangan, &k.NamaJalan, &k.NamaRuas, &k.NomorLapak,
 		)
 		if err != nil {
 			return nil, err

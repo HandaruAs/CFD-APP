@@ -73,7 +73,7 @@ func (u *scanUsecase) VerifyQRCode(ctx context.Context, qrCode string, petugasID
     // itu alamat pribadi/domisili pedagang saat daftar, bukan lokasi
     // jualannya. Kalau pedagang belum sempat klaim lapak, namaJalan &
     // nomorLapak dua-duanya bakal kosong.
-    namaJalan, nomorLapak, err := u.repo.GetLokasiLapak(ctx, pedagang.ID, session.ID)
+    namaJalan, namaRuas, nomorLapak, err := u.repo.GetLokasiLapak(ctx, pedagang.ID, session.ID)
     if err != nil {
         return nil, err
     }
@@ -85,7 +85,7 @@ func (u *scanUsecase) VerifyQRCode(ctx context.Context, qrCode string, petugasID
         Pemilik:           pedagang.Pemilik,
         Inisial:           getInisial(pedagang.Pemilik),
         Kategori:          getString(pedagang.JenisDagangan),
-        LokasiLapak:       formatLokasiLapak(namaJalan, nomorLapak),
+        LokasiLapak:       formatLokasiLapak(namaJalan, namaRuas, nomorLapak),
         Nik:               getString(pedagang.NIK),
         Alamat:            getString(pedagang.Alamat),
         PerkiraanHarga:    getString(pedagang.PerkiraanHarga),
@@ -175,7 +175,7 @@ func (u *scanUsecase) GetRiwayatScan(ctx context.Context, petugasID string) (*en
         riwayat = append(riwayat, entity.RiwayatScanItem{
             Waktu:       item.CheckInAt.Format("15:04"),
             NamaUsaha:   item.NamaUsaha,
-            LokasiLapak: formatLokasiLapak(item.NamaJalan, item.NomorLapak),
+            LokasiLapak: formatLokasiLapak(item.NamaJalan, item.NamaRuas, item.NomorLapak),
             Status:      "berhasil",
             PedagangID:  item.PedagangID,
         })
@@ -195,21 +195,29 @@ func getString(s *string) string {
     return *s
 }
 
-// formatLokasiLapak gabungin nama jalan + nomor lapak jadi satu string
-// yang enak dibaca petugas, mis. "Jl. Kertajaya - CFD-001234". Kalau
-// pedagang belum klaim lapak di sesi ini, dua-duanya kosong dan hasilnya
-// string kosong (ditangani frontend sebagai "Lokasi belum diisi").
-func formatLokasiLapak(namaJalan, nomorLapak string) string {
-    if namaJalan == "" && nomorLapak == "" {
-        return ""
+// formatLokasiLapak gabungin nama jalan, ruas, & nomor lapak jadi satu
+// string yang enak dibaca petugas, mis. "Jalan Gubeng, Ruas 2 - CFD-571595".
+// Bagian yang kosong dilewati (jalan tanpa ruas -> "Jalan Gubeng -
+// CFD-571595"). Kalau pedagang belum klaim lapak, hasilnya string kosong
+// (ditangani frontend sebagai "Lokasi belum diisi").
+//
+// Nama jalan dipakai apa adanya (tanpa prefix "Jl."), karena di master_jalan
+// namanya sudah "Jalan ...".
+func formatLokasiLapak(namaJalan, namaRuas, nomorLapak string) string {
+    lokasi := namaJalan
+    if namaRuas != "" {
+        if lokasi != "" {
+            lokasi += ", "
+        }
+        lokasi += namaRuas
     }
-    if namaJalan == "" {
-        return nomorLapak
+    if nomorLapak != "" {
+        if lokasi != "" {
+            lokasi += " - "
+        }
+        lokasi += nomorLapak
     }
-    if nomorLapak == "" {
-        return "Jl. " + namaJalan
-    }
-    return "Jl. " + namaJalan + " - " + nomorLapak
+    return lokasi
 }
 
 func stringPtr(s string) *string {
