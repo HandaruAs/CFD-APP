@@ -160,6 +160,7 @@ type UpdateRuasRequest struct {
 
 type PedagangLamaItem struct {
 	PedagangID     string `json:"pedagangId"`
+	UserID         string `json:"userId"` // users.id -- dipakai halaman superadmin buat edit/hapus akun
 	NIK            string `json:"nik"`
 	NamaLengkap    string `json:"namaLengkap"`
 	Email          string `json:"email"`
