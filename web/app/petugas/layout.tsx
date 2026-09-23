@@ -1,12 +1,13 @@
-import "./petugas.css";
-
-import { ConfirmDialogProvider } from "./manajemen-lapak/components/confirm-dialog";
+import { ConfirmDialogProvider } from "../admin/manajemen-lapak/components/confirm-dialog";
 
 // Layout ini HANYA aktif untuk halaman-halaman di dalam app/petugas/**
 // (Next.js otomatis pakai layout terdekat ke route-nya). Tidak menyentuh
-// app/layout.tsx (root) ataupun page.tsx yang sudah ada -- cuma
-// menambahkan CSS tambahan dan bungkus data-petugas-scope biar style
-// di petugas.css hanya berlaku di sini.
+// app/layout.tsx (root) ataupun page.tsx yang sudah ada.
+//
+// CSS globals.css TIDAK di-import lagi di sini -- sudah cukup sekali di
+// app/layout.tsx (root), berlaku untuk semua role termasuk petugas.
+// data-petugas-scope dibiarkan sebagai penanda saja, sudah tidak dipakai
+// untuk membatasi CSS (semua class di globals.css sekarang global).
 //
 // ConfirmDialogProvider dibungkus di sini (bukan di tiap page) supaya
 // SEMUA halaman petugas -- bukan cuma manajemen-lapak -- bisa pakai

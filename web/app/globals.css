@@ -1,201 +1,87 @@
-  @import "tailwindcss";
+/*
+  app/globals.css — SATU-SATUNYA entry Tailwind untuk seluruh app
+  (pedagang, petugas, superadmin, landing, dst). Sebelumnya token &
+  komponen ini terpecah di app/pedagang/pedagang.css dan
+  app/petugas/petugas.css (masing-masing di-scope lewat @source ke
+  folder sendiri) -- sekarang digabung di sini biar semua role pakai
+  desain yang SAMA, tanpa duplikasi token.
 
-  :root {
-    /* Civic Flow design tokens — see civic_flow/DESIGN.md */
-    --color-surface: #f8f9ff;
-    --color-surface-dim: #cbdbf5;
-    --color-surface-bright: #f8f9ff;
-    --color-surface-container-lowest: #ffffff;
-    --color-surface-container-low: #eff4ff;
-    --color-surface-container: #e5eeff;
-    --color-surface-container-high: #dce9ff;
-    --color-surface-container-highest: #d3e4fe;
-    --color-on-surface: #0b1c30;
-    --color-on-surface-variant: #444653;
-    --color-inverse-surface: #213145;
-    --color-inverse-on-surface: #eaf1ff;
-    --color-surface-tint: #3755c3;
+  Karena file ini ada di app/globals.css, pola scan Tailwind (folder app
+  dan semua sub-file .ts / .tsx di bawahnya) otomatis mencakup
+  app/pedagang, app/petugas, dan folder role lain -- tidak perlu @source
+  terpisah per folder lagi.
+*/
 
-    --color-primary: #00288e;
-    --color-on-primary: #ffffff;
-    --color-primary-container: #1e40af;
-    --color-on-primary-container: #a8b8ff;
-    --color-inverse-primary: #b8c4ff;
-
-    --color-secondary: #006c49;
-    --color-on-secondary: #ffffff;
-    --color-secondary-container: #6cf8bb;
-    --color-on-secondary-container: #00714d;
-
-    --color-tertiary: #4c2e00;
-    --color-on-tertiary: #ffffff;
-    --color-tertiary-container: #6b4200;
-    --color-on-tertiary-container: #ffa929;
-
-    --color-error: #ba1a1a;
-    --color-on-error: #ffffff;
-    --color-error-container: #ffdad6;
-    --color-on-error-container: #93000a;
-
-    --color-primary-fixed: #dde1ff;
-    --color-primary-fixed-dim: #b8c4ff;
-    --color-on-primary-fixed: #001453;
-    --color-on-primary-fixed-variant: #173bab;
-
-    --color-secondary-fixed: #6ffbbe;
-    --color-secondary-fixed-dim: #4edea3;
-    --color-on-secondary-fixed: #002113;
-    --color-on-secondary-fixed-variant: #005236;
-
-    --color-tertiary-fixed: #ffddb8;
-    --color-tertiary-fixed-dim: #ffb95f;
-    --color-on-tertiary-fixed: #2a1700;
-    --color-on-tertiary-fixed-variant: #653e00;
-
-    --color-background: #f8f9ff;
-    --color-on-background: #0b1c30;
-    --color-surface-variant: #d3e4fe;
-
-    --color-outline: #757684;
-    --color-outline-variant: #c4c5d5;
-  }
-
-  @theme inline {
-    --color-surface: var(--color-surface);
-    --color-surface-dim: var(--color-surface-dim);
-    --color-surface-bright: var(--color-surface-bright);
-    --color-surface-container-lowest: var(--color-surface-container-lowest);
-    --color-surface-container-low: var(--color-surface-container-low);
-    --color-surface-container: var(--color-surface-container);
-    --color-surface-container-high: var(--color-surface-container-high);
-    --color-surface-container-highest: var(--color-surface-container-highest);
-    --color-on-surface: var(--color-on-surface);
-    --color-on-surface-variant: var(--color-on-surface-variant);
-    --color-inverse-surface: var(--color-inverse-surface);
-    --color-inverse-on-surface: var(--color-inverse-on-surface);
-    --color-surface-tint: var(--color-surface-tint);
-
-    --color-primary: var(--color-primary);
-    --color-on-primary: var(--color-on-primary);
-    --color-primary-container: var(--color-primary-container);
-    --color-on-primary-container: var(--color-on-primary-container);
-    --color-inverse-primary: var(--color-inverse-primary);
-
-    --color-secondary: var(--color-secondary);
-    --color-on-secondary: var(--color-on-secondary);
-    --color-secondary-container: var(--color-secondary-container);
-    --color-on-secondary-container: var(--color-on-secondary-container);
-
-    --color-tertiary: var(--color-tertiary);
-    --color-on-tertiary: var(--color-on-tertiary);
-    --color-tertiary-container: var(--color-tertiary-container);
-    --color-on-tertiary-container: var(--color-on-tertiary-container);
-
-    --color-error: var(--color-error);
-    --color-on-error: var(--color-on-error);
-    --color-error-container: var(--color-error-container);
-    --color-on-error-container: var(--color-on-error-container);
-
-    --color-primary-fixed: var(--color-primary-fixed);
-    --color-primary-fixed-dim: var(--color-primary-fixed-dim);
-    --color-on-primary-fixed: var(--color-on-primary-fixed);
-    --color-on-primary-fixed-variant: var(--color-on-primary-fixed-variant);
-
-    --color-secondary-fixed: var(--color-secondary-fixed);
-    --color-secondary-fixed-dim: var(--color-secondary-fixed-dim);
-    --color-on-secondary-fixed: var(--color-on-secondary-fixed);
-    --color-on-secondary-fixed-variant: var(--color-on-secondary-fixed-variant);
-
-    --color-tertiary-fixed: var(--color-tertiary-fixed);
-    --color-tertiary-fixed-dim: var(--color-tertiary-fixed-dim);
-    --color-on-tertiary-fixed: var(--color-on-tertiary-fixed);
-    --color-on-tertiary-fixed-variant: var(--color-on-tertiary-fixed-variant);
-
-    --color-background: var(--color-background);
-    --color-on-background: var(--color-on-background);
-    --color-surface-variant: var(--color-surface-variant);
-
-    --color-outline: var(--color-outline);
-    --color-outline-variant: var(--color-outline-variant);
-
-    
-
-    /* Radius scale */
-    --radius-sm: 0.125rem;
-    --radius-md: 0.375rem;
-    --radius-lg: 0.5rem;
-    --radius-xl: 0.75rem;
-
-    /* Typography scale */
-    --font-sans: Inter, ui-sans-serif, system-ui, sans-serif;
-
-    --text-display-lg: 48px;
-    --text-display-lg--line-height: 1.2;
-    --text-display-lg--letter-spacing: -0.02em;
-    --text-display-lg--font-weight: 700;
-
-    --text-headline-lg: 32px;
-    --text-headline-lg--line-height: 40px;
-    --text-headline-lg--letter-spacing: -0.01em;
-    --text-headline-lg--font-weight: 600;
-
-    --text-headline-lg-mobile: 24px;
-    --text-headline-lg-mobile--line-height: 32px;
-    --text-headline-lg-mobile--font-weight: 600;
-
-    --text-headline-md: 24px;
-    --text-headline-md--line-height: 32px;
-    --text-headline-md--font-weight: 600;
-
-    --text-title-lg: 20px;
-    --text-title-lg--line-height: 28px;
-    --text-title-lg--font-weight: 600;
-
-    --text-body-lg: 18px;
-    --text-body-lg--line-height: 28px;
-    --text-body-lg--font-weight: 400;
-
-    --text-body-md: 16px;
-    --text-body-md--line-height: 24px;
-    --text-body-md--font-weight: 400;
-
-    --text-label-md: 14px;
-    --text-label-md--line-height: 20px;
-    --text-label-md--letter-spacing: 0.01em;
-    --text-label-md--font-weight: 500;
-
-    --text-label-sm: 12px;
-    --text-label-sm--line-height: 16px;
-    --text-label-sm--letter-spacing: 0.02em;
-    --text-label-sm--font-weight: 600;
-  }
-
-  html,
-  body {
-    margin: 0;
-    padding: 0;
-  }
-
-  body {
-    background: var(--color-background);
-    color: var(--color-on-background);
-    overscroll-behavior: none;
-  }
-
-  * {
-    border-color: var(--color-outline-variant);
-  }
-
-  ::-webkit-scrollbar {
-    width: 8px;
-    height: 8px;
-  }
-  ::-webkit-scrollbar-thumb {
-    background: var(--color-surface-dim);
-    border-radius: 9999px;
-  }
+@import "tailwindcss";
+@source "./**/*.{ts,tsx}";
 
 :root {
+  --color-surface: #f8f9ff;
+  --color-surface-dim: #cbdbf5;
+  --color-surface-bright: #f8f9ff;
+  --color-surface-container-lowest: #ffffff;
+  --color-surface-container-low: #eff4ff;
+  --color-surface-container: #e5eeff;
+  --color-surface-container-high: #dce9ff;
+  --color-surface-container-highest: #d3e4fe;
+  --color-on-surface: #0b1c30;
+  --color-on-surface-variant: #444653;
+  --color-inverse-surface: #213145;
+  --color-inverse-on-surface: #eaf1ff;
+  --color-surface-tint: #3755c3;
+
+  --color-primary: #00288e;
+  --color-on-primary: #ffffff;
+  --color-primary-container: #1e40af;
+  --color-on-primary-container: #a8b8ff;
+  --color-inverse-primary: #b8c4ff;
+
+  --color-secondary: #006c49;
+  --color-on-secondary: #ffffff;
+  --color-secondary-container: #6cf8bb;
+  --color-on-secondary-container: #00714d;
+
+  --color-tertiary: #4c2e00;
+  --color-on-tertiary: #ffffff;
+  --color-tertiary-container: #6b4200;
+  --color-on-tertiary-container: #ffa929;
+
+  --color-error: #ba1a1a;
+  --color-on-error: #ffffff;
+  --color-error-container: #ffdad6;
+  --color-on-error-container: #93000a;
+
+  --color-primary-fixed: #dde1ff;
+  --color-primary-fixed-dim: #b8c4ff;
+  --color-on-primary-fixed: #001453;
+  --color-on-primary-fixed-variant: #173bab;
+
+  --color-secondary-fixed: #6ffbbe;
+  --color-secondary-fixed-dim: #4edea3;
+  --color-on-secondary-fixed: #002113;
+  --color-on-secondary-fixed-variant: #005236;
+
+  --color-tertiary-fixed: #ffddb8;
+  --color-tertiary-fixed-dim: #ffb95f;
+  --color-on-tertiary-fixed: #2a1700;
+  --color-on-tertiary-fixed-variant: #653e00;
+
+  --color-background: #f8f9ff;
+  --color-on-background: #0b1c30;
+  --color-surface-variant: #d3e4fe;
+
+  --color-outline: #757684;
+  --color-outline-variant: #c4c5d5;
+
+  /* ---------------------------------------------------------------
+     "Civic Flow" -- dipakai landing page publik (app/page.tsx) dan
+     komponen public-navbar/public-footer. INI BUKAN LEFTOVER -- sempat
+     kehapus pas globals.css digabung (dikira duplikat gak kepake),
+     ternyata masih aktif dipakai (text-blue, bg-paper, text-ink-strong,
+     dst) jadi dikembalikan di sini. Skema warna ini independen dari
+     token CFD Hub di atas (dipakai admin/petugas/pedagang) -- sengaja
+     dibiarkan terpisah, bukan digabung jadi satu skema, biar gak perlu
+     ganti nama class di landing page. */
   --ink: #0a0f1d;
   --midnight: #0f1b33;
   --midnight-soft: #16233f;
@@ -210,9 +96,66 @@
   --ink-soft: #64748b;
   --ink-strong: #0f172a;
 }
- 
-/* Kalau pakai Tailwind v4 (ada @import "tailwindcss"; di paling atas file) */
+
 @theme inline {
+  --color-surface: var(--color-surface);
+  --color-surface-dim: var(--color-surface-dim);
+  --color-surface-bright: var(--color-surface-bright);
+  --color-surface-container-lowest: var(--color-surface-container-lowest);
+  --color-surface-container-low: var(--color-surface-container-low);
+  --color-surface-container: var(--color-surface-container);
+  --color-surface-container-high: var(--color-surface-container-high);
+  --color-surface-container-highest: var(--color-surface-container-highest);
+  --color-on-surface: var(--color-on-surface);
+  --color-on-surface-variant: var(--color-on-surface-variant);
+  --color-inverse-surface: var(--color-inverse-surface);
+  --color-inverse-on-surface: var(--color-inverse-on-surface);
+  --color-surface-tint: var(--color-surface-tint);
+
+  --color-primary: var(--color-primary);
+  --color-on-primary: var(--color-on-primary);
+  --color-primary-container: var(--color-primary-container);
+  --color-on-primary-container: var(--color-on-primary-container);
+  --color-inverse-primary: var(--color-inverse-primary);
+
+  --color-secondary: var(--color-secondary);
+  --color-on-secondary: var(--color-on-secondary);
+  --color-secondary-container: var(--color-secondary-container);
+  --color-on-secondary-container: var(--color-on-secondary-container);
+
+  --color-tertiary: var(--color-tertiary);
+  --color-on-tertiary: var(--color-on-tertiary);
+  --color-tertiary-container: var(--color-tertiary-container);
+  --color-on-tertiary-container: var(--color-on-tertiary-container);
+
+  --color-error: var(--color-error);
+  --color-on-error: var(--color-on-error);
+  --color-error-container: var(--color-error-container);
+  --color-on-error-container: var(--color-on-error-container);
+
+  --color-primary-fixed: var(--color-primary-fixed);
+  --color-primary-fixed-dim: var(--color-primary-fixed-dim);
+  --color-on-primary-fixed: var(--color-on-primary-fixed);
+  --color-on-primary-fixed-variant: var(--color-on-primary-fixed-variant);
+
+  --color-secondary-fixed: var(--color-secondary-fixed);
+  --color-secondary-fixed-dim: var(--color-secondary-fixed-dim);
+  --color-on-secondary-fixed: var(--color-on-secondary-fixed);
+  --color-on-secondary-fixed-variant: var(--color-on-secondary-fixed-variant);
+
+  --color-tertiary-fixed: var(--color-tertiary-fixed);
+  --color-tertiary-fixed-dim: var(--color-tertiary-fixed-dim);
+  --color-on-tertiary-fixed: var(--color-on-tertiary-fixed);
+  --color-on-tertiary-fixed-variant: var(--color-on-tertiary-fixed-variant);
+
+  --color-background: var(--color-background);
+  --color-on-background: var(--color-on-background);
+  --color-surface-variant: var(--color-surface-variant);
+
+  --color-outline: var(--color-outline);
+  --color-outline-variant: var(--color-outline-variant);
+
+  /* Civic Flow -- lihat catatan di :root di atas */
   --color-ink: var(--ink);
   --color-midnight: var(--midnight);
   --color-midnight-soft: var(--midnight-soft);
@@ -226,78 +169,335 @@
   --color-line: var(--line);
   --color-ink-soft: var(--ink-soft);
   --color-ink-strong: var(--ink-strong);
- 
-  /* Fraunces di-load lewat next/font di app/layout.tsx sebagai --font-fraunces */
-  --font-display: var(--font-fraunces), "Segoe UI", ui-sans-serif, system-ui, serif;
+
+  /* Font display/body/mono khusus Civic Flow (landing page). Nilai
+     --font-display di sini ("Space Grotesk") adalah versi TERAKHIR yang
+     dipakai sebelum file ini digabung -- globals.css lama sempat punya
+     dua versi (satunya lewat var(--font-fraunces) dari next/font), versi
+     Space Grotesk ini yang menang di cascade jadi itu yang dipertahankan.
+     Kalau ternyata project kamu masih import font Fraunces lewat
+     next/font di app/layout.tsx, kabarin -- gampang diganti balik. */
+  --font-display: "Space Grotesk", "Segoe UI", ui-sans-serif, system-ui, sans-serif;
   --font-body: "Plus Jakarta Sans", "Segoe UI", ui-sans-serif, system-ui, sans-serif;
   --font-mono: "JetBrains Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
+
+  /* Radius scale */
+  --radius-sm: 0.125rem;
+  --radius-md: 0.375rem;
+  --radius-lg: 0.5rem;
+  --radius-xl: 0.75rem;
+
+  /* Spacing scale -- ini yang bikin gap-lg, p-lg, px-sm, dst
+     menghasilkan CSS beneran. */
+  --spacing-xs: 0.25rem;
+  --spacing-sm: 0.5rem;
+  --spacing-md: 1rem;
+  --spacing-lg: 1.5rem;
+  --spacing-xl: 2rem;
+
+  /* ============================================================
+     FIX v2 (bug modal collapse jadi sempit): max-w-* SALAH baca
+     --spacing-*, bukan --container-*.
+
+     Percobaan pertama (redefinisi --container-sm/md/lg/xl) TERNYATA
+     TIDAK CUKUP -- ini bug/quirk resmi Tailwind v4 (lihat GitHub
+     tailwindlabs/tailwindcss issue #16047 & #17777): utility max-w-*
+     itu baca dari 3 namespace sekaligus (--spacing-*, --container-*,
+     DAN --max-width-*), tapi kalau sebuah key (mis. "sm") ada di
+     --spacing-* MAUPUN --container-*, Tailwind v4 tetap MENGUTAMAKAN
+     --spacing-*. Jadi walau --container-sm sudah didefinisikan,
+     max-w-sm tetap resolve ke --spacing-sm (0.5rem) karena --spacing-sm
+     kita juga ada (buat p-sm, gap-sm, dst).
+
+     Fix yang bener (disarankan tim Tailwind sendiri di issue itu):
+     definisikan namespace PALING SPESIFIK, --max-width-*, yang
+     prioritasnya di atas --spacing-*. --container-* tetap dipertahankan
+     di bawah (dipakai @container query breakpoints), tapi --max-width-*
+     inilah yang benar-benar dibaca oleh utility max-w-sm/md/lg/xl/2xl. */
+  --container-3xs: 16rem;
+  --container-2xs: 18rem;
+  --container-xs: 20rem;
+  --container-sm: 24rem;
+  --container-md: 28rem;
+  --container-lg: 32rem;
+  --container-xl: 36rem;
+  --container-2xl: 42rem;
+  --container-3xl: 48rem;
+  --container-4xl: 56rem;
+  --container-5xl: 64rem;
+  --container-6xl: 72rem;
+  --container-7xl: 80rem;
+
+  --max-width-3xs: 16rem;
+  --max-width-2xs: 18rem;
+  --max-width-xs: 20rem;
+  --max-width-sm: 24rem;
+  --max-width-md: 28rem;
+  --max-width-lg: 32rem;
+  --max-width-xl: 36rem;
+  --max-width-2xl: 42rem;
+  --max-width-3xl: 48rem;
+  --max-width-4xl: 56rem;
+  --max-width-5xl: 64rem;
+  --max-width-6xl: 72rem;
+  --max-width-7xl: 80rem;
+
+  /* Typography scale */
+  --font-sans: Inter, ui-sans-serif, system-ui, sans-serif;
+
+  --text-display-lg: 48px;
+  --text-display-lg--line-height: 1.2;
+  --text-display-lg--letter-spacing: -0.02em;
+  --text-display-lg--font-weight: 700;
+
+  --text-headline-lg: 32px;
+  --text-headline-lg--line-height: 40px;
+  --text-headline-lg--letter-spacing: -0.01em;
+  --text-headline-lg--font-weight: 600;
+
+  --text-headline-lg-mobile: 24px;
+  --text-headline-lg-mobile--line-height: 32px;
+  --text-headline-lg-mobile--font-weight: 600;
+
+  --text-headline-md: 24px;
+  --text-headline-md--line-height: 32px;
+  --text-headline-md--font-weight: 600;
+
+  --text-title-lg: 20px;
+  --text-title-lg--line-height: 28px;
+  --text-title-lg--font-weight: 600;
+
+  --text-title-md: 18px;
+  --text-title-md--line-height: 24px;
+  --text-title-md--font-weight: 600;
+
+  --text-body-lg: 18px;
+  --text-body-lg--line-height: 28px;
+  --text-body-lg--font-weight: 400;
+
+  --text-body-md: 16px;
+  --text-body-md--line-height: 24px;
+  --text-body-md--font-weight: 400;
+
+  --text-body-sm: 14px;
+  --text-body-sm--line-height: 20px;
+  --text-body-sm--font-weight: 400;
+
+  --text-label-md: 14px;
+  --text-label-md--line-height: 20px;
+  --text-label-md--letter-spacing: 0.01em;
+  --text-label-md--font-weight: 500;
+
+  --text-label-sm: 12px;
+  --text-label-sm--line-height: 16px;
+  --text-label-sm--letter-spacing: 0.02em;
+  --text-label-sm--font-weight: 600;
 }
- 
+
+/* Reset & style dasar -- GLOBAL, berlaku untuk semua role
+   (sebelumnya sebagian ini terkunci di balik [data-pedagang-scope]
+   / [data-petugas-scope], sekarang lepas jadi selector body biasa). */
+html,
+body {
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  background: var(--color-background);
+  color: var(--color-on-background);
+  font-family: var(--font-sans);
+  overscroll-behavior: none;
+}
+
+* {
+  border-color: var(--color-outline-variant);
+}
+
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--color-surface-dim);
+  border-radius: 9999px;
+}
+
+/* Civic Flow -- style global tambahan khusus landing page publik */
 html {
   scroll-behavior: smooth;
 }
- 
-body {
-  background: var(--paper);
-  color: var(--ink-strong);
-  font-family: var(--font-body), ui-sans-serif, system-ui, sans-serif;
-}
- 
 .focus-ring:focus-visible {
   outline: 2px solid var(--blue);
   outline-offset: 3px;
   border-radius: 6px;
 }
-  :root {
-    --ink: #0a0f1d;
-    --midnight: #0f1b33;
-    --midnight-soft: #16233f;
-    --blue: #2f6fed;
-    --blue-deep: #1d4ed8;
-    --sun: #fdba3d;
-    --sun-soft: #ffd88a;
-    --leaf: #34c77b;
-    --paper: #f6f8fc;
-    --mist: #edf1f8;
-    --line: #e2e8f4;
-    --ink-soft: #64748b;
-    --ink-strong: #0f172a;
+
+/* ============================================================
+   Class komponen UI bersama, dulunya cuma dipakai di app/petugas/**
+   lewat [data-petugas-scope] .pt-*. Sekarang GLOBAL -- boleh dipakai
+   di halaman pedagang atau superadmin juga, nama class tetap sama
+   (pt-card, pt-btn, dst) biar markup yang sudah ada tidak perlu
+   diubah.
+   ============================================================ */
+@layer components {
+  .pt-card {
+    @apply rounded-2xl border border-outline-variant bg-surface-container-lowest p-lg shadow-[0_1px_3px_rgba(11,28,48,0.05)] sm:p-xl;
   }
-  
-  /* Kalau pakai Tailwind v4 (ada @import "tailwindcss"; di paling atas file) */
-  @theme inline {
-    --color-ink: var(--ink);
-    --color-midnight: var(--midnight);
-    --color-midnight-soft: var(--midnight-soft);
-    --color-blue: var(--blue);
-    --color-blue-deep: var(--blue-deep);
-    --color-sun: var(--sun);
-    --color-sun-soft: var(--sun-soft);
-    --color-leaf: var(--leaf);
-    --color-paper: var(--paper);
-    --color-mist: var(--mist);
-    --color-line: var(--line);
-    --color-ink-soft: var(--ink-soft);
-    --color-ink-strong: var(--ink-strong);
-  
-    --font-display: "Space Grotesk", "Segoe UI", ui-sans-serif, system-ui, sans-serif;
-    --font-body: "Plus Jakarta Sans", "Segoe UI", ui-sans-serif, system-ui, sans-serif;
-    --font-mono: "JetBrains Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
+
+  .pt-section-title {
+    @apply text-title-lg text-on-surface;
   }
-  
-  html {
-    scroll-behavior: smooth;
+  .pt-section-desc {
+    @apply mt-0.5 text-body-sm text-on-surface-variant;
   }
-  
-  body {
-    background: var(--paper);
-    color: var(--ink-strong);
-    font-family: var(--font-body), ui-sans-serif, system-ui, sans-serif;
+  .pt-section-icon {
+    @apply flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary;
   }
-  
-  .focus-ring:focus-visible {
-    outline: 2px solid var(--blue);
-    outline-offset: 3px;
-    border-radius: 6px;
+
+  /* Tombol -- tinggi minimal 44px biar nyaman disentuh */
+  .pt-btn {
+    @apply inline-flex min-h-11 items-center gap-sm rounded-xl px-md py-sm text-label-md font-medium transition-all disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:shadow-none;
   }
-  
+  .pt-btn:focus-visible {
+    @apply outline outline-2 outline-offset-2 outline-primary;
+  }
+  .pt-btn-primary {
+    @apply bg-primary text-on-primary hover:bg-primary-container hover:shadow-md;
+  }
+  .pt-btn-secondary {
+    @apply bg-secondary-container/40 text-on-secondary-container hover:bg-secondary-container/70 hover:shadow-md;
+  }
+  .pt-btn-danger {
+    @apply bg-error-container/60 text-on-error-container hover:bg-error-container hover:shadow-md;
+  }
+  .pt-btn-ghost {
+    @apply text-on-surface-variant hover:bg-surface-container-high;
+  }
+  .pt-btn-ghost-danger {
+    @apply text-on-surface-variant hover:bg-error-container/40 hover:text-on-error-container;
+  }
+  .pt-btn-icon {
+    @apply h-11 w-11 items-center justify-center px-0;
+  }
+
+  /* Pill status -- selalu dipasangkan ikon/titik + teks di JSX-nya,
+     warna di sini cuma penguat, bukan satu-satunya penanda */
+  .pt-pill {
+    @apply inline-flex items-center gap-xs whitespace-nowrap rounded-full px-md py-1.5 text-label-md;
+  }
+  .pt-pill-success {
+    @apply bg-secondary-container/40 text-on-secondary-container;
+  }
+  .pt-pill-warning {
+    @apply bg-tertiary-container/15 text-on-tertiary-container;
+  }
+  .pt-pill-danger {
+    @apply bg-error-container/60 text-on-error-container;
+  }
+  .pt-pill-neutral {
+    @apply bg-surface-container-high text-on-surface-variant;
+  }
+  .pt-pill-dot {
+    @apply h-2 w-2 shrink-0 rounded-full bg-current;
+  }
+  .pt-pill-dot.is-pulse {
+    @apply animate-pulse;
+  }
+
+  /* Input & select form */
+  .pt-input {
+    @apply w-full rounded-xl border border-outline-variant bg-transparent px-md py-3 text-body-md text-on-surface outline-none transition;
+  }
+  .pt-input:focus-visible {
+    @apply border-primary ring-2 ring-primary/20;
+  }
+  .pt-field-label {
+    @apply text-label-md text-on-surface-variant;
+  }
+
+  /* Toggle switch -- dipakai mis. utk buka/tutup check-in.
+     Aksi sesungguhnya tetap lewat onClick di JSX (biasanya
+     memicu dialog konfirmasi) -- class ini murni tampilan. */
+  .pt-switch {
+    @apply relative inline-flex h-8 w-14 shrink-0 items-center rounded-full bg-outline-variant transition-colors disabled:cursor-not-allowed disabled:opacity-60;
+  }
+  .pt-switch:focus-visible {
+    @apply outline outline-2 outline-offset-2 outline-primary;
+  }
+  .pt-switch.is-on {
+    @apply bg-secondary;
+  }
+  .pt-switch-knob {
+    @apply inline-block h-6 w-6 translate-x-1 transform rounded-full bg-white shadow-md transition-transform;
+  }
+  .pt-switch.is-on .pt-switch-knob {
+    @apply translate-x-7;
+  }
+
+  /* Empty / loading state */
+  .pt-empty {
+    @apply flex flex-col items-center justify-center gap-sm py-12 text-center;
+  }
+  .pt-empty-icon {
+    @apply flex h-14 w-14 items-center justify-center rounded-full bg-surface-container-high text-on-surface-variant;
+  }
+  .pt-loading {
+    @apply flex flex-col items-center justify-center gap-sm py-12 text-on-surface-variant;
+  }
+
+  /* Modal */
+  .pt-modal-overlay {
+    @apply fixed inset-0 z-[9999] flex items-center justify-center bg-black/50 p-md backdrop-blur-[2px];
+  }
+  .pt-modal-box {
+    /* PENTING: lebar pakai nilai eksplisit (bukan max-w-sm/md/lg dari
+       token --container-*), sama alasannya kayak catatan di atas --
+       biar kebal dari kemungkinan konflik resolusi token. */
+    @apply relative flex max-h-[90vh] w-full max-w-[30rem] flex-col overflow-hidden rounded-2xl bg-surface-container-lowest shadow-2xl;
+    animation: pt-fade-in 0.18s ease-out;
+  }
+  .pt-modal-close {
+    @apply absolute right-3 top-3 flex h-9 w-9 items-center justify-center rounded-full text-on-surface-variant transition hover:bg-surface-container-high;
+  }
+
+  /* Time stepper -- ganti input type="time" bawaan browser. Jam,
+     menit & detik bisa diubah lewat tombol panah ATAU diklik lalu
+     diketik langsung. */
+  .pt-time-btn {
+    @apply flex h-8 w-11 items-center justify-center rounded-lg text-on-surface-variant transition hover:bg-surface-container-high disabled:cursor-not-allowed disabled:opacity-40;
+  }
+  .pt-time-value {
+    @apply w-11 text-center text-title-lg font-semibold tabular-nums text-on-surface;
+  }
+  .pt-time-value-editable {
+    @apply cursor-pointer rounded-md transition hover:bg-surface-container-high disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent;
+  }
+  .pt-time-input {
+    @apply w-11 rounded-md border border-primary bg-transparent text-center text-title-lg font-semibold tabular-nums text-on-surface outline-none ring-2 ring-primary/30;
+  }
+
+  /* Toast -- di tengah atas layar. Lebar eksplisit, bukan max-w-md,
+     sama alasannya kayak modal di atas. */
+  .pt-toast {
+    @apply fixed left-1/2 top-6 z-50 flex w-[calc(100%-2rem)] max-w-[26rem] -translate-x-1/2 items-center gap-sm rounded-xl px-lg py-md text-center shadow-lg;
+    animation: pt-fade-in 0.18s ease-out;
+  }
+  .pt-toast-success {
+    @apply bg-secondary-container text-on-secondary-container;
+  }
+  .pt-toast-error {
+    @apply bg-error-container text-on-error-container;
+  }
+}
+
+@keyframes pt-fade-in {
+  from {
+    opacity: 0;
+    transform: scale(0.96) translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
