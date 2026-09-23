@@ -30,6 +30,7 @@ type ClaimLapakResponse struct {
 	NomorLapak    string    `json:"nomor_lapak"`
 	NamaJalan     string    `json:"nama_jalan"`
 	NamaKecamatan string    `json:"nama_kecamatan"`
+	NamaRuas      string    `json:"nama_ruas"` // kosong kalau jalannya belum dibagi ruas
 	ClaimedAt     time.Time `json:"claimed_at"`
 }
 
@@ -43,5 +44,6 @@ type StatusLapakResponse struct {
 	NomorLapak    *string    `json:"nomor_lapak,omitempty"`
 	NamaJalan     *string    `json:"nama_jalan,omitempty"`
 	NamaKecamatan *string    `json:"nama_kecamatan,omitempty"`
+	NamaRuas      *string    `json:"nama_ruas,omitempty"`
 	ClaimedAt     *time.Time `json:"claimed_at,omitempty"`
 }

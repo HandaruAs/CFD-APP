@@ -24,6 +24,8 @@ interface HasilAlokasi {
   nomorStand: string;
   kecamatan: string;
   namaJalan: string;
+  // Kosong kalau lapaknya dari jalan yang belum dibagi ruas.
+  namaRuas: string;
 }
 
 const KATEGORI_LABEL: Record<string, string> = {
@@ -147,6 +149,7 @@ export default function DaftarDanCheckInPage() {
             nomorStand: data.nomor_lapak ?? "-",
             kecamatan: data.nama_kecamatan ?? "-",
             namaJalan: data.nama_jalan ?? "-",
+            namaRuas: data.nama_ruas ?? "",
           });
         }
       } catch {
@@ -281,6 +284,7 @@ export default function DaftarDanCheckInPage() {
         nomorStand: data.nomor_lapak,
         kecamatan: data.nama_kecamatan,
         namaJalan: data.nama_jalan,
+        namaRuas: data.nama_ruas ?? "",
       });
     } catch (err) {
       setError(err instanceof Error ? err.message : "Terjadi kesalahan. Silakan coba lagi.");
@@ -381,6 +385,15 @@ export default function DaftarDanCheckInPage() {
                           {hasil.namaJalan}
                         </span>
                       </div>
+                      {/* Baris Ruas cuma muncul kalau lapaknya memang punya ruas. */}
+                      {hasil.namaRuas && (
+                        <div className="flex items-center justify-between">
+                          <span className="text-[12px] text-[#a3743f]">Ruas</span>
+                          <span className="text-[13px] font-semibold text-[#1a1d29]">
+                            {hasil.namaRuas}
+                          </span>
+                        </div>
+                      )}
                     </div>
                   </div>
                 </div>

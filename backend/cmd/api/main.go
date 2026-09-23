@@ -479,6 +479,13 @@ func main() {
 		acakLapakController.GenerateSlot,
 	)
 
+	// Daftar ruas milik 1 jalan, buat dropdown "Pilih Ruas" di halaman Acak Lapak
+	app.Get("/api/petugas/acak-lapak/ruas/:jalanId",
+		middleware.AuthMiddleware(cfg.JWTSecret),
+		middleware.PermissionMiddleware(permissionRepository, "pedagang.read"),
+		acakLapakController.GetRuasJalan,
+	)
+
 	// ============================================================
 	// 12c. ENDPOINT PETUGAS - MANAJEMEN LAPAK
 	// ============================================================
