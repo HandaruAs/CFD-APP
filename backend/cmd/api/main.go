@@ -8,6 +8,7 @@ import (
 	"cfd-backend/config"
 	"cfd-backend/database"
 	"cfd-backend/middleware"
+	"cfd-backend/pkg/presence"
 
 	// Modul Repository
 	menuRepo "cfd-backend/modules/menu/repository"
@@ -232,6 +233,15 @@ func main() {
 	// 6. ENDPOINT PROTECTED (BUTUH LOGIN)
 	// ============================================================
 	app.Get("/api/me", middleware.AuthMiddleware(cfg.JWTSecret), userController.Me)
+
+	// Logout: JWT tetap stateless (token dihapus di sisi client), endpoint
+	// ini cuma buat nandain user langsung offline di daftar petugas.
+	app.Post("/api/logout", middleware.AuthMiddleware(cfg.JWTSecret), func(c fiber.Ctx) error {
+		if userID, ok := c.Locals("user_id").(string); ok {
+			presence.Remove(userID)
+		}
+		return c.JSON(fiber.Map{"message": "berhasil logout"})
+	})
 	app.Get("/api/menus", middleware.AuthMiddleware(cfg.JWTSecret), menuController.GetMyMenus)
 
 	// ============================================================
@@ -435,6 +445,14 @@ func main() {
 		middleware.AuthMiddleware(cfg.JWTSecret),
 		middleware.PermissionMiddleware(permissionRepository, "pedagang.read"),
 		laporanController.GetStats,
+	)
+
+	// Detail 1 baris kehadiran (didaftarkan SETELAH /stats supaya
+	// "stats" tidak ketangkap sebagai :id).
+	app.Get("/api/petugas/laporan/:id",
+		middleware.AuthMiddleware(cfg.JWTSecret),
+		middleware.PermissionMiddleware(permissionRepository, "pedagang.read"),
+		laporanController.GetDetail,
 	)
 
 	// ============================================================

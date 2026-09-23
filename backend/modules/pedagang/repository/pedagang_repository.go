@@ -21,17 +21,27 @@ func NewPedagangRepository(db *pgxpool.Pool) *PedagangRepository {
 // CreatePengajuanMandiri bikin baris pedagang_profiles baru. Dipakai untuk
 // dua alur: self-service (pedagang daftar sendiri) DAN admin (Tambah Pedagang),
 // karena keduanya insert ke kolom yang sama persis.
+//
+// Tidak ada lagi tahap verifikasi: pedagang langsung berstatus 'approved'
+// begitu terdaftar, supaya menu pedagang (stage "verified") langsung muncul.
+//
+// mandiri = true  -> pedagang daftar sendiri: submitted_at diisi NOW(),
+//                    jadi terhitung "Pedagang Baru".
+// mandiri = false -> ditambahkan admin: submitted_at dibiarkan NULL,
+//                    jadi terhitung "Pedagang Lama".
 func (r *PedagangRepository) CreatePengajuanMandiri(
 	ctx context.Context,
 	userID, nik, namaLengkap, tanggalLahir, namaUsaha, jenisDagangan, jenisLapak string,
+	mandiri bool,
 ) (string, error) {
 	var id string
 	err := r.db.QueryRow(ctx,
 		`INSERT INTO pedagang_profiles 
-		 (user_id, nik, nama_lengkap, tanggal_lahir, nama_usaha, jenis_dagangan, jenis_lapak, status_verifikasi)
-		 VALUES ($1, $2, $3, $4, $5, $6::jenis_dagangan_enum, $7::jenis_lapak_enum, 'pending')
+		 (user_id, nik, nama_lengkap, tanggal_lahir, nama_usaha, jenis_dagangan, jenis_lapak, status_verifikasi, submitted_at)
+		 VALUES ($1, $2, $3, $4, $5, $6::jenis_dagangan_enum, $7::jenis_lapak_enum, 'approved',
+		         CASE WHEN $8::boolean THEN NOW() ELSE NULL END)
 		 RETURNING id`,
-		userID, nik, namaLengkap, tanggalLahir, namaUsaha, jenisDagangan, jenisLapak,
+		userID, nik, namaLengkap, tanggalLahir, namaUsaha, jenisDagangan, jenisLapak, mandiri,
 	).Scan(&id)
 	if err != nil {
 		return "", err

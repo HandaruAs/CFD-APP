@@ -5,12 +5,14 @@ import (
 	"fmt"
 
 	"cfd-backend/modules/petugas/laporan/entity"
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 type LaporanRepository interface {
 	GetKehadiranByDateRange(ctx context.Context, startDate, endDate, search string, page, limit int) ([]entity.KehadiranItem, int, error)
 	GetStatsKehadiran(ctx context.Context, startDate, endDate string) (*entity.StatsResponse, error)
+	GetDetailKehadiran(ctx context.Context, kehadiranID string) (*entity.DetailKehadiranRaw, error)
 }
 
 type laporanRepository struct {
@@ -159,4 +161,73 @@ func (r *laporanRepository) GetStatsKehadiran(ctx context.Context, startDate, en
 	}
 
 	return &stats, nil
+}
+
+// GetDetailKehadiran ambil data lengkap 1 baris kehadiran: info check-in/out,
+// lokasi lapak yang diklaim pedagang di sesi itu, data usaha, dan data
+// pribadi pedagang. Return nil, nil kalau data tidak ditemukan.
+func (r *laporanRepository) GetDetailKehadiran(ctx context.Context, kehadiranID string) (*entity.DetailKehadiranRaw, error) {
+	var d entity.DetailKehadiranRaw
+	err := r.db.QueryRow(ctx, `
+		SELECT
+			k.id,
+			tanggal_wib(k.check_in_at)::text,
+			COALESCE(s.nama_sesi, ''),
+			TO_CHAR(k.check_in_at, 'HH24:MI'),
+			TO_CHAR(k.check_out_at, 'HH24:MI'),
+			k.omset,
+			CASE
+				WHEN k.check_out_at IS NOT NULL THEN 'check-out'
+				WHEN k.check_in_at IS NOT NULL THEN 'check-in'
+				ELSE 'belum-hadir'
+			END,
+			COALESCE(petugas.name, ''),
+			COALESCE(mj.nama_jalan, ''),
+			COALESCE((
+				SELECT STRING_AGG(mi.nama_instansi, ', ' ORDER BY mi.nama_instansi)
+				FROM jalan_instansi ji
+				JOIN master_instansi mi ON mi.id = ji.instansi_id AND mi.deleted_at IS NULL
+				WHERE ji.jalan_id = lk.jalan_id
+			), ''),
+			COALESCE(lk.nomor_lapak, ''),
+			COALESCE(p.lokasi_lapak, ''),
+			COALESCE(p.nama_usaha, ''),
+			COALESCE(p.jenis_dagangan::text, ''),
+			COALESCE(p.jenis_lapak::text, ''),
+			COALESCE(NULLIF(p.nama_lengkap, ''), u.name, ''),
+			COALESCE(p.nik, ''),
+			COALESCE(u.email, ''),
+			COALESCE(p.tanggal_lahir::text, ''),
+			CASE WHEN p.submitted_at IS NULL THEN 'lama' ELSE 'baru' END
+		FROM kehadiran_pedagang k
+		JOIN pedagang_profiles p ON p.id = k.pedagang_id
+		JOIN users u ON u.id = p.user_id
+		LEFT JOIN cfd_sessions s ON s.id = k.session_id
+		LEFT JOIN users petugas ON petugas.id = k.scanned_by
+		LEFT JOIN LATERAL (
+			SELECT jalan_id, nomor_lapak
+			FROM lapak_klaim
+			WHERE pedagang_id = k.pedagang_id
+			  AND session_id = k.session_id
+			  AND status = 'aktif'
+			ORDER BY claimed_at DESC
+			LIMIT 1
+		) lk ON TRUE
+		LEFT JOIN master_jalan mj ON mj.id = lk.jalan_id
+		WHERE k.id = $1 AND k.deleted_at IS NULL
+	`, kehadiranID).Scan(
+		&d.KehadiranID, &d.Tanggal, &d.NamaSesi, &d.WaktuCheckin, &d.WaktuCheckout,
+		&d.Omset, &d.Status, &d.DicatatOleh,
+		&d.NamaJalan, &d.Kecamatan, &d.NomorLapak, &d.LokasiLapak,
+		&d.NamaUsaha, &d.JenisDagangan, &d.JenisLapak,
+		&d.NamaLengkap, &d.NIK, &d.Email, &d.TanggalLahir,
+		&d.StatusPedagang,
+	)
+	if err != nil {
+		if err == pgx.ErrNoRows {
+			return nil, nil
+		}
+		return nil, err
+	}
+	return &d, nil
 }

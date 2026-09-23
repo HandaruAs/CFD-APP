@@ -2,6 +2,10 @@
 "use client";
 
 import { useEffect, useState, useRef } from "react";
+import { jsPDF } from "jspdf";
+import autoTable from "jspdf-autotable";
+// xlsx-js-style = SheetJS yang mendukung gaya sel (bold, warna, border)
+import * as XLSX from "xlsx-js-style";
 import {
   Search,
   ChevronRight,
@@ -17,6 +21,12 @@ import {
   FileSpreadsheet,
   Store,
   RefreshCw,
+  X,
+  MapPin,
+  User,
+  ClipboardList,
+  FileText,
+  ChevronDown,
 } from "lucide-react";
 
 // ============================================================
@@ -51,6 +61,38 @@ type LaporanResponse = {
   page: number;
   limit: number;
   total: number;
+};
+
+// Detail 1 baris kehadiran -- NIK & email sudah disensor dari backend.
+type DetailKehadiran = {
+  kehadiran: {
+    id: string;
+    tanggal: string;
+    namaSesi: string;
+    waktuCheckin: string;
+    waktuCheckout: string | null;
+    omset: number | null;
+    status: StatusKehadiran;
+    dicatatOleh: string;
+  };
+  lokasi: {
+    namaJalan: string;
+    kecamatan: string;
+    nomorLapak: string;
+    lokasiLapak: string;
+  };
+  usaha: {
+    namaUsaha: string;
+    jenisDagangan: string;
+    jenisLapak: string;
+  };
+  pribadi: {
+    namaLengkap: string;
+    nik: string;
+    email: string;
+    tanggalLahir: string;
+    statusPedagang: "lama" | "baru";
+  };
 };
 
 type StatsResponse = {
@@ -144,6 +186,9 @@ export default function LaporanPage() {
   const [toast, setToast] = useState<{ message: string; type: "success" | "error" } | null>(null);
 
   const [lapakTerisi, setLapakTerisi] = useState(0);
+
+  // Baris yang diklik -> tampilkan modal detail pedagang
+  const [selectedKehadiranId, setSelectedKehadiranId] = useState<string | null>(null);
 
   // ========== REAL-TIME POLLING ==========
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
@@ -239,14 +284,92 @@ export default function LaporanPage() {
     // fetch akan otomatis terpanggil karena useEffect bergantung pada page & searchTerm
   };
 
-  const handleExport = async () => {
+  // ========== UNDUH LAPORAN (PDF / EXCEL) ==========
+  const [showExportMenu, setShowExportMenu] = useState(false);
+  const [exporting, setExporting] = useState<"pdf" | "excel" | null>(null);
+  const exportMenuRef = useRef<HTMLDivElement | null>(null);
+
+  // Tutup menu kalau klik di luar
+  useEffect(() => {
+    if (!showExportMenu) return;
+    const onClick = (e: MouseEvent) => {
+      if (exportMenuRef.current && !exportMenuRef.current.contains(e.target as Node)) {
+        setShowExportMenu(false);
+      }
+    };
+    document.addEventListener("mousedown", onClick);
+    return () => document.removeEventListener("mousedown", onClick);
+  }, [showExportMenu]);
+
+  // Ambil SEMUA baris sesuai filter tanggal & pencarian (bukan cuma halaman yang tampil)
+  const fetchSemuaUntukExport = async () => {
+    const queryParams = new URLSearchParams({
+      startDate,
+      endDate,
+      search: searchTerm,
+      page: "1",
+      limit: "10000",
+    });
+    return apiFetch<LaporanResponse>(`/api/petugas/laporan?${queryParams.toString()}`);
+  };
+
+  const periodeLabel = startDate === endDate ? startDate : `${startDate} s/d ${endDate}`;
+  const namaFile = `laporan-kehadiran-${startDate}${startDate === endDate ? "" : `_${endDate}`}`;
+
+  const barisExport = (k: KehadiranItem) => ({
+    "Check-in": k.waktuCheckin || "-",
+    Usaha: k.namaUsaha || "-",
+    Pemilik: k.pemilik || "-",
+    Kategori: labelKategori(k.kategori),
+    Lokasi: k.lokasiLapak || "-",
+    Status: (STATUS_STYLE[k.status] || STATUS_STYLE["belum-hadir"]).label.replace(" ✓", ""),
+    "Check-out": k.waktuCheckout || "-",
+    Omset: k.omset ?? 0,
+  });
+
+  const handleExport = async (format: "pdf" | "excel") => {
+    setShowExportMenu(false);
+    setExporting(format);
     try {
-      showToast("📊 Laporan sedang diunduh...", "success");
-      setTimeout(() => {
-        showToast("✅ Laporan berhasil diunduh!", "success");
-      }, 1500);
-    } catch {
-      showToast("Gagal mengunduh laporan", "error");
+      const res = await fetchSemuaUntukExport();
+      const rows = (res.data ?? []).map(barisExport);
+
+      if (rows.length === 0) {
+        showToast("Tidak ada data kehadiran pada periode ini", "error");
+        return;
+      }
+
+      if (format === "pdf") {
+        const doc = new jsPDF({ orientation: "landscape" });
+        doc.setFontSize(14);
+        doc.text("Laporan Kehadiran Pedagang CFD", 14, 15);
+        doc.setFontSize(9);
+        doc.text(`Periode: ${periodeLabel}`, 14, 21);
+        doc.text(
+          `Check-in: ${res.totalCheckin}   Check-out: ${res.totalCheckout}   Total omset: Rp ${res.totalOmset.toLocaleString("id-ID")}`,
+          14,
+          26
+        );
+        autoTable(doc, {
+          startY: 31,
+          head: [Object.keys(rows[0])],
+          body: rows.map((r) => [
+            ...Object.values(r).slice(0, 7).map(String),
+            r.Omset ? `Rp ${r.Omset.toLocaleString("id-ID")}` : "-",
+          ]),
+          styles: { fontSize: 8 },
+          headStyles: { fillColor: [30, 58, 138] },
+        });
+        doc.save(`${namaFile}.pdf`);
+      } else {
+        buatExcelLaporan(rows, res, periodeLabel, `${namaFile}.xlsx`);
+      }
+
+      showToast(`Laporan ${format === "pdf" ? "PDF" : "Excel"} berhasil diunduh`, "success");
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : "Gagal mengunduh laporan", "error");
+    } finally {
+      setExporting(null);
     }
   };
 
@@ -309,14 +432,50 @@ export default function LaporanPage() {
             <RefreshCw className={`h-[18px] w-[18px] ${isLoading ? "animate-spin" : ""}`} strokeWidth={2} />
             Refresh
           </button>
-          <button
-            type="button"
-            onClick={handleExport}
-            className="flex items-center gap-sm rounded-md bg-primary px-md py-sm text-label-md text-on-primary transition-all hover:bg-primary-container hover:shadow-md"
-          >
-            <FileSpreadsheet className="h-[18px] w-[18px]" strokeWidth={2} />
-            Unduh Laporan
-          </button>
+          <div className="relative" ref={exportMenuRef}>
+            <button
+              type="button"
+              onClick={() => setShowExportMenu((v) => !v)}
+              disabled={exporting !== null}
+              className="flex items-center gap-sm rounded-md bg-primary px-md py-sm text-label-md text-on-primary transition-all hover:bg-primary-container hover:shadow-md disabled:opacity-60"
+              aria-haspopup="menu"
+              aria-expanded={showExportMenu}
+            >
+              {exporting ? (
+                <Loader2 className="h-[18px] w-[18px] animate-spin" strokeWidth={2} />
+              ) : (
+                <FileSpreadsheet className="h-[18px] w-[18px]" strokeWidth={2} />
+              )}
+              {exporting ? "Mengunduh..." : "Unduh Laporan"}
+              <ChevronDown className="h-4 w-4" strokeWidth={2} />
+            </button>
+
+            {showExportMenu && (
+              <div
+                role="menu"
+                className="absolute right-0 z-20 mt-xs w-48 overflow-hidden rounded-md border border-outline-variant bg-surface-container-lowest shadow-lg"
+              >
+                <button
+                  type="button"
+                  role="menuitem"
+                  onClick={() => handleExport("pdf")}
+                  className="flex w-full items-center gap-sm px-md py-sm text-left text-label-md text-on-surface hover:bg-surface-container-low"
+                >
+                  <FileText className="h-4 w-4 text-error" strokeWidth={2} />
+                  Unduh sebagai PDF
+                </button>
+                <button
+                  type="button"
+                  role="menuitem"
+                  onClick={() => handleExport("excel")}
+                  className="flex w-full items-center gap-sm px-md py-sm text-left text-label-md text-on-surface hover:bg-surface-container-low"
+                >
+                  <FileSpreadsheet className="h-4 w-4 text-primary" strokeWidth={2} />
+                  Unduh sebagai Excel
+                </button>
+              </div>
+            )}
+          </div>
         </div>
       </div>
 
@@ -550,7 +709,9 @@ export default function LaporanPage() {
                   return (
                     <tr
                       key={k.id}
-                      className={`border-b border-outline-variant last:border-0 hover:bg-surface-container-low/50 transition-colors ${
+                      onClick={() => setSelectedKehadiranId(k.id)}
+                      title="Klik untuk melihat detail pedagang"
+                      className={`cursor-pointer border-b border-outline-variant last:border-0 hover:bg-surface-container-low/50 transition-colors ${
                         k.status === "check-out" ? "bg-primary-container/5" : ""
                       }`}
                     >
@@ -630,6 +791,355 @@ export default function LaporanPage() {
           </div>
         </div>
       </div>
+
+      {selectedKehadiranId && (
+        <DetailPedagangModal kehadiranId={selectedKehadiranId} onClose={() => setSelectedKehadiranId(null)} />
+      )}
     </div>
   );
+}
+
+// ============================================================
+// MODAL DETAIL PEDAGANG
+// ============================================================
+
+const JENIS_DAGANGAN_LABEL: Record<string, string> = {
+  makanan_minuman: "Makanan & Minuman",
+  bukan_makanan_minuman: "Bukan Makanan & Minuman",
+};
+
+const JENIS_LAPAK_LABEL: Record<string, string> = {
+  rombong: "Rombong",
+  meja: "Meja",
+};
+
+function formatTanggalIndo(value: string) {
+  if (!value) return "-";
+  const d = new Date(`${value}T00:00:00`);
+  if (Number.isNaN(d.getTime())) return value;
+  return d.toLocaleDateString("id-ID", { day: "numeric", month: "long", year: "numeric" });
+}
+
+function DetailPedagangModal({ kehadiranId, onClose }: { kehadiranId: string; onClose: () => void }) {
+  const [detail, setDetail] = useState<DetailKehadiran | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    apiFetch<DetailKehadiran>(`/api/petugas/laporan/${kehadiranId}`)
+      .then((res) => {
+        if (!cancelled) setDetail(res);
+      })
+      .catch((err) => {
+        if (!cancelled) setError(err instanceof Error ? err.message : "Gagal memuat detail pedagang");
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [kehadiranId]);
+
+  // Tutup modal dengan tombol Escape
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onClose]);
+
+  const lokasiUtama = detail
+    ? detail.lokasi.namaJalan
+      ? `${detail.lokasi.namaJalan}${detail.lokasi.nomorLapak ? ` - Lapak No. ${detail.lokasi.nomorLapak}` : ""}`
+      : detail.lokasi.lokasiLapak || "-"
+    : "-";
+
+  const status = detail ? STATUS_STYLE[detail.kehadiran.status] || STATUS_STYLE["belum-hadir"] : null;
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4 backdrop-blur-sm"
+      onClick={onClose}
+    >
+      <div
+        className="flex max-h-[90vh] w-full max-w-2xl flex-col overflow-hidden rounded-lg bg-surface-container-lowest shadow-lg"
+        onClick={(e) => e.stopPropagation()}
+        role="dialog"
+        aria-modal="true"
+      >
+        {/* Header */}
+        <div className="flex items-start justify-between gap-md border-b border-outline-variant px-lg py-md">
+          <div>
+            <h3 className="text-headline-md text-on-surface">{detail?.usaha.namaUsaha || "Detail Pedagang"}</h3>
+            {detail && (
+              <p className="mt-xs text-label-md text-on-surface-variant">
+                {detail.pribadi.namaLengkap} &middot;{" "}
+                {detail.pribadi.statusPedagang === "baru" ? "Pedagang Baru" : "Pedagang Lama"}
+              </p>
+            )}
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            className="rounded-full p-1.5 text-on-surface-variant hover:bg-surface-container-low"
+            aria-label="Tutup"
+          >
+            <X className="h-5 w-5" />
+          </button>
+        </div>
+
+        {/* Isi */}
+        <div className="overflow-y-auto px-lg py-md">
+          {error ? (
+            <div className="rounded-lg bg-error-container/60 px-md py-sm text-label-md text-on-error-container">{error}</div>
+          ) : !detail ? (
+            <div className="flex items-center justify-center gap-sm py-xl text-on-surface-variant">
+              <Loader2 className="h-5 w-5 animate-spin" />
+              <span className="text-body-md">Memuat detail pedagang...</span>
+            </div>
+          ) : (
+            <div className="flex flex-col gap-md">
+              <DetailSection icon={ClipboardList} title="Kehadiran">
+                <DetailRow label="Tanggal" value={formatTanggalIndo(detail.kehadiran.tanggal)} />
+                <DetailRow label="Sesi" value={detail.kehadiran.namaSesi} />
+                <DetailRow
+                  label="Status"
+                  value={
+                    status && (
+                      <span className={`inline-flex items-center gap-xs rounded-full px-sm py-1 text-label-sm ${status.bg} ${status.text}`}>
+                        {status.label}
+                      </span>
+                    )
+                  }
+                />
+                <DetailRow label="Check-in" value={detail.kehadiran.waktuCheckin} />
+                <DetailRow label="Check-out" value={detail.kehadiran.waktuCheckout} />
+                <DetailRow
+                  label="Omset"
+                  value={detail.kehadiran.omset ? `Rp ${detail.kehadiran.omset.toLocaleString("id-ID")}` : null}
+                />
+                <DetailRow label="Dicatat oleh" value={detail.kehadiran.dicatatOleh} />
+              </DetailSection>
+
+              <DetailSection icon={MapPin} title="Lokasi Lapak">
+                <DetailRow label="Lokasi" value={lokasiUtama} />
+                <DetailRow label="Kecamatan" value={detail.lokasi.kecamatan} />
+              </DetailSection>
+
+              <DetailSection icon={Store} title="Usaha">
+                <DetailRow label="Nama usaha" value={detail.usaha.namaUsaha} />
+                <DetailRow
+                  label="Jenis dagangan"
+                  value={JENIS_DAGANGAN_LABEL[detail.usaha.jenisDagangan] || detail.usaha.jenisDagangan}
+                />
+                <DetailRow label="Jenis lapak" value={JENIS_LAPAK_LABEL[detail.usaha.jenisLapak] || detail.usaha.jenisLapak} />
+              </DetailSection>
+
+              <DetailSection icon={User} title="Data Pribadi">
+                <DetailRow label="Nama lengkap" value={detail.pribadi.namaLengkap} />
+                <DetailRow label="NIK" value={detail.pribadi.nik} mono />
+                <DetailRow label="Email" value={detail.pribadi.email} />
+                <DetailRow label="Tanggal lahir" value={formatTanggalIndo(detail.pribadi.tanggalLahir)} />
+              </DetailSection>
+
+              <p className="text-label-sm text-on-surface-variant/70">
+                NIK dan email disensor untuk menjaga privasi pedagang.
+              </p>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function DetailSection({
+  icon: Icon,
+  title,
+  children,
+}: {
+  icon: typeof MapPin;
+  title: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <section className="rounded-lg border border-outline-variant">
+      <div className="flex items-center gap-sm border-b border-outline-variant bg-surface-container-low px-md py-sm">
+        <Icon className="h-4 w-4 text-primary" strokeWidth={2.2} />
+        <h4 className="text-label-md font-semibold text-on-surface">{title}</h4>
+      </div>
+      <dl className="divide-y divide-outline-variant">{children}</dl>
+    </section>
+  );
+}
+
+function DetailRow({ label, value, mono = false }: { label: string; value: React.ReactNode; mono?: boolean }) {
+  const kosong = value === null || value === undefined || value === "" || value === "-";
+  return (
+    <div className="grid grid-cols-[140px_1fr] gap-md px-md py-sm">
+      <dt className="text-label-sm text-on-surface-variant">{label}</dt>
+      <dd className={`text-body-md text-on-surface ${mono ? "font-mono tracking-wide" : ""}`}>
+        {kosong ? <span className="text-on-surface-variant/60">-</span> : value}
+      </dd>
+    </div>
+  );
+}
+
+// ============================================================
+// EXPORT EXCEL (dengan format rapi)
+// ============================================================
+
+const KATEGORI_EXPORT_LABEL: Record<string, string> = {
+  makanan_minuman: "Makanan & Minuman",
+  bukan_makanan_minuman: "Bukan Makanan & Minuman",
+};
+
+function labelKategori(kategori?: string) {
+  if (!kategori) return "-";
+  return (
+    KATEGORI_EXPORT_LABEL[kategori] ||
+    KATEGORI_STYLE[kategori.toLowerCase()]?.label ||
+    kategori
+  );
+}
+
+type BarisExport = {
+  "Check-in": string;
+  Usaha: string;
+  Pemilik: string;
+  Kategori: string;
+  Lokasi: string;
+  Status: string;
+  "Check-out": string;
+  Omset: number;
+};
+
+function buatExcelLaporan(rows: BarisExport[], ringkasan: LaporanResponse, periode: string, namaFile: string) {
+  const BIRU = "1E3A8A";
+  const garis = { style: "thin", color: { rgb: "CBD5E1" } };
+  const border = { top: garis, bottom: garis, left: garis, right: garis };
+  const FORMAT_RP = '"Rp "#,##0';
+
+  const header = ["No", "Check-in", "Check-out", "Nama Usaha", "Pemilik", "Kategori", "Lokasi", "Status", "Omset"];
+  const kolomTerakhir = header.length - 1;
+
+  const dicetak = new Date().toLocaleString("id-ID", {
+    day: "numeric",
+    month: "long",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+
+  // ---- susun isi sheet baris per baris ----
+  const aoa: (string | number)[][] = [
+    ["LAPORAN KEHADIRAN PEDAGANG CFD"],
+    [`Periode: ${periode}`],
+    [`Dicetak: ${dicetak}`],
+    [],
+    ["Ringkasan"],
+    // label di kolom A (digabung A-C), nilai di kolom D
+    ["Pedagang check-in", "", "", ringkasan.totalCheckin],
+    ["Pedagang check-out", "", "", ringkasan.totalCheckout],
+    ["Total omset", "", "", ringkasan.totalOmset],
+    ["Rata-rata omset", "", "", ringkasan.rataOmset],
+    [],
+    header,
+  ];
+  const barisHeader = aoa.length - 1; // index 0-based baris header tabel
+
+  rows.forEach((r, i) => {
+    aoa.push([i + 1, r["Check-in"], r["Check-out"], r.Usaha, r.Pemilik, r.Kategori, r.Lokasi, r.Status, r.Omset]);
+  });
+  const barisTotal = aoa.length;
+  aoa.push(["", "", "", "", "", "", "", "TOTAL OMSET", rows.reduce((sum, r) => sum + (r.Omset || 0), 0)]);
+
+  const ws = XLSX.utils.aoa_to_sheet(aoa);
+  const alamat = (r: number, c: number) => XLSX.utils.encode_cell({ r, c });
+  const beriGaya = (r: number, c: number, gaya: Record<string, unknown>) => {
+    const ref = alamat(r, c);
+    if (!ws[ref]) ws[ref] = { t: "s", v: "" };
+    ws[ref].s = { ...(ws[ref].s || {}), ...gaya };
+  };
+
+  // ---- judul & info ----
+  beriGaya(0, 0, { font: { bold: true, sz: 16, color: { rgb: BIRU } } });
+  beriGaya(1, 0, { font: { sz: 11, color: { rgb: "475569" } } });
+  beriGaya(2, 0, { font: { sz: 10, italic: true, color: { rgb: "64748B" } } });
+
+  // ---- ringkasan ----
+  beriGaya(4, 0, { font: { bold: true, sz: 12, color: { rgb: BIRU } } });
+  for (let r = 5; r <= 8; r++) {
+    for (let c = 0; c <= 2; c++) {
+      beriGaya(r, c, { font: { color: { rgb: "334155" } }, fill: { fgColor: { rgb: "F1F5F9" } }, border });
+    }
+    beriGaya(r, 3, {
+      font: { bold: true },
+      border,
+      alignment: { horizontal: "right" },
+      ...(r >= 7 ? { numFmt: FORMAT_RP } : {}),
+    });
+  }
+
+  // ---- header tabel ----
+  for (let c = 0; c <= kolomTerakhir; c++) {
+    beriGaya(barisHeader, c, {
+      font: { bold: true, color: { rgb: "FFFFFF" } },
+      fill: { fgColor: { rgb: BIRU } },
+      alignment: { horizontal: "center", vertical: "center" },
+      border,
+    });
+  }
+
+  // ---- isi tabel (baris selang-seling + warna status) ----
+  rows.forEach((row, i) => {
+    const r = barisHeader + 1 + i;
+    const zebra = i % 2 === 1 ? { fill: { fgColor: { rgb: "F8FAFC" } } } : {};
+    for (let c = 0; c <= kolomTerakhir; c++) {
+      beriGaya(r, c, { border, alignment: { vertical: "center" }, ...zebra });
+    }
+    // No, jam check-in & check-out rata tengah
+    [0, 1, 2].forEach((c) => beriGaya(r, c, { alignment: { horizontal: "center" } }));
+    // Status berwarna
+    const selesai = row.Status.toLowerCase().includes("out");
+    beriGaya(r, 7, {
+      alignment: { horizontal: "center" },
+      font: { bold: true, color: { rgb: selesai ? "047857" : "B45309" } },
+    });
+    // Omset format rupiah
+    beriGaya(r, 8, { numFmt: FORMAT_RP, alignment: { horizontal: "right" } });
+  });
+
+  // ---- baris total ----
+  for (let c = 0; c <= kolomTerakhir; c++) {
+    beriGaya(barisTotal, c, { fill: { fgColor: { rgb: "E0E7FF" } }, border, font: { bold: true } });
+  }
+  beriGaya(barisTotal, 7, { alignment: { horizontal: "right" } });
+  beriGaya(barisTotal, 8, { numFmt: FORMAT_RP, alignment: { horizontal: "right" } });
+
+  // ---- lebar kolom, gabung sel judul, filter ----
+  ws["!cols"] = [
+    { wch: 5 },  // No
+    { wch: 10 }, // Check-in
+    { wch: 10 }, // Check-out
+    { wch: 28 }, // Nama Usaha
+    { wch: 26 }, // Pemilik
+    { wch: 24 }, // Kategori
+    { wch: 30 }, // Lokasi
+    { wch: 14 }, // Status
+    { wch: 16 }, // Omset
+  ];
+  ws["!rows"] = [{ hpt: 24 }];
+  ws["!merges"] = [
+    { s: { r: 0, c: 0 }, e: { r: 0, c: kolomTerakhir } },
+    { s: { r: 1, c: 0 }, e: { r: 1, c: kolomTerakhir } },
+    { s: { r: 2, c: 0 }, e: { r: 2, c: kolomTerakhir } },
+    ...[5, 6, 7, 8].map((r) => ({ s: { r, c: 0 }, e: { r, c: 2 } })),
+  ];
+  ws["!autofilter"] = {
+    ref: XLSX.utils.encode_range({ s: { r: barisHeader, c: 0 }, e: { r: barisTotal - 1, c: kolomTerakhir } }),
+  };
+
+  const book = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(book, ws, "Laporan Kehadiran");
+  XLSX.writeFile(book, namaFile);
 }
