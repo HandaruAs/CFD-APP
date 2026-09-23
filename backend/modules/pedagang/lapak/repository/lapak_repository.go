@@ -176,8 +176,9 @@ func (r *LapakRepository) tryClaimSatuSlot(ctx context.Context, pedagangID, sess
 	defer tx.Rollback(ctx)
 
 	var slotID, jalanID, kode string
+	var ruasID *string // NULL kalau slot-nya dari jalan yang belum dibagi ruas
 	err = tx.QueryRow(ctx,
-		`SELECT ls.id, ls.jalan_id, ls.nomor_lapak, mj.nama_jalan, mi.nama_instansi
+		`SELECT ls.id, ls.jalan_id, ls.ruas_id, ls.nomor_lapak, mj.nama_jalan, mi.nama_instansi
 		 FROM lapak_slot ls
 		 JOIN master_jalan mj ON mj.id = ls.jalan_id
 		 JOIN jalan_instansi ji ON ji.jalan_id = mj.id
@@ -187,7 +188,7 @@ func (r *LapakRepository) tryClaimSatuSlot(ctx context.Context, pedagangID, sess
 		 LIMIT 1
 		 FOR UPDATE OF ls SKIP LOCKED`,
 		sessionID,
-	).Scan(&slotID, &jalanID, &kode, &namaJalan, &namaKecamatan)
+	).Scan(&slotID, &jalanID, &ruasID, &kode, &namaJalan, &namaKecamatan)
 	if err != nil {
 		if err == pgx.ErrNoRows {
 			return "", "", "", time.Time{}, ErrLapakBelumDiacak
@@ -213,10 +214,10 @@ func (r *LapakRepository) tryClaimSatuSlot(ctx context.Context, pedagangID, sess
 
 	var klaimID string
 	err = tx.QueryRow(ctx,
-		`INSERT INTO lapak_klaim (pedagang_id, session_id, jalan_id, nomor_lapak, claimed_at)
-		 VALUES ($1, $2, $3, $4, now())
+		`INSERT INTO lapak_klaim (pedagang_id, session_id, jalan_id, ruas_id, nomor_lapak, claimed_at)
+		 VALUES ($1, $2, $3, $4, $5, now())
 		 RETURNING id, claimed_at`,
-		pedagangID, sessionID, jalanID, kode,
+		pedagangID, sessionID, jalanID, ruasID, kode,
 	).Scan(&klaimID, &claimedAt)
 	if err != nil {
 		if kodelapak.IsUniqueViolation(err, "") {
@@ -276,4 +277,29 @@ func (r *LapakRepository) GetKlaimByPedagangSession(ctx context.Context, pedagan
 		return "", "", "", time.Time{}, false, err
 	}
 	return nomorLapak, namaJalan, namaKecamatan, claimedAt, true, nil
+}
+// GetNamaRuasKlaim: nama ruas dari klaim aktif pedagang di sesi ini. Ruas
+// disimpan di JSONB master_jalan.ruas, jadi dicocokkan lewat id-nya
+// (lapak_klaim.ruas_id). Balikin "" kalau klaimnya tanpa ruas / belum klaim.
+func (r *LapakRepository) GetNamaRuasKlaim(ctx context.Context, pedagangID, sessionID string) (string, error) {
+	var namaRuas string
+	err := r.db.QueryRow(ctx,
+		`SELECT COALESCE((
+		     SELECT e->>'namaRuas'
+		     FROM jsonb_array_elements(j.ruas) e
+		     WHERE e->>'id' = lk.ruas_id
+		     LIMIT 1
+		 ), '')
+		 FROM lapak_klaim lk
+		 JOIN master_jalan j ON j.id = lk.jalan_id
+		 WHERE lk.pedagang_id = $1 AND lk.session_id = $2 AND lk.status = 'aktif'`,
+		pedagangID, sessionID,
+	).Scan(&namaRuas)
+	if err != nil {
+		if err == pgx.ErrNoRows {
+			return "", nil
+		}
+		return "", err
+	}
+	return namaRuas, nil
 }

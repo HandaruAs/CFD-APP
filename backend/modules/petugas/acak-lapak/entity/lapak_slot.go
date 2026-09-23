@@ -9,6 +9,7 @@ const (
 	ScopeKota      = "kota"      // se-Surabaya, semua jalan
 	ScopeKecamatan = "kecamatan" // 1 kecamatan, semua jalan di dalamnya
 	ScopeJalan     = "jalan"     // 1 jalan spesifik saja
+	ScopeRuas      = "ruas"      // 1 ruas spesifik di 1 jalan
 )
 
 // WilayahPetugasSlot: wilayah tanggung jawab petugas yang lagi login,
@@ -23,17 +24,32 @@ type WilayahPetugasSlot struct {
 
 // GenerateSlotRequest: body buat POST /petugas/acak-lapak/generate-slot.
 type GenerateSlotRequest struct {
-	Scope       string  `json:"scope" binding:"required"` // kota | kecamatan | jalan
+	Scope       string  `json:"scope" binding:"required"` // kota | kecamatan | jalan | ruas
 	KecamatanID *string `json:"kecamatanId"`
-	JalanID     *string `json:"jalanId"`
+	JalanID     *string `json:"jalanId"` // wajib untuk scope jalan & ruas
+	RuasID      *string `json:"ruasId"`  // wajib untuk scope ruas
+	// GantiPoolLama: true = lokasi lama yang BELUM diklaim dihapus dulu,
+	// jadi yang bisa diklaim pedagang cuma hasil acak ini. false = hasil
+	// acak ini DITAMBAHKAN ke pool yang sudah ada. Slot yang sudah diklaim
+	// pedagang tidak pernah dihapus.
+	GantiPoolLama bool `json:"gantiPoolLama"`
 }
 
 // GenerateSlotResponse: ringkasan hasil generate, ditampilkan ke petugas
 // abis klik "Acak Lapak".
 type GenerateSlotResponse struct {
-	Scope            string `json:"scope"`
-	ScopeLabel       string `json:"scopeLabel"` // "Se-Surabaya" / "Kec. Sukolilo" / "Jl. Kertajaya"
-	JumlahJalan      int    `json:"jumlahJalan"`
-	JumlahSlotDibuat int    `json:"jumlahSlotDibuat"`
-	JumlahSlotAda    int    `json:"jumlahSlotAda"` // total slot (lama + baru) yang sekarang ada buat scope ini
+	Scope             string `json:"scope"`
+	ScopeLabel        string `json:"scopeLabel"` // "Se-Surabaya" / "Kec. Sukolilo" / "Jl. Kertajaya" / "Ruas Pujasera, Jl. Dharmawangsa"
+	JumlahJalan       int    `json:"jumlahJalan"`
+	JumlahRuas        int    `json:"jumlahRuas"` // jumlah ruas yang ikut disiapkan (0 kalau jalan-jalannya belum dibagi ruas)
+	JumlahSlotDibuat  int    `json:"jumlahSlotDibuat"`
+	JumlahSlotDihapus int    `json:"jumlahSlotDihapus"` // slot lama belum diklaim yang dibuang (kalau GantiPoolLama)
+	JumlahSlotAda     int    `json:"jumlahSlotAda"`     // total slot (lama + baru) yang sekarang ada buat scope ini
+}
+
+// RuasOpsi: 1 pilihan ruas buat dropdown di halaman Acak Lapak.
+type RuasOpsi struct {
+	ID       string `json:"id"`
+	NamaRuas string `json:"namaRuas"`
+	Kuota    int    `json:"kuota"`
 }

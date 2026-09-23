@@ -40,6 +40,14 @@ func mapAcakLapakError(c fiber.Ctx, err error) error {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
 			"error": "jalan_id wajib diisi untuk scope jalan",
 		})
+	case errors.Is(err, repository.ErrRuasTidakDitemukan):
+		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{
+			"error": "ruas tidak ditemukan di jalan ini",
+		})
+	case errors.Is(err, repository.ErrRuasWajibDiisi), errors.Is(err, usecase.ErrRuasWajibDiisi):
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"error": "ruas wajib dipilih untuk cakupan ruas",
+		})
 	case errors.Is(err, usecase.ErrWilayahTidakBerhak):
 		return c.Status(fiber.StatusForbidden).JSON(fiber.Map{
 			"error": "kamu tidak punya akses untuk generate slot di wilayah ini",
@@ -67,7 +75,7 @@ func (ctrl *AcakLapakController) GenerateSlot(c fiber.Ctx) error {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": err.Error()})
 	}
 	if req.Scope == "" {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "scope wajib diisi (kota, kecamatan, atau jalan)"})
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "scope wajib diisi (kota, kecamatan, jalan, atau ruas)"})
 	}
 
 	result, err := ctrl.usecase.GenerateSlot(c.Context(), userID, &req)
@@ -78,4 +86,20 @@ func (ctrl *AcakLapakController) GenerateSlot(c fiber.Ctx) error {
 		"message": "pool lapak berhasil disiapkan",
 		"data":    result,
 	})
+}
+
+// GetRuasJalan - GET /api/petugas/acak-lapak/ruas/:jalanId
+//
+// Daftar ruas milik 1 jalan, buat dropdown "Pilih Ruas". Jalan yang belum
+// dibagi ruas balikin list kosong.
+func (ctrl *AcakLapakController) GetRuasJalan(c fiber.Ctx) error {
+	jalanID := c.Params("jalanId")
+	if jalanID == "" {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "jalanId wajib diisi"})
+	}
+	list, err := ctrl.usecase.GetRuasJalan(c.Context(), jalanID)
+	if err != nil {
+		return mapAcakLapakError(c, err)
+	}
+	return c.Status(fiber.StatusOK).JSON(fiber.Map{"data": list})
 }

@@ -14,6 +14,7 @@ type LapakRepository interface {
 	ListJalanByKecamatan(ctx context.Context, kecamatanID, sessionID string) ([]entity.JalanDTO, error)
 	ClaimSlot(ctx context.Context, pedagangID, sessionID string) (nomorLapak, namaJalan, namaKecamatan string, claimedAt time.Time, err error)
 	GetKlaimByPedagangSession(ctx context.Context, pedagangID, sessionID string) (nomorLapak, namaJalan, namaKecamatan string, claimedAt time.Time, found bool, err error)
+	GetNamaRuasKlaim(ctx context.Context, pedagangID, sessionID string) (string, error)
 }
 
 type LapakUsecase interface {
@@ -59,10 +60,15 @@ func (u *lapakUsecase) ClaimLapak(ctx context.Context, userID string) (*entity.C
 		return nil, err
 	}
 
+	// Nama ruas cuma pelengkap tampilan -- klaimnya sudah tersimpan, jadi
+	// gagal ambil nama ruas bukan alasan buat nge-gagalin respon klaim.
+	namaRuas, _ := u.repo.GetNamaRuasKlaim(ctx, pedagangID, sessionID)
+
 	return &entity.ClaimLapakResponse{
 		NomorLapak:    nomorLapak,
 		NamaJalan:     namaJalan,
 		NamaKecamatan: namaKecamatan,
+		NamaRuas:      namaRuas,
 		ClaimedAt:     claimedAt,
 	}, nil
 }
@@ -96,12 +102,18 @@ func (u *lapakUsecase) GetStatus(ctx context.Context, userID string) (*entity.St
 		return &entity.StatusLapakResponse{SudahKlaim: false, SesiAktif: true}, nil
 	}
 
+	var namaRuasPtr *string
+	if namaRuas, errRuas := u.repo.GetNamaRuasKlaim(ctx, pedagangID, sessionID); errRuas == nil && namaRuas != "" {
+		namaRuasPtr = &namaRuas
+	}
+
 	return &entity.StatusLapakResponse{
 		SudahKlaim:    true,
 		SesiAktif:     true,
 		NomorLapak:    &nomorLapak,
 		NamaJalan:     &namaJalan,
 		NamaKecamatan: &namaKecamatan,
+		NamaRuas:      namaRuasPtr,
 		ClaimedAt:     &claimedAt,
 	}, nil
 }

@@ -13,6 +13,7 @@ import {
   Loader2,
   X,
   ChevronDown,
+  Route,
 } from "lucide-react";
 
 // ========== TYPES ==========
@@ -34,12 +35,20 @@ type InstansiData = {
   nama: string;
 };
 
-type GenScope = "kota" | "kecamatan" | "jalan";
+type RuasData = {
+  id: string;
+  namaRuas: string;
+  kuota: number;
+};
+
+type GenScope = "kota" | "kecamatan" | "jalan" | "ruas";
 type HasilGenerate = {
   scope: string;
   scopeLabel: string;
   jumlahJalan: number;
+  jumlahRuas: number;
   jumlahSlotDibuat: number;
+  jumlahSlotDihapus: number;
   jumlahSlotAda: number;
 };
 
@@ -142,6 +151,7 @@ function ModalKonfirmasi({
 
 // ========== KARTU PILIHAN CAKUPAN ==========
 const SCOPE_TONE = {
+  ruas: { ring: "border-amber-600 bg-amber-50", chip: "bg-amber-600 text-white" },
   jalan: { ring: "border-blue-600 bg-blue-50", chip: "bg-blue-600 text-white" },
   kecamatan: { ring: "border-indigo-600 bg-indigo-50", chip: "bg-indigo-600 text-white" },
   kota: { ring: "border-emerald-600 bg-emerald-50", chip: "bg-emerald-600 text-white" },
@@ -194,6 +204,13 @@ export default function AcakLapakPage() {
   const [genScope, setGenScope] = useState<GenScope>("kota");
   const [genKecamatanID, setGenKecamatanID] = useState<string>("");
   const [genJalanID, setGenJalanID] = useState<string>("");
+  const [genRuasID, setGenRuasID] = useState<string>("");
+  // true (default) = lokasi lama yang belum diklaim dibuang dulu, jadi
+  // pedagang cuma dapat lokasi dari hasil acak ini.
+  const [gantiPoolLama, setGantiPoolLama] = useState(true);
+  const [ruasList, setRuasList] = useState<RuasData[]>([]);
+  const [ruasLoading, setRuasLoading] = useState(false);
+  const [ruasError, setRuasError] = useState<string | null>(null);
   const [genConfirmOpen, setGenConfirmOpen] = useState(false);
   const [genProcessing, setGenProcessing] = useState(false);
   const [genError, setGenError] = useState<string | null>(null);
@@ -223,7 +240,30 @@ export default function AcakLapakPage() {
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setGenJalanID("");
+    setGenRuasID("");
+    setRuasList([]);
+    setRuasError(null);
   }, [genKecamatanID, genScope]);
+
+  // Dipanggil langsung dari onChange dropdown jalan (bukan dari effect),
+  // jadi daftar ruas cuma diambil kalau cakupannya memang "ruas".
+  const pilihJalan = async (jalanID: string) => {
+    setGenJalanID(jalanID);
+    setGenRuasID("");
+    setRuasList([]);
+    setRuasError(null);
+    if (genScope !== "ruas" || !jalanID) return;
+
+    setRuasLoading(true);
+    try {
+      const res = await apiFetch(`/api/petugas/acak-lapak/ruas/${jalanID}`);
+      setRuasList(Array.isArray(res.data) ? res.data : []);
+    } catch (err) {
+      setRuasError(err instanceof Error ? err.message : "gagal memuat daftar ruas");
+    } finally {
+      setRuasLoading(false);
+    }
+  };
 
   const genKecamatanTerpilih = instansiList.find((i) => i.id === genKecamatanID) || null;
   const genJalanDiKecamatan = useMemo(() => {
@@ -231,9 +271,16 @@ export default function AcakLapakPage() {
     return lapakData.find((k) => k.kecamatan === genKecamatanTerpilih.nama)?.jalan || [];
   }, [lapakData, genKecamatanTerpilih]);
   const genJalanTerpilih = genJalanDiKecamatan.find((j) => j.id === genJalanID) || null;
+  const genRuasTerpilih = ruasList.find((r) => r.id === genRuasID) || null;
 
   const genBisaLanjut =
-    genScope === "kota" ? true : genScope === "kecamatan" ? !!genKecamatanTerpilih : !!genJalanTerpilih;
+    genScope === "kota"
+      ? true
+      : genScope === "kecamatan"
+        ? !!genKecamatanTerpilih
+        : genScope === "jalan"
+          ? !!genJalanTerpilih
+          : !!genRuasTerpilih;
 
   const genBukaKonfirmasi = () => {
     setGenError(null);
@@ -241,25 +288,37 @@ export default function AcakLapakPage() {
     setGenConfirmOpen(true);
   };
 
+  const catatanPool = gantiPoolLama
+    ? " Lokasi lama yang belum diambil pedagang akan dihapus, jadi pedagang hanya mendapat lokasi dari pilihan ini."
+    : " Lokasi ini ditambahkan ke lokasi yang sudah disiapkan sebelumnya.";
+
   const genTeksKonfirmasi = (): { title: string; message: string } => {
     if (genScope === "kota") {
       return {
         title: "Siapkan lokasi lapak se-Surabaya?",
         message:
-          "Sistem akan mengisi pool lokasi buat SEMUA jalan yang terdaftar, sejumlah sisa kapasitas yang belum disiapkan. Aman diklik ulang -- gak akan bikin lokasi dobel.",
+          "Sistem akan mengisi pool lokasi buat SEMUA jalan yang terdaftar. Jalan yang sudah dibagi ruas akan disiapkan per ruas sesuai kuota ruasnya. Aman diklik ulang -- gak akan bikin lokasi dobel.",
       };
     }
     if (genScope === "kecamatan" && genKecamatanTerpilih) {
       return {
         title: `Siapkan lokasi lapak se-${genKecamatanTerpilih.nama}?`,
         message:
-          "Sistem akan mengisi pool lokasi buat semua jalan di kecamatan ini, sejumlah sisa kapasitas yang belum disiapkan.",
+          "Sistem akan mengisi pool lokasi buat semua jalan di kecamatan ini. Jalan yang sudah dibagi ruas akan disiapkan per ruas sesuai kuota ruasnya.",
+      };
+    }
+    if (genScope === "ruas") {
+      return {
+        title: `Siapkan lokasi lapak di Ruas ${genRuasTerpilih?.namaRuas ?? ""}?`,
+        message: `Sistem akan mengisi pool lokasi buat ruas ini saja di ${
+          genJalanTerpilih?.nama ?? "jalan ini"
+        }, sebanyak kuota ruas (${genRuasTerpilih?.kuota ?? 0} lapak).`,
       };
     }
     return {
       title: `Siapkan lokasi lapak di ${genJalanTerpilih?.nama ?? "jalan ini"}?`,
       message:
-        "Sistem akan mengisi pool lokasi buat jalan ini saja, sejumlah sisa kapasitas yang belum disiapkan.",
+        "Sistem akan mengisi pool lokasi buat jalan ini saja. Kalau jalan ini sudah dibagi ruas, lokasi disiapkan per ruas sesuai kuota ruasnya.",
     };
   };
 
@@ -273,6 +332,8 @@ export default function AcakLapakPage() {
           scope: genScope,
           ...(genScope === "kecamatan" ? { kecamatanId: genKecamatanID } : {}),
           ...(genScope === "jalan" ? { jalanId: genJalanID } : {}),
+          ...(genScope === "ruas" ? { jalanId: genJalanID, ruasId: genRuasID } : {}),
+          gantiPoolLama,
         }),
       });
       setGenHasil(res.data);
@@ -312,7 +373,11 @@ export default function AcakLapakPage() {
     );
   }
 
-  const konfirmasi = genTeksKonfirmasi();
+  const konfirmasiDasar = genTeksKonfirmasi();
+  const konfirmasi = {
+    title: konfirmasiDasar.title,
+    message: konfirmasiDasar.message + catatanPool,
+  };
 
   return (
     <div className="flex flex-col gap-8 pb-24">
@@ -340,8 +405,12 @@ export default function AcakLapakPage() {
           <div className="flex-1">
             <p className="text-lg font-semibold text-emerald-900">Lokasi berhasil disiapkan!</p>
             <p className="mt-1 text-base text-emerald-800">
+              {genHasil.jumlahSlotDihapus > 0 &&
+                `${genHasil.jumlahSlotDihapus} lokasi lama yang belum diambil dihapus. `}
               {genHasil.jumlahSlotDibuat} lokasi baru ditambahkan ke pool ({genHasil.scopeLabel},{" "}
-              {genHasil.jumlahJalan} jalan). Total sekarang ada {genHasil.jumlahSlotAda} lokasi
+              {genHasil.jumlahJalan} jalan
+              {genHasil.jumlahRuas > 0 ? `, ${genHasil.jumlahRuas} ruas` : ""}). Total sekarang ada{" "}
+              {genHasil.jumlahSlotAda} lokasi
               siap diklaim pedagang.
             </p>
           </div>
@@ -358,7 +427,7 @@ export default function AcakLapakPage() {
       {/* Pilih cakupan */}
       <div>
         <p className="mb-3 text-lg font-semibold text-slate-800">1. Cakupan lokasi yang disiapkan?</p>
-        <div className="flex flex-col gap-4 sm:flex-row">
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
           <KartuScope
             aktif={genScope === "kota"}
             tone="kota"
@@ -383,11 +452,19 @@ export default function AcakLapakPage() {
             deskripsi="Siapkan lokasi buat satu jalan tertentu."
             onClick={() => setGenScope("jalan")}
           />
+          <KartuScope
+            aktif={genScope === "ruas"}
+            tone="ruas"
+            icon={Route}
+            label="1 Ruas Jalan"
+            deskripsi="Siapkan lokasi buat satu ruas di satu jalan."
+            onClick={() => setGenScope("ruas")}
+          />
         </div>
       </div>
 
       {/* Pilih kecamatan (untuk scope kecamatan & jalan) */}
-      {(genScope === "kecamatan" || genScope === "jalan") && (
+      {(genScope === "kecamatan" || genScope === "jalan" || genScope === "ruas") && (
         <div>
           <p className="mb-3 text-lg font-semibold text-slate-800">2. Pilih Kecamatan</p>
           {instansiList.length === 0 ? (
@@ -413,8 +490,8 @@ export default function AcakLapakPage() {
         </div>
       )}
 
-      {/* Pilih jalan (cuma untuk scope jalan) */}
-      {genScope === "jalan" && genKecamatanTerpilih && (
+      {/* Pilih jalan (untuk scope jalan & ruas) */}
+      {(genScope === "jalan" || genScope === "ruas") && genKecamatanTerpilih && (
         <div>
           <p className="mb-3 text-lg font-semibold text-slate-800">3. Pilih Jalan</p>
           {genJalanDiKecamatan.length === 0 ? (
@@ -423,7 +500,7 @@ export default function AcakLapakPage() {
             <div className="relative w-full" style={{ maxWidth: "36rem" }}>
               <select
                 value={genJalanID}
-                onChange={(e) => setGenJalanID(e.target.value)}
+                onChange={(e) => pilihJalan(e.target.value)}
                 className="w-full appearance-none rounded-xl border-2 border-slate-300 bg-white pl-5 pr-12 text-lg text-slate-900 outline-none focus:border-blue-600 focus:ring-4 focus:ring-blue-100"
                 style={{ height: "56px" }}
               >
@@ -439,6 +516,66 @@ export default function AcakLapakPage() {
           )}
         </div>
       )}
+
+      {/* Pilih ruas (cuma untuk scope ruas) */}
+      {genScope === "ruas" && genJalanTerpilih && (
+        <div>
+          <p className="mb-3 text-lg font-semibold text-slate-800">4. Pilih Ruas</p>
+          {ruasLoading ? (
+            <div className="flex items-center gap-2 text-base text-slate-500">
+              <Loader2 className="h-5 w-5 animate-spin" strokeWidth={2} />
+              Memuat daftar ruas...
+            </div>
+          ) : ruasError ? (
+            <p className="text-base text-rose-700">{ruasError}</p>
+          ) : ruasList.length === 0 ? (
+            <p className="text-base text-slate-500">
+              Jalan ini belum dibagi ruas. Tambahkan ruas dulu di menu Manajemen Lapak, atau pilih
+              cakupan &quot;1 Jalan Saja&quot;.
+            </p>
+          ) : (
+            <div className="relative w-full" style={{ maxWidth: "36rem" }}>
+              <select
+                value={genRuasID}
+                onChange={(e) => setGenRuasID(e.target.value)}
+                className="w-full appearance-none rounded-xl border-2 border-slate-300 bg-white pl-5 pr-12 text-lg text-slate-900 outline-none focus:border-blue-600 focus:ring-4 focus:ring-blue-100"
+                style={{ height: "56px" }}
+              >
+                <option value="">-- Pilih Ruas --</option>
+                {ruasList.map((r) => (
+                  <option key={r.id} value={r.id}>
+                    {r.namaRuas} (kuota {r.kuota})
+                  </option>
+                ))}
+              </select>
+              <ChevronDown className="pointer-events-none absolute right-4 top-1/2 h-5 w-5 -translate-y-1/2 text-slate-400" />
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Ganti atau tambah pool lama */}
+      <label
+        className="flex cursor-pointer items-start gap-4 rounded-2xl border-2 border-slate-200 bg-white p-5"
+        style={{ maxWidth: "36rem" }}
+      >
+        <input
+          type="checkbox"
+          checked={gantiPoolLama}
+          onChange={(e) => setGantiPoolLama(e.target.checked)}
+          className="mt-1 h-6 w-6 shrink-0 accent-blue-600"
+        />
+        <span>
+          <span className="block text-lg font-semibold text-slate-900">
+            Ganti lokasi yang sudah disiapkan sebelumnya
+          </span>
+          <span className="mt-1 block text-base leading-snug text-slate-500">
+            {gantiPoolLama
+              ? "Lokasi lama yang belum diambil pedagang dihapus. Pedagang hanya mendapat lokasi dari pilihan ini. Lapak yang sudah diambil pedagang tidak berubah."
+              : "Lokasi ini ditambahkan ke lokasi yang sudah ada. Pedagang bisa mendapat lokasi dari pilihan ini maupun pilihan sebelumnya."}
+          </span>
+        </span>
+      </label>
 
       {/* Error aksi */}
       {genError && (
@@ -466,6 +603,9 @@ export default function AcakLapakPage() {
           {genScope === "kecamatan" && "Pilih kecamatan dulu di atas."}
           {genScope === "jalan" && !genKecamatanTerpilih && "Pilih kecamatan dan jalan dulu di atas."}
           {genScope === "jalan" && genKecamatanTerpilih && !genJalanTerpilih && "Pilih salah satu jalan dulu di atas."}
+          {genScope === "ruas" && !genKecamatanTerpilih && "Pilih kecamatan, jalan, dan ruas dulu di atas."}
+          {genScope === "ruas" && genKecamatanTerpilih && !genJalanTerpilih && "Pilih salah satu jalan dulu di atas."}
+          {genScope === "ruas" && genJalanTerpilih && !genRuasTerpilih && "Pilih salah satu ruas dulu di atas."}
         </p>
       )}
 
