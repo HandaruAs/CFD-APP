@@ -11,6 +11,7 @@ const PUBLIC_PATHS = [
   "/auth/register",
   "/auth/forgot-password",
   "/auth/verify",
+  "/auth/reset-password",
 ];
 
 export function AppShell({ children }: { children: React.ReactNode }) {
