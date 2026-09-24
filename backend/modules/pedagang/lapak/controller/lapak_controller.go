@@ -62,6 +62,13 @@ func (ctrl *LapakController) ClaimLapak(c fiber.Ctx) error {
 		switch {
 		case errors.Is(err, repository.ErrLapakBelumDiacak):
 			return c.Status(fiber.StatusConflict).JSON(fiber.Map{"error": "lapak belum diacak petugas, silakan coba lagi nanti"})
+		case errors.Is(err, repository.ErrBelumCheckout):
+			// Kode khusus biar frontend bisa langsung arahin ke checkout,
+			// sama kayak BELUM_CHECKOUT di /api/petugas/check-in.
+			return c.Status(fiber.StatusConflict).JSON(fiber.Map{
+				"error": err.Error(),
+				"code":  "BELUM_CHECKOUT",
+			})
 		case errors.Is(err, repository.ErrSudahKlaim):
 			return c.Status(fiber.StatusConflict).JSON(fiber.Map{"error": "kamu sudah klaim lapak di sesi ini"})
 		case errors.Is(err, repository.ErrPedagangTidakDitemukan):

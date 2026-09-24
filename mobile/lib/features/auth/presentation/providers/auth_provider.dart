@@ -4,7 +4,7 @@ import 'auth_notifier.dart';
 import 'auth_state.dart';
 
 final authProvider = StateNotifierProvider<AuthNotifier, AuthState>((ref) {
-  return AuthNotifier();
+  return AuthNotifier(ref);
 });
 
 final userProvider = Provider<AuthUser?>((ref) {

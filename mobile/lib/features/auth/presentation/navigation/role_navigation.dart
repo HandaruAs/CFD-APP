@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:mobile/features/auth/domain/entities/user.dart';
 import 'package:mobile/core/widgets/layouts/main_layout.dart';
-import 'package:mobile/features/pedagang/presentation/providers/pedagang_provider.dart';
 import 'package:mobile/features/superadmin/presentation/pages/superadmin_home_screen.dart';
 
 /// Titik tunggal buat nentuin halaman awal (home) tiap role setelah
@@ -15,7 +14,10 @@ class RoleNavigation {
   static Future<Widget> resolveHomeScreen(WidgetRef ref, AuthUser user) async {
     switch (user.role) {
       case 'pedagang':
-        return _resolvePedagangHome(ref);
+        // Pendaftaran & klaim lapak udah satu halaman (LapakScreen) --
+        // halaman itu sendiri yang nentuin nampilin form daftar, form
+        // klaim, atau hasil klaim. Jadi gak perlu cek pengajuan di sini.
+        return const MainLayout(initialPath: '/pedagang/nomer-stand');
       case 'petugas':
         // Gak perlu initialPath -- tab index 0 (Dashboard) udah pas
         // buat kondisi awal petugas, gak ada percabangan kayak pedagang.
@@ -31,20 +33,6 @@ class RoleNavigation {
         // di-handle di app.
         return _UnknownRolePlaceholder(roleLabel: user.role);
     }
-  }
-
-  /// Pedagang: cek dulu udah pernah ngirim pengajuan usaha apa belum,
-  /// biar tab awal yang kebuka MainLayout bukan Pendaftaran kalau
-  /// ternyata udah pernah ngajuin.
-  static Future<Widget> _resolvePedagangHome(WidgetRef ref) async {
-    await ref.read(pedagangProvider.notifier).loadStatusPengajuan();
-    final sudahAdaPengajuan = ref.read(pedagangProvider).pengajuan != null;
-
-    return MainLayout(
-      initialPath: sudahAdaPengajuan
-          ? '/pedagang/status-verifikasi'
-          : '/pedagang/pendaftaran',
-    );
   }
 }
 
