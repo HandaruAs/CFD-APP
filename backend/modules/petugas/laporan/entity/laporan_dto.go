@@ -52,3 +52,65 @@ type StatsResponse struct {
 	RataOmset      int64   `json:"rataOmset"`
 	PersenHadir    float64 `json:"persenHadir"`
 }
+
+// ============================================================
+// DETAIL KEHADIRAN (dibuka saat petugas klik 1 baris di tabel laporan)
+// ============================================================
+
+// DetailKehadiranRaw - hasil mentah dari database (NIK & email masih asli).
+// Tidak pernah dikirim langsung ke client; usecase mengubahnya jadi
+// DetailKehadiranResponse yang NIK & email-nya sudah disensor.
+type DetailKehadiranRaw struct {
+	KehadiranID    string
+	Tanggal        string
+	NamaSesi       string
+	WaktuCheckin   string
+	WaktuCheckout  *string
+	Omset          *int64
+	Status         string
+	DicatatOleh    string
+	NamaJalan      string
+	Kecamatan      string
+	NomorLapak     string
+	LokasiLapak    string
+	NamaUsaha      string
+	JenisDagangan  string
+	JenisLapak     string
+	NamaLengkap    string
+	NIK            string
+	Email          string
+	TanggalLahir   string
+	StatusPedagang string // "lama" | "baru"
+}
+
+// DetailKehadiranResponse - response GET /api/petugas/laporan/:id
+type DetailKehadiranResponse struct {
+	Kehadiran struct {
+		ID            string  `json:"id"`
+		Tanggal       string  `json:"tanggal"` // format: 2006-01-02
+		NamaSesi      string  `json:"namaSesi"`
+		WaktuCheckin  string  `json:"waktuCheckin"`
+		WaktuCheckout *string `json:"waktuCheckout"`
+		Omset         *int64  `json:"omset"`
+		Status        string  `json:"status"`
+		DicatatOleh   string  `json:"dicatatOleh"`
+	} `json:"kehadiran"`
+	Lokasi struct {
+		NamaJalan   string `json:"namaJalan"`
+		Kecamatan   string `json:"kecamatan"`
+		NomorLapak  string `json:"nomorLapak"`
+		LokasiLapak string `json:"lokasiLapak"` // lokasi dari profil, dipakai kalau belum klaim lapak
+	} `json:"lokasi"`
+	Usaha struct {
+		NamaUsaha     string `json:"namaUsaha"`
+		JenisDagangan string `json:"jenisDagangan"`
+		JenisLapak    string `json:"jenisLapak"`
+	} `json:"usaha"`
+	Pribadi struct {
+		NamaLengkap    string `json:"namaLengkap"`
+		NIK            string `json:"nik"`   // sudah disensor, contoh: 3578********0001
+		Email          string `json:"email"` // sudah disensor, contoh: ha***@gmail.com
+		TanggalLahir   string `json:"tanggalLahir"`
+		StatusPedagang string `json:"statusPedagang"` // "lama" | "baru"
+	} `json:"pribadi"`
+}

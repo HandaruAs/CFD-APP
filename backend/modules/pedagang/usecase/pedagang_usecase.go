@@ -13,7 +13,7 @@ var (
 )
 
 type PedagangRepository interface {
-	CreatePengajuanMandiri(ctx context.Context, userID, nik, namaLengkap, tanggalLahir, namaUsaha, jenisDagangan, jenisLapak string) (string, error)
+	CreatePengajuanMandiri(ctx context.Context, userID, nik, namaLengkap, tanggalLahir, namaUsaha, jenisDagangan, jenisLapak string, mandiri bool) (string, error)
 	GetStatusPendaftaran(ctx context.Context) (isOpen bool, dalamJam bool, err error)
 	GetPengajuanByUserID(ctx context.Context, userID string) (*entity.PengajuanStatus, error)
 	ListPedagang(ctx context.Context) ([]entity.PedagangUserDTO, int, error)
@@ -56,6 +56,7 @@ func (u *pedagangUsecase) AjukanUsaha(ctx context.Context, userID string, req *e
 		req.NamaUsaha,
 		req.JenisDagangan,
 		req.JenisLapak,
+		true, // daftar sendiri -> Pedagang Baru
 	)
 }
 
@@ -69,7 +70,7 @@ func (u *pedagangUsecase) StatusPengajuan(ctx context.Context, userID string) (*
 // kolom yang sama persis. Sengaja TIDAK dicek ke GetStatusPendaftaran --
 // petugas/superadmin harus tetap bisa nambahin pedagang manual kapan aja.
 func (u *pedagangUsecase) CreatePengajuanByAdmin(ctx context.Context, userID, nik, namaLengkap, tanggalLahir, namaUsaha, jenisDagangan, jenisLapak string) error {
-	_, err := u.pedagangRepo.CreatePengajuanMandiri(ctx, userID, nik, namaLengkap, tanggalLahir, namaUsaha, jenisDagangan, jenisLapak)
+	_, err := u.pedagangRepo.CreatePengajuanMandiri(ctx, userID, nik, namaLengkap, tanggalLahir, namaUsaha, jenisDagangan, jenisLapak, false) // ditambah admin -> Pedagang Lama
 	return err
 }
 
