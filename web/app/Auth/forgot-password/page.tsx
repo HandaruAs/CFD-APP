@@ -12,17 +12,21 @@ export default function ForgotPasswordPage() {
     e.preventDefault();
     setLoading(true);
     try {
-      // TODO: ganti dengan endpoint API kirim instruksi reset password
-      // const res = await fetch("/api/auth/forgot-password", {
-      //   method: "POST",
-      //   headers: { "Content-Type": "application/json" },
-      //   body: JSON.stringify({ email }),
-      // });
-      // console.log({ email });
-
-      // Setelah instruksi terkirim, arahkan ke halaman verifikasi OTP
-      // sambil membawa email lewat query param
-      router.push(`/forgot-password/verify?email=${encodeURIComponent(email)}`);
+      const res = await fetch("http://localhost:8080/api/forgot-password", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email }),
+      });
+  
+      if (!res.ok) {
+        const err = await res.json();
+        alert(err.error || "Gagal mengirim instruksi");
+        return;
+      }
+  
+      router.push(`/auth/verify?email=${encodeURIComponent(email)}`);
+    } catch (error) {
+      alert("Terjadi kesalahan, coba lagi.");
     } finally {
       setLoading(false);
     }

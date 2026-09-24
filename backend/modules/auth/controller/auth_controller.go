@@ -20,6 +20,20 @@ type LoginRequest struct {
 	Password string `json:"password" validate:"required"`
 }
 
+type ForgotPasswordRequest struct {
+	Email string `json:"email" validate:"required"`
+}
+
+type VerifyOTPRequest struct {
+	Email string `json:"email" validate:"required"`
+	OTP   string `json:"otp" validate:"required,len=6"`
+}
+
+type ResetPasswordRequest struct {
+	ResetToken string `json:"reset_token" validate:"required"`
+	Password   string `json:"password" validate:"required,min=8"`
+}
+
 // --- DTO RESPONSE (JSON yang dikirim ke frontend) ---
 type LoginResponse struct {
 	Token string `json:"token"`
@@ -91,4 +105,70 @@ func (ctrl *AuthController) Login(c fiber.Ctx) error {
 	resp.User.Role = userData.Role
 
 	return c.Status(fiber.StatusOK).JSON(resp)
+}
+
+// ForgotPassword menangani POST /api/forgot-password
+// Email HARUS terdaftar di DB -- kalau enggak, balas error (sesuai alur
+// frontend yang langsung lanjut ke halaman verifikasi OTP).
+func (ctrl *AuthController) ForgotPassword(c fiber.Ctx) error {
+	var req ForgotPasswordRequest
+	if err := c.Bind().Body(&req); err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"error": err.Error(),
+		})
+	}
+
+	if err := ctrl.authUsecase.ForgotPassword(c.Context(), req.Email); err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"error": err.Error(),
+		})
+	}
+
+	return c.Status(fiber.StatusOK).JSON(fiber.Map{
+		"message": "kode OTP sudah dikirim ke email kamu",
+	})
+}
+
+// VerifyOTP menangani POST /api/verify-otp
+// Balikin reset_token buat dipakai di halaman set-password-baru, biar
+// OTP-nya sendiri gak perlu dikirim ulang di step berikutnya.
+func (ctrl *AuthController) VerifyOTP(c fiber.Ctx) error {
+	var req VerifyOTPRequest
+	if err := c.Bind().Body(&req); err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"error": err.Error(),
+		})
+	}
+
+	resetToken, err := ctrl.authUsecase.VerifyOTP(c.Context(), req.Email, req.OTP)
+	if err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"error": err.Error(),
+		})
+	}
+
+	return c.Status(fiber.StatusOK).JSON(fiber.Map{
+		"message":     "OTP valid",
+		"reset_token": resetToken,
+	})
+}
+
+// ResetPassword menangani POST /api/reset-password
+func (ctrl *AuthController) ResetPassword(c fiber.Ctx) error {
+	var req ResetPasswordRequest
+	if err := c.Bind().Body(&req); err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"error": err.Error(),
+		})
+	}
+
+	if err := ctrl.authUsecase.ResetPassword(c.Context(), req.ResetToken, req.Password); err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"error": err.Error(),
+		})
+	}
+
+	return c.Status(fiber.StatusOK).JSON(fiber.Map{
+		"message": "password berhasil direset, silakan login",
+	})
 }

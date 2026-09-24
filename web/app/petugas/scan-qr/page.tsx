@@ -6,12 +6,17 @@ import { Html5Qrcode } from "html5-qrcode";
 import {
   QrCode,
   ScanLine,
+  ScanFace,
   CheckCircle2,
+  ShieldCheck,
+  ShieldAlert,
   XCircle,
   MapPin,
   Tag,
   User,
-  History,
+  IdCard,
+  ListChecks,
+  TrendingUp,
   RotateCcw,
   Camera,
   CameraOff,
@@ -177,8 +182,6 @@ export default function ScanQrPage() {
   // KAMERA - buka/tutup & scan QR real-time
   // ============================================================
 
-  // Efek ini yang benar-benar meminta izin kamera & menyalakan preview,
-  // dijalankan setiap kali cameraActive berubah jadi true.
   useEffect(() => {
     if (!cameraActive) return;
 
@@ -193,7 +196,7 @@ export default function ScanQrPage() {
         { fps: 10, qrbox: { width: 250, height: 250 } },
         (decodedText) => {
           if (isCancelled) return;
-          isCancelled = true; // cegah decodedText ganda saat masih proses stop
+          isCancelled = true;
           setQrCodeInput(decodedText);
           setCameraActive(false);
           handleScanRef.current(decodedText);
@@ -348,6 +351,9 @@ export default function ScanQrPage() {
     setQrCodeInput("");
   };
 
+  // Hitung ringkasan riwayat buat mini-stat (murni turunan dari state riwayat, bukan state baru)
+  const totalBerhasil = riwayat.filter((r) => r.status === "berhasil").length;
+
   // ============================================================
   // RENDER
   // ============================================================
@@ -374,13 +380,18 @@ export default function ScanQrPage() {
           Pindai QR code pedagang untuk verifikasi dan catat kehadiran di CFD.
         </p>
       </div>
-
+      
       <div className="grid grid-cols-1 gap-md lg:grid-cols-[360px_1fr]">
         {/* ============================================================
             AREA SCANNER
         ============================================================ */}
         <div className="flex flex-col gap-sm rounded-lg border border-outline-variant bg-surface-container-lowest p-lg">
-          <h3 className="text-title-lg text-on-surface">Pemindai QR</h3>
+          <div className="flex items-center gap-sm">
+            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary">
+              <ScanFace className="h-[18px] w-[18px]" strokeWidth={2} />
+            </span>
+            <h3 className="text-title-lg text-on-surface">Pemindai QR</h3>
+          </div>
 
           {/* QR Input manual (fallback) + tombol kamera */}
           <div className="flex gap-sm">
@@ -427,9 +438,9 @@ export default function ScanQrPage() {
             ) : status === "terdaftar" || status === "tidak-terdaftar" ? (
               <div className="flex flex-col items-center gap-xs">
                 {status === "terdaftar" ? (
-                  <CheckCircle2 className="h-16 w-16 text-secondary" strokeWidth={1.5} />
+                  <ShieldCheck className="h-16 w-16 text-secondary" strokeWidth={1.5} />
                 ) : (
-                  <XCircle className="h-16 w-16 text-error" strokeWidth={1.5} />
+                  <ShieldAlert className="h-16 w-16 text-error" strokeWidth={1.5} />
                 )}
                 <span className="text-label-md text-on-surface-variant">
                   {status === "terdaftar" ? "QR Terverifikasi ✓" : "QR Tidak Dikenali"}
@@ -493,7 +504,12 @@ export default function ScanQrPage() {
         ============================================================ */}
         <div className="flex flex-col gap-md">
           <div className="rounded-lg border border-outline-variant bg-surface-container-lowest p-lg">
-            <h3 className="text-title-lg text-on-surface">Hasil Verifikasi</h3>
+            <div className="flex items-center gap-sm">
+              <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary">
+                <ShieldCheck className="h-[18px] w-[18px]" strokeWidth={2} />
+              </span>
+              <h3 className="text-title-lg text-on-surface">Hasil Verifikasi</h3>
+            </div>
 
             {status === "idle" && (
               <div className="mt-md flex flex-col items-center justify-center gap-xs rounded-md bg-surface-container-low py-xl text-center">
@@ -517,8 +533,8 @@ export default function ScanQrPage() {
             {status === "terdaftar" && pedagang && (
               <div className="mt-md flex flex-col gap-md animate-in fade-in duration-300">
                 <div className="flex items-center gap-sm rounded-md bg-secondary-container/40 px-md py-sm text-on-secondary-container">
-                  <CheckCircle2 className="h-5 w-5 shrink-0" strokeWidth={2} />
-                  <span className="text-label-md font-semibold">✓ Pedagang Terdaftar</span>
+                  <ShieldCheck className="h-5 w-5 shrink-0" strokeWidth={2} />
+                  <span className="text-label-md font-semibold">Pedagang Terdaftar</span>
                 </div>
 
                 <div className="flex items-start gap-sm rounded-md border border-outline-variant p-md hover:border-secondary/30 transition-colors">
@@ -588,8 +604,8 @@ export default function ScanQrPage() {
             {status === "tidak-terdaftar" && (
               <div className="mt-md flex flex-col gap-md animate-in fade-in duration-300">
                 <div className="flex items-center gap-sm rounded-md bg-error-container/60 px-md py-sm text-on-error-container">
-                  <XCircle className="h-5 w-5 shrink-0" strokeWidth={2} />
-                  <span className="text-label-md font-semibold">✕ Tidak Terdaftar</span>
+                  <ShieldAlert className="h-5 w-5 shrink-0" strokeWidth={2} />
+                  <span className="text-label-md font-semibold">Tidak Terdaftar</span>
                 </div>
                 <div className="rounded-md border border-error/20 bg-error-container/10 p-md">
                   <p className="text-body-md text-on-surface-variant">
@@ -608,10 +624,19 @@ export default function ScanQrPage() {
           ============================================================ */}
           <div className="rounded-lg border border-outline-variant bg-surface-container-lowest p-lg">
             <div className="mb-md flex items-center gap-sm">
-              <History className="h-[18px] w-[18px] text-on-surface-variant" strokeWidth={2} />
+              <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary">
+                <ListChecks className="h-[18px] w-[18px]" strokeWidth={2} />
+              </span>
               <h3 className="text-title-lg text-on-surface">Riwayat Scan Hari Ini</h3>
-              <span className="ml-auto text-label-sm text-on-surface-variant">
-                {isLoadingRiwayat ? "Memuat..." : `${riwayat.length} scan`}
+              <span className="ml-auto flex items-center gap-1 text-label-sm text-on-surface-variant">
+                {isLoadingRiwayat ? (
+                  "Memuat..."
+                ) : (
+                  <>
+                    <TrendingUp className="h-3.5 w-3.5 text-secondary" strokeWidth={2} />
+                    {totalBerhasil} berhasil · {riwayat.length} total
+                  </>
+                )}
               </span>
             </div>
 

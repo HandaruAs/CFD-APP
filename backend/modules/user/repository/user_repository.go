@@ -3,6 +3,7 @@ package repository
 import (
 	"context"
 	"database/sql"
+	"time"
 
 	"cfd-backend/modules/user/entity"
 
@@ -288,4 +289,77 @@ func (r *UserRepository) createUserWithRole(ctx context.Context, email, password
 	}
 
 	return userID, nil
+}
+
+// ================================================================
+// DI BAWAH INI TAMBAHAN BARU buat fitur forgot password (OTP)
+// ================================================================
+
+// SaveOTP: insert/replace OTP buat user ini. verified selalu direset ke false.
+func (r *UserRepository) SaveOTP(ctx context.Context, userID, otpHash string, expiresAt time.Time) error {
+	_, err := r.db.Exec(ctx, `
+		INSERT INTO password_reset_tokens (user_id, token_hash, verified, expires_at)
+		VALUES ($1, $2, false, $3)
+		ON CONFLICT (user_id) DO UPDATE
+		SET token_hash = EXCLUDED.token_hash, verified = false, expires_at = EXCLUDED.expires_at, created_at = now()
+	`, userID, otpHash, expiresAt)
+	return err
+}
+
+// GetOTPByUserID ambil hash OTP + waktu kadaluarsanya milik 1 user.
+func (r *UserRepository) GetOTPByUserID(ctx context.Context, userID string) (string, time.Time, error) {
+	var otpHash string
+	var expiresAt time.Time
+
+	err := r.db.QueryRow(ctx, `
+		SELECT token_hash, expires_at FROM password_reset_tokens WHERE user_id = $1
+	`, userID).Scan(&otpHash, &expiresAt)
+	if err != nil {
+		return "", time.Time{}, err
+	}
+
+	return otpHash, expiresAt, nil
+}
+
+// RotateToVerifiedToken: dipanggil setelah OTP kecocokan -- ganti token_hash
+// jadi reset-token baru dan tandai verified = true.
+func (r *UserRepository) RotateToVerifiedToken(ctx context.Context, userID, tokenHash string, expiresAt time.Time) error {
+	_, err := r.db.Exec(ctx, `
+		UPDATE password_reset_tokens
+		SET token_hash = $1, verified = true, expires_at = $2
+		WHERE user_id = $3
+	`, tokenHash, expiresAt, userID)
+	return err
+}
+
+// GetUserByResetTokenHash: dipakai di step reset-password akhir, cari user
+// lewat hash reset-token (bukan OTP lagi).
+func (r *UserRepository) GetUserByResetTokenHash(ctx context.Context, tokenHash string) (*UserForLogin, bool, time.Time, error) {
+	var user UserForLogin
+	var verified bool
+	var expiresAt time.Time
+
+	err := r.db.QueryRow(ctx, `
+		SELECT u.id, u.name, u.email, u.password, u.status, prt.verified, prt.expires_at
+		FROM password_reset_tokens prt
+		JOIN users u ON u.id = prt.user_id
+		WHERE prt.token_hash = $1
+	`, tokenHash).Scan(&user.ID, &user.Name, &user.Email, &user.PasswordHash, &user.Status, &verified, &expiresAt)
+	if err != nil {
+		return nil, false, time.Time{}, err
+	}
+
+	return &user, verified, expiresAt, nil
+}
+
+// UpdatePassword: kolomnya "password", sama kayak yang dipakai RegisterPedagang/GetUserForLogin.
+func (r *UserRepository) UpdatePassword(ctx context.Context, userID, passwordHash string) error {
+	_, err := r.db.Exec(ctx, `UPDATE users SET password = $1, updated_at = now() WHERE id = $2`, passwordHash, userID)
+	return err
+}
+
+// DeleteResetToken hapus baris OTP/reset-token punya user (dipanggil setelah reset berhasil, atau pas token expired).
+func (r *UserRepository) DeleteResetToken(ctx context.Context, userID string) error {
+	_, err := r.db.Exec(ctx, `DELETE FROM password_reset_tokens WHERE user_id = $1`, userID)
+	return err
 }
