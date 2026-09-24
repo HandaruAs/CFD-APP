@@ -276,6 +276,7 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
                     const SizedBox(height: 10),
                     _infoRow('Kecamatan', data.kecamatan.isEmpty ? '-' : data.kecamatan),
                     _infoRow('Nama Jalan', data.namaJalan.isEmpty ? '-' : data.namaJalan),
+                    if (data.namaRuas.isNotEmpty) _infoRow('Ruas', data.namaRuas),
                     _infoRow('Nomor Stan', data.nomorStan.isEmpty ? '-' : data.nomorStan),
                   ],
                 ),

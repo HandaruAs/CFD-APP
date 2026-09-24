@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"cfd-backend/modules/pedagang/lapak/entity"
+	"cfd-backend/modules/pedagang/lapak/repository"
 )
 
 type LapakRepository interface {
@@ -15,6 +16,7 @@ type LapakRepository interface {
 	ClaimSlot(ctx context.Context, pedagangID, sessionID string) (nomorLapak, namaJalan, namaKecamatan string, claimedAt time.Time, err error)
 	GetKlaimByPedagangSession(ctx context.Context, pedagangID, sessionID string) (nomorLapak, namaJalan, namaKecamatan string, claimedAt time.Time, found bool, err error)
 	GetNamaRuasKlaim(ctx context.Context, pedagangID, sessionID string) (string, error)
+	AdaKehadiranBelumCheckout(ctx context.Context, pedagangID string) (bool, error)
 }
 
 type LapakUsecase interface {
@@ -53,6 +55,17 @@ func (u *lapakUsecase) ClaimLapak(ctx context.Context, userID string) (*entity.C
 	pedagangID, err := u.repo.GetPedagangProfileIDByUserID(ctx, userID)
 	if err != nil {
 		return nil, err
+	}
+
+	// Pedagang yang masih nunggak checkout (mis. check-in minggu lalu tapi
+	// gak pernah isi omset) harus checkout dulu -- jangan sampai dia makan
+	// slot lapak di sesi baru, padahal nanti check-in-nya pasti ditolak.
+	belumCheckout, err := u.repo.AdaKehadiranBelumCheckout(ctx, pedagangID)
+	if err != nil {
+		return nil, err
+	}
+	if belumCheckout {
+		return nil, repository.ErrBelumCheckout
 	}
 
 	nomorLapak, namaJalan, namaKecamatan, claimedAt, err := u.repo.ClaimSlot(ctx, pedagangID, sessionID)

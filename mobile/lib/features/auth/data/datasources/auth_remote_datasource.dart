@@ -3,13 +3,8 @@ import 'package:http/http.dart' as http;
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:mobile/core/network/api_config.dart';
 import 'package:mobile/features/auth/domain/entities/user.dart';
-
-class ApiException implements Exception {
-  final String message;
-  ApiException(this.message);
-  @override
-  String toString() => message;
-}
+import 'package:mobile/core/network/api_exception.dart';  
+export 'package:mobile/core/network/api_exception.dart';
 
 class AuthRemoteDatasource {
   static const _storage = FlutterSecureStorage();

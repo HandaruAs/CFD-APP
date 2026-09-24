@@ -17,6 +17,7 @@ var (
 	ErrLapakBelumDiacak       = errors.New("lapak belum diacak petugas, silakan coba lagi nanti")
 	ErrSudahKlaim             = errors.New("kamu sudah klaim lapak di sesi ini")
 	ErrPedagangTidakDitemukan = errors.New("profil pedagang tidak ditemukan")
+	ErrBelumCheckout          = errors.New("kamu masih punya sesi sebelumnya yang belum checkout, isi omset di halaman checkout dulu sebelum ambil lapak lagi")
 )
 
 type LapakRepository struct {
@@ -49,6 +50,24 @@ func (r *LapakRepository) GetPedagangProfileIDByUserID(ctx context.Context, user
 		return "", err
 	}
 	return id, nil
+}
+
+// AdaKehadiranBelumCheckout -- pedagang yang masih punya kehadiran
+// ter-check-in tapi belum checkout (omset belum diisi), di sesi mana pun,
+// gak boleh ambil lapak baru. Aturan yang sama dipakai scan-qr
+// (CheckInPedagang) dan checkout (GetSesiKehadiranBelumCheckout).
+func (r *LapakRepository) AdaKehadiranBelumCheckout(ctx context.Context, pedagangID string) (bool, error) {
+	var ada bool
+	err := r.db.QueryRow(ctx, `
+		SELECT EXISTS(
+			SELECT 1 FROM kehadiran_pedagang
+			WHERE pedagang_id = $1 AND check_out_at IS NULL AND deleted_at IS NULL
+		)`, pedagangID,
+	).Scan(&ada)
+	if err != nil {
+		return false, err
+	}
+	return ada, nil
 }
 
 // ListKecamatan ambil semua kecamatan (master_instansi dengan nama_unit = 'Kecamatan').
