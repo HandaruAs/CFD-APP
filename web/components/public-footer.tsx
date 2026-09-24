@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { Store, MapPin, Mail, Clock4 } from "lucide-react";
+import { Store, MapPin, Mail, Clock4, Phone } from "lucide-react";
 
 /* =========================================================
    FOOTER PUBLIK -- dipakai di landing page & "/daftar-lapak"
@@ -16,9 +16,9 @@ export function PublicFooter() {
           <div className="max-w-xs">
             <div className="flex items-center gap-2.5">
               <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-blue text-white">
-                <Store className="h-4 w-4" strokeWidth={2.4} />
+                  <img src="/logo.png" alt="Logo" className="h-full w-full object-cover" />
               </span>
-              <span className="font-display text-[15px] font-semibold text-ink-strong">CFD Kita</span>
+              <span className="font-display text-[15px] font-semibold text-ink-strong">E-Event Surabaya</span>
             </div>
             <p className="mt-4 text-sm leading-relaxed text-ink-soft">
               Portal pedagang untuk pendaftaran, verifikasi, dan pengelolaan lapak Car Free Day
@@ -39,18 +39,17 @@ export function PublicFooter() {
             <div>
               <p className="text-xs font-semibold uppercase tracking-wider text-ink-soft">Hubungi Kami</p>
               <ul className="mt-3 space-y-3 text-sm text-ink-soft">
+
                 <li className="flex items-start gap-2">
                   <Mail className="mt-0.5 h-3.5 w-3.5 shrink-0 text-blue" strokeWidth={2.2} />
-                  <span>halo@cfdkita.id</span>
+                  <span>testing</span>
                 </li>
+              
                 <li className="flex items-start gap-2">
-                  <Clock4 className="mt-0.5 h-3.5 w-3.5 shrink-0 text-blue" strokeWidth={2.2} />
-                  <span>Senin–Jumat, 08.00–16.00</span>
+                  <Phone className="mt-0.5 h-3.5 w-3.5 shrink-0 text-blue" strokeWidth={2.2} />
+                  <span>08xxxxxx</span>
                 </li>
-                <li className="flex items-start gap-2">
-                  <MapPin className="mt-0.5 h-3.5 w-3.5 shrink-0 text-blue" strokeWidth={2.2} />
-                  <span>Posko CFD terdekat di titik Anda</span>
-                </li>
+
               </ul>
             </div>
           </div>

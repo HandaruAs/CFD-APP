@@ -243,13 +243,16 @@ export function Sidebar() {
 
   return (
     <aside className="hidden lg:flex lg:w-[280px] shrink-0 flex-col border-r border-outline-variant bg-surface-container-lowest h-screen sticky top-0">
-      {/* Header Logo */}
       <div className="flex items-center gap-3 px-6 py-7">
-        <span className="flex h-11 w-11 items-center justify-center rounded-2xl bg-gradient-to-br from-primary to-on-primary-fixed-variant text-on-primary shadow-md ring-1 ring-black/5">
-          <Store className="h-5 w-5" strokeWidth={2.25} />
+        <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-primary to-on-primary-fixed-variant shadow-md ring-1 ring-black/5 overflow-hidden">
+          <img
+            src="/logo.png"
+            alt="Logo"
+            className="h-full w-full object-cover"
+          />
         </span>
         <span className="text-title-lg font-bold tracking-tight text-primary">
-          CFD Hub
+          E-Event Surabaya
         </span>
       </div>
 
