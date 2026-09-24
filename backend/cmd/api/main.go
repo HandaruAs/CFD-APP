@@ -4,6 +4,7 @@ import (
 	"context"
 	"log"
 	"time"
+	"os"
 
 	"cfd-backend/config"
 	"cfd-backend/database"
@@ -40,6 +41,7 @@ import (
 
 	// Modul Usecase
 	authUsecase "cfd-backend/modules/auth/usecase"
+	"cfd-backend/pkg/mailer"
 	menuUsecase "cfd-backend/modules/menu/usecase"
 	operasionalUsecase "cfd-backend/modules/operasional/usecase"
 	pedagangUsecase "cfd-backend/modules/pedagang/usecase"
@@ -139,7 +141,14 @@ func main() {
 	// ============================================================
 	// 2. INIT USECASES
 	// ============================================================
-	authUsecase := authUsecase.NewAuthUsecase(userRepository, cfg.JWTSecret)
+	authMailer := mailer.NewSMTPMailer(
+		os.Getenv("SMTP_HOST"),
+		os.Getenv("SMTP_PORT"),
+		os.Getenv("SMTP_USER"),
+		os.Getenv("SMTP_PASSWORD"),
+		os.Getenv("SMTP_FROM"),
+	)
+	authUsecase := authUsecase.NewAuthUsecase(userRepository, cfg.JWTSecret, authMailer)
 	userUsecase := userUsecase.NewUserUsecase(userRepository)
 	pedagangUsecase := pedagangUsecase.NewPedagangUsecase(pedagangRepository)
 	menuUsecase := menuUsecase.NewMenuUsecase(menuRepository, userRepository, pedagangRepository)
@@ -227,7 +236,9 @@ func main() {
 	// ============================================================
 	app.Post("/api/register", authController.RegisterPedagang)
 	app.Post("/api/login", authController.Login)
-	app.Get("/api/public/sisa-lapak", sisaLapakController.GetSisaLapak)
+	app.Post("/api/forgot-password", authController.ForgotPassword)
+	app.Post("/api/verify-otp", authController.VerifyOTP)
+	app.Post("/api/reset-password", authController.ResetPassword)
 
 	// ============================================================
 	// 6. ENDPOINT PROTECTED (BUTUH LOGIN)

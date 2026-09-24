@@ -13,6 +13,9 @@ export default function VerifyOtpPage() {
 
   const [otp, setOtp] = useState<string[]>(Array(OTP_LENGTH).fill(""));
   const [loading, setLoading] = useState(false);
+  const [resending, setResending] = useState(false);
+  const [errorMsg, setErrorMsg] = useState("");
+  const [successMsg, setSuccessMsg] = useState("");
   const [secondsLeft, setSecondsLeft] = useState(RESEND_SECONDS);
   const inputsRef = useRef<(HTMLInputElement | null)[]>([]);
 
@@ -34,6 +37,7 @@ export default function VerifyOtpPage() {
     const next = [...otp];
     next[index] = value;
     setOtp(next);
+    setErrorMsg("");
 
     if (value && index < OTP_LENGTH - 1) {
       inputsRef.current[index + 1]?.focus();
@@ -67,28 +71,66 @@ export default function VerifyOtpPage() {
     const code = otp.join("");
     if (code.length < OTP_LENGTH) return;
 
+    setErrorMsg("");
+    setSuccessMsg("");
     setLoading(true);
     try {
-      // TODO: ganti dengan endpoint API verifikasi OTP
-      // const res = await fetch("/api/auth/verify-otp", {
-      //   method: "POST",
-      //   headers: { "Content-Type": "application/json" },
-      //   body: JSON.stringify({ email, code }),
-      // });
+      const res = await fetch("http://localhost:8080/api/verify-otp", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email, otp: code }),
+      });
 
-      // Setelah OTP valid, arahkan ke halaman buat password baru
-      router.push(`/reset-password?email=${encodeURIComponent(email)}`);
+      const data = await res.json();
+
+      if (!res.ok) {
+        setErrorMsg(data.error || "Kode OTP salah atau sudah kadaluarsa");
+        return;
+      }
+
+      // backend balikin reset_token, dipake di halaman set password baru
+      setSuccessMsg("Kode OTP valid! Mengarahkan ke halaman buat password baru...");
+      setTimeout(() => {
+        router.push(
+          `/auth/reset-password?token=${encodeURIComponent(data.reset_token)}`
+        );
+      }, 1000);
+    } catch {
+      setErrorMsg("Terjadi kesalahan, coba lagi.");
     } finally {
       setLoading(false);
     }
   };
 
-  const handleResend = () => {
-    if (secondsLeft > 0) return;
-    // TODO: panggil endpoint API kirim ulang OTP
-    setSecondsLeft(RESEND_SECONDS);
-    setOtp(Array(OTP_LENGTH).fill(""));
-    inputsRef.current[0]?.focus();
+  const handleResend = async () => {
+    if (secondsLeft > 0 || resending) return;
+
+    setErrorMsg("");
+    setSuccessMsg("");
+    setResending(true);
+    try {
+      const res = await fetch("http://localhost:8080/api/forgot-password", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email }),
+      });
+
+      const data = await res.json();
+
+      if (!res.ok) {
+        setErrorMsg(data.error || "Gagal mengirim ulang kode");
+        return;
+      }
+
+      setSuccessMsg("Kode baru sudah dikirim ke email kamu.");
+      setSecondsLeft(RESEND_SECONDS);
+      setOtp(Array(OTP_LENGTH).fill(""));
+      inputsRef.current[0]?.focus();
+    } catch {
+      setErrorMsg("Terjadi kesalahan, coba lagi.");
+    } finally {
+      setResending(false);
+    }
   };
 
   return (
@@ -134,13 +176,27 @@ export default function VerifyOtpPage() {
           <h1 className="text-2xl font-bold text-[#0B1B3A] text-center">
             Verifikasi Kode OTP
           </h1>
-          <p className="text-sm text-slate-500 text-center mt-2 mb-7 leading-relaxed">
+          <p className="text-sm text-slate-500 text-center mt-2 mb-5 leading-relaxed">
             Kami telah mengirimkan kode verifikasi ke email anda{" "}
             <span className="font-medium text-[#2563EB]">
               {email || "-"}
             </span>
             . Silakan masukkan 6 digit kode tersebut di bawah ini.
           </p>
+
+          {/* Notifikasi sukses */}
+          {successMsg && (
+            <div className="mb-4 rounded-lg bg-green-50 border border-green-200 text-green-700 text-sm px-3.5 py-2.5 text-center">
+              {successMsg}
+            </div>
+          )}
+
+          {/* Notifikasi error */}
+          {errorMsg && (
+            <div className="mb-4 rounded-lg bg-red-50 border border-red-200 text-red-600 text-sm px-3.5 py-2.5 text-center">
+              {errorMsg}
+            </div>
+          )}
 
           <form onSubmit={handleSubmit}>
             {/* OTP boxes */}
@@ -200,9 +256,10 @@ export default function VerifyOtpPage() {
               <button
                 type="button"
                 onClick={handleResend}
-                className="font-medium text-[#2563EB] hover:text-[#1D4ED8]"
+                disabled={resending}
+                className="font-medium text-[#2563EB] hover:text-[#1D4ED8] disabled:opacity-60"
               >
-                Kirim ulang kode
+                {resending ? "Mengirim..." : "Kirim ulang kode"}
               </button>
             )}
           </p>

@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Bell, ShieldCheck, Briefcase, Crown } from "lucide-react";
+import { Bell, ShieldCheck, Briefcase, Crown, ChevronDown } from "lucide-react";
 
 type Me = {
   name: string;
@@ -84,11 +84,11 @@ export function Topbar() {
   const badge = me ? getRoleBadge(me) : null;
 
   return (
-    <header className="flex items-center justify-end border-b border-outline-variant bg-surface-container-lowest px-lg py-md lg:px-xl">
-      <div className="flex items-center gap-sm mr-lg lg:mr-xl">
+    <header className="sticky top-0 z-10 flex items-center justify-end border-b border-outline-variant bg-surface-container-lowest/90 px-lg py-md backdrop-blur-sm lg:px-xl">
+      <div className="flex items-center gap-md mr-lg lg:mr-xl">
         {!loading && badge && (
           <span
-            className={`hidden items-center gap-xs rounded-full py-1.5 pl-1.5 pr-4 text-label-sm font-semibold shadow-sm ring-1 ring-black/5 sm:flex ${badge.className}`}
+            className={`hidden items-center gap-xs rounded-full py-1.5 pl-1.5 pr-4 text-label-sm font-semibold shadow-sm ring-1 ring-black/5 transition-shadow hover:shadow-md sm:flex ${badge.className}`}
           >
             <span className="flex h-6 w-6 items-center justify-center rounded-full bg-white/35">
               {/* eslint-disable-next-line react-hooks/static-components -- icon is a fixed lookup from getRoleBadge, not created per render */}
@@ -101,18 +101,22 @@ export function Topbar() {
         <button
           type="button"
           aria-label="Notifikasi"
-          className="flex h-10 w-10 items-center justify-center rounded-full text-on-surface-variant shadow-sm ring-1 ring-black/5 transition-colors hover:bg-surface-container-low hover:text-on-surface"
+          className="relative flex h-10 w-10 items-center justify-center rounded-full text-on-surface-variant shadow-sm ring-1 ring-black/5 transition-all hover:-translate-y-0.5 hover:bg-surface-container-low hover:text-on-surface hover:shadow-md"
         >
           <Bell className="h-[18px] w-[18px]" strokeWidth={2} />
         </button>
 
-        <div className="flex items-center gap-sm rounded-full py-1 pl-1 pr-4 shadow-sm ring-1 ring-black/5">
-          <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-primary to-on-primary-fixed-variant text-[11px] font-bold text-on-primary shadow-sm">
+        {/* Pemisah tipis antara grup ikon/badge dan profil -- murni visual */}
+        <span className="hidden h-6 w-px bg-outline-variant sm:block" />
+
+        <div className="flex items-center gap-sm rounded-full py-1 pl-1 pr-3 shadow-sm ring-1 ring-black/5 transition-shadow hover:shadow-md">
+          <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-primary to-on-primary-fixed-variant text-[11px] font-bold text-on-primary shadow-sm ring-2 ring-white">
             {me ? getInitials(me.name) : "?"}
           </span>
           <span className="hidden pl-xs text-label-md font-medium text-on-surface sm:inline">
             {loading ? "Memuat..." : me?.name ?? "Belum login"}
           </span>
+          <ChevronDown className="hidden h-3.5 w-3.5 text-on-surface-variant sm:block" strokeWidth={2.5} />
         </div>
       </div>
     </header>
