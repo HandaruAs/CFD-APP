@@ -50,10 +50,10 @@ export function PublicNavbar() {
       <nav className="mx-auto flex max-w-7xl items-center justify-between px-6 py-3.5 lg:px-8">
         <Link href="/" className="focus-ring flex items-center gap-2.5" onClick={() => setMobileOpen(false)}>
           <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-blue text-white shadow-sm shadow-blue/30">
-            <Store className="h-4 w-4" strokeWidth={2.4} />
+             <img src="/logo.png" alt="Logo" className="h-full w-full object-cover" />
           </span>
           <span className="font-display text-[15px] font-semibold tracking-tight text-ink-strong">
-            CFD Kita
+            E-Event Surabaya
           </span>
         </Link>
 
