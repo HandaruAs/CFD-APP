@@ -39,6 +39,9 @@ import (
 	// Repository Manajemen Lapak
 	manajemenLapakRepo "cfd-backend/modules/petugas/manajemen-lapak/repository"
 
+	// Repository Dashboard Superadmin
+	adminDashboardRepo "cfd-backend/modules/admin/dashboard/repository"
+
 	// Modul Usecase
 	authUsecase "cfd-backend/modules/auth/usecase"
 	"cfd-backend/pkg/mailer"
@@ -68,6 +71,9 @@ import (
 	// Usecase Manajemen Lapak
 	manajemenLapakUsecase "cfd-backend/modules/petugas/manajemen-lapak/usecase"
 
+	// Usecase Dashboard Superadmin
+	adminDashboardUsecase "cfd-backend/modules/admin/dashboard/usecase"
+
 	// Modul Controller
 	authController "cfd-backend/modules/auth/controller"
 	menuController "cfd-backend/modules/menu/controller"
@@ -95,6 +101,9 @@ import (
 
 	// Controller Manajemen Lapak
 	manajemenLapakController "cfd-backend/modules/petugas/manajemen-lapak/controller"
+
+	// Controller Dashboard Superadmin
+	adminDashboardController "cfd-backend/modules/admin/dashboard/controller"
 
 	"github.com/gofiber/fiber/v3"
 	"github.com/gofiber/fiber/v3/middleware/cors"
@@ -138,6 +147,9 @@ func main() {
 	// Repository Manajemen Lapak
 	manajemenLapakRepository := manajemenLapakRepo.NewRepository(db)
 
+	// Repository Dashboard Superadmin
+	adminDashboardRepository := adminDashboardRepo.NewDashboardRepository(db)
+
 	// ============================================================
 	// 2. INIT USECASES
 	// ============================================================
@@ -175,6 +187,9 @@ func main() {
 	// Usecase Manajemen Lapak
 	manajemenLapakUC := manajemenLapakUsecase.NewManajemenLapakUsecase(manajemenLapakRepository)
 
+	// Usecase Dashboard Superadmin
+	adminDashboardUC := adminDashboardUsecase.NewDashboardUsecase(adminDashboardRepository)
+
 	// ============================================================
 	// 3. INIT CONTROLLERS
 	// ============================================================
@@ -204,6 +219,9 @@ func main() {
 
 	// Controller Manajemen Lapak
 	manajemenLapakCtrl := manajemenLapakController.NewManajemenLapakController(manajemenLapakUC)
+
+	// Controller Dashboard Superadmin
+	adminDashboardCtrl := adminDashboardController.NewDashboardController(adminDashboardUC)
 
 	// ============================================================
 	// 4. INIT FIBER APP
@@ -318,17 +336,12 @@ func main() {
 		},
 	)
 
-	// 8c. Superadmin
+	// 8c. Superadmin -- statistik dashboard (kondisi hari ini & tren)
+	// dalam 1 response.
 	app.Get("/api/admin/dashboard",
 		middleware.AuthMiddleware(cfg.JWTSecret),
 		middleware.RoleMiddleware(userRepository, "superadmin"),
-		func(c fiber.Ctx) error {
-			userID := c.Locals("user_id")
-			return c.Status(200).JSON(fiber.Map{
-				"message": "Selamat datang di Dashboard Super Admin!",
-				"user_id": userID,
-			})
-		},
+		adminDashboardCtrl.GetDashboard,
 	)
 
 	// 8d. Multi-role (Superadmin & Petugas)
