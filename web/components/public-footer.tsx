@@ -15,9 +15,7 @@ export function PublicFooter() {
         <div className="flex flex-col justify-between gap-10 border-b border-line pb-12 sm:flex-row">
           <div className="max-w-xs">
             <div className="flex items-center gap-2.5">
-              <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-blue text-white">
-                  <img src="/logo.png" alt="Logo" className="h-full w-full object-cover" />
-              </span>
+            <img src="/images/logo-cfd.png" alt="Logo" className="h-8 w-8 object-contain" />
               <span className="font-display text-[15px] font-semibold text-ink-strong">E-Event Surabaya</span>
             </div>
             <p className="mt-4 text-sm leading-relaxed text-ink-soft">
