@@ -1,13 +1,16 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Bell, ShieldCheck, Briefcase, Crown, ChevronDown } from "lucide-react";
+import { ShieldCheck, Briefcase, Crown, Sun, Sunset, Moon } from "lucide-react";
 
 type Me = {
   name: string;
   role: string;
+  avatar_url?: string | null;
   pedagang_stage?: "unverified" | "verified";
 };
+
+const API = process.env.NEXT_PUBLIC_API_URL ?? "";
 
 function getInitials(name?: string) {
   if (!name) return "?";
@@ -16,41 +19,29 @@ function getInitials(name?: string) {
   return initials.join("") || "?";
 }
 
-// Badge per role -- tiap role dapet label, ikon, dan warna sendiri.
-// Ditaruh di luar komponen (bukan dihitung ulang tiap render) karena
-// isinya statis, cuma dipilih berdasar role/stage yang ada.
+// Lencana peran: label, ikon, dan warna pill.
 function getRoleBadge(me: Me) {
   if (me.role === "pedagang") {
     return me.pedagang_stage === "verified"
-      ? {
-          label: "Terverifikasi",
-          icon: ShieldCheck,
-          className: "bg-secondary-container text-on-secondary-container",
-        }
-      : {
-          label: "Menunggu Verifikasi",
-          icon: ShieldCheck,
-          className: "bg-tertiary-fixed text-on-tertiary-fixed-variant",
-        };
+      ? { label: "Terverifikasi", icon: ShieldCheck, style: "bg-secondary-container/40 text-on-secondary-container" }
+      : { label: "Menunggu Verifikasi", icon: ShieldCheck, style: "bg-tertiary-fixed text-on-tertiary-fixed" };
   }
-
   if (me.role === "petugas") {
-    return {
-      label: "Petugas CFD",
-      icon: Briefcase,
-      className: "bg-secondary-container text-on-secondary-container",
-    };
+    return { label: "Petugas CFD", icon: Briefcase, style: "bg-primary-fixed text-on-primary-fixed" };
   }
-
   if (me.role === "superadmin") {
-    return {
-      label: "Superadmin",
-      icon: Crown,
-      className: "bg-primary-fixed text-on-primary-fixed-variant",
-    };
+    return { label: "Superadmin", icon: Crown, style: "bg-primary-fixed text-on-primary-fixed" };
   }
-
   return null;
+}
+
+// Sapaan + ikon otomatis sesuai jam.
+function getGreeting() {
+  const hour = new Date().getHours();
+  if (hour < 11) return { text: "Selamat pagi", icon: Sun };
+  if (hour < 15) return { text: "Selamat siang", icon: Sun };
+  if (hour < 19) return { text: "Selamat sore", icon: Sunset };
+  return { text: "Selamat malam", icon: Moon };
 }
 
 export function Topbar() {
@@ -60,16 +51,12 @@ export function Topbar() {
   useEffect(() => {
     const token = localStorage.getItem("cfd_token");
     if (!token) {
-      // localStorage cuma bisa dibaca di client, jadi status login gak
-      // bisa dihitung pas render (bakal beda sama hasil SSR -> hydration
-      // mismatch). setLoading(false) di sini genuinely butuh useEffect,
-      // bukan state yang seharusnya di-derive pas render.
       // eslint-disable-next-line react-hooks/set-state-in-effect
       setLoading(false);
       return;
     }
 
-    fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/me`, {
+    fetch(`${API}/api/me`, {
       headers: { Authorization: `Bearer ${token}` },
     })
       .then((res) => {
@@ -81,43 +68,90 @@ export function Topbar() {
       .finally(() => setLoading(false));
   }, []);
 
+  // Halaman profil mengirim sinyal ini setelah foto berhasil diganti,
+  // supaya foto di topbar ikut berubah tanpa perlu refresh.
+  useEffect(() => {
+    const onAvatar = (e: Event) => {
+      const url = (e as CustomEvent<string | null>).detail;
+      setMe((m) => (m ? { ...m, avatar_url: url } : m));
+    };
+    window.addEventListener("cfd:avatar", onAvatar);
+    return () => window.removeEventListener("cfd:avatar", onAvatar);
+  }, []);
+
   const badge = me ? getRoleBadge(me) : null;
+  const BadgeIcon = badge?.icon;
+  const firstName = me?.name?.trim().split(/\s+/)[0];
+  const greeting = getGreeting();
+  const GreetIcon = greeting.icon;
 
   return (
-    <header className="sticky top-0 z-10 flex items-center justify-end border-b border-outline-variant bg-surface-container-lowest/90 px-lg py-md backdrop-blur-sm lg:px-xl">
-      <div className="flex items-center gap-md mr-lg lg:mr-xl">
-        {!loading && badge && (
-          <span
-            className={`hidden items-center gap-xs rounded-full py-1.5 pl-1.5 pr-4 text-label-sm font-semibold shadow-sm ring-1 ring-black/5 transition-shadow hover:shadow-md sm:flex ${badge.className}`}
-          >
-            <span className="flex h-6 w-6 items-center justify-center rounded-full bg-white/35">
-              {/* eslint-disable-next-line react-hooks/static-components -- icon is a fixed lookup from getRoleBadge, not created per render */}
-              <badge.icon className="h-3.5 w-3.5" strokeWidth={2.5} />
+    <header className="sticky top-0 z-10 flex items-center justify-between border-b border-outline-variant bg-gradient-to-r from-primary-fixed/40 via-surface-container-lowest to-surface-container-lowest px-lg py-md backdrop-blur-sm lg:px-xl">
+      {/* Garis aksen gradasi tipis di dasar topbar */}
+      <div
+        aria-hidden="true"
+        className="pointer-events-none absolute inset-x-0 bottom-0 h-[2px] bg-gradient-to-r from-primary via-primary-container/60 to-transparent"
+      />
+
+      {/* Sapaan + tanggal, cuma muncul kalau sudah login & selesai loading */}
+      <div>
+        {!loading && me && (
+          <div className="hidden items-center gap-sm sm:flex">
+            <span className="flex h-9 w-9 items-center justify-center rounded-full bg-primary-fixed text-on-primary-fixed">
+              <GreetIcon className="h-[18px] w-[18px]" strokeWidth={2} />
             </span>
-            {badge.label}
-          </span>
+            <div>
+              <p className="text-label-md leading-tight text-on-surface">
+                {greeting.text},{" "}
+                <span className="font-semibold text-on-surface">{firstName}</span> 👋
+              </p>
+              <p className="text-[11px] leading-tight text-on-surface-variant">
+                {new Date().toLocaleDateString("id-ID", {
+                  weekday: "long",
+                  day: "numeric",
+                  month: "long",
+                  year: "numeric",
+                })}
+              </p>
+            </div>
+          </div>
         )}
+      </div>
 
-        <button
-          type="button"
-          aria-label="Notifikasi"
-          className="relative flex h-10 w-10 items-center justify-center rounded-full text-on-surface-variant shadow-sm ring-1 ring-black/5 transition-all hover:-translate-y-0.5 hover:bg-surface-container-low hover:text-on-surface hover:shadow-md"
-        >
-          <Bell className="h-[18px] w-[18px]" strokeWidth={2} />
-        </button>
-
-        {/* Pemisah tipis antara grup ikon/badge dan profil -- murni visual */}
-        <span className="hidden h-6 w-px bg-outline-variant sm:block" />
-
-        <div className="flex items-center gap-sm rounded-full py-1 pl-1 pr-3 shadow-sm ring-1 ring-black/5 transition-shadow hover:shadow-md">
-          <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-primary to-on-primary-fixed-variant text-[11px] font-bold text-on-primary shadow-sm ring-2 ring-white">
-            {me ? getInitials(me.name) : "?"}
+      <div className="flex items-center gap-sm">
+        {/* Avatar: foto profil kalau ada, kalau belum ada tampil inisial.
+            Titik hijau ditaruh di luar wadah foto supaya tidak ikut terpotong. */}
+        <span className="relative flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-primary to-on-primary-fixed-variant text-[14px] font-bold text-on-primary shadow-sm">
+          <span className="flex h-full w-full items-center justify-center overflow-hidden rounded-xl">
+            {me?.avatar_url ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                src={`${API}${me.avatar_url}`}
+                alt={`Foto ${me.name}`}
+                className="h-full w-full object-cover"
+              />
+            ) : me ? (
+              getInitials(me.name)
+            ) : (
+              "?"
+            )}
           </span>
-          <span className="hidden pl-xs text-label-md font-medium text-on-surface sm:inline">
+          {!loading && me && (
+            <span className="absolute -bottom-0.5 -right-0.5 h-2.5 w-2.5 rounded-full bg-emerald-500 ring-2 ring-white" />
+          )}
+        </span>
+
+        <span className="hidden flex-col items-start sm:flex">
+          <span className="text-label-md font-semibold leading-tight text-on-surface">
             {loading ? "Memuat..." : me?.name ?? "Belum login"}
           </span>
-          <ChevronDown className="hidden h-3.5 w-3.5 text-on-surface-variant sm:block" strokeWidth={2.5} />
-        </div>
+          {!loading && me && badge && BadgeIcon && (
+            <span className="mt-0.5 inline-flex items-center gap-1 text-[11px] font-medium leading-tight text-primary">
+              <BadgeIcon className="h-3 w-3" strokeWidth={2.25} />
+              {badge.label}
+            </span>
+          )}
+        </span>
       </div>
     </header>
   );

@@ -109,6 +109,7 @@ import (
 	"github.com/gofiber/fiber/v3/middleware/cors"
 	"github.com/gofiber/fiber/v3/middleware/logger"
 	"github.com/gofiber/fiber/v3/middleware/recover"
+	"github.com/gofiber/fiber/v3/middleware/static"
 )
 
 func main() {
@@ -235,14 +236,17 @@ func main() {
 	})
 
 	// Middleware
-	app.Use(recover.New())
-	app.Use(logger.New())
-	app.Use(cors.New(cors.Config{
-		AllowOrigins:     cfg.CORSAllowedOrigins,
-		AllowMethods:     []string{"GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"},
-		AllowHeaders:     []string{"Origin", "Content-Type", "Authorization"},
-		AllowCredentials: true,
-	}))
+app.Use(recover.New())
+app.Use(logger.New())
+app.Use(cors.New(cors.Config{
+	AllowOrigins:     cfg.CORSAllowedOrigins,
+	AllowMethods:     []string{"GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"},
+	AllowHeaders:     []string{"Origin", "Content-Type", "Authorization"},
+	AllowCredentials: true,
+}))
+
+// Sajikan foto yang di-upload (avatar, dll.)
+app.Use("/uploads", static.New("./uploads"))
 
 	// Health check
 	app.Get("/health", func(c fiber.Ctx) error {
@@ -262,6 +266,7 @@ func main() {
 	// 6. ENDPOINT PROTECTED (BUTUH LOGIN)
 	// ============================================================
 	app.Get("/api/me", middleware.AuthMiddleware(cfg.JWTSecret), userController.Me)
+	app.Post("/api/me/foto", middleware.AuthMiddleware(cfg.JWTSecret), userController.UploadFoto)
 
 	// Logout: JWT tetap stateless (token dihapus di sisi client), endpoint
 	// ini cuma buat nandain user langsung offline di daftar petugas.

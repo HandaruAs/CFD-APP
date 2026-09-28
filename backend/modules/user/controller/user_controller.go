@@ -1,7 +1,12 @@
 package controller
 
 import (
+	"crypto/rand"
+	"encoding/hex"
 	"errors"
+	"net/http"
+	"os"
+	"path/filepath"
 	"strconv"
 
 	"cfd-backend/modules/user/entity"
@@ -61,6 +66,12 @@ func (ctrl *UserController) Me(c fiber.Ctx) error {
 		"role":   role,
 	}
 
+	if userProfile.AvatarURL != "" {
+		user["avatar_url"] = userProfile.AvatarURL
+	} else {
+		user["avatar_url"] = nil
+	}
+
 	// pedagang_stage dibaca badge topbar, halaman /pedagang, dan halaman
 	// Jadwal & Lokasi. Dulu field ini gak pernah dikirim, jadi semua
 	// pedagang tampil "Menunggu Verifikasi" dan jadwalnya "belum tersedia".
@@ -76,6 +87,93 @@ func (ctrl *UserController) Me(c fiber.Ctx) error {
 
 	return c.Status(fiber.StatusOK).JSON(fiber.Map{
 		"user": user,
+	})
+}
+
+const maxFotoBytes = 2 << 20 // 2 MB
+
+var extFoto = map[string]string{
+	"image/jpeg": ".jpg",
+	"image/png":  ".png",
+	"image/webp": ".webp",
+}
+
+// UploadFoto handler untuk POST /api/me/foto (multipart, field "foto")
+func (ctrl *UserController) UploadFoto(c fiber.Ctx) error {
+	userID, ok := c.Locals("user_id").(string)
+	if !ok || userID == "" {
+		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{
+			"error": "User ID tidak ditemukan di token",
+		})
+	}
+
+	fh, err := c.FormFile("foto")
+	if err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"error": "File foto tidak ditemukan",
+		})
+	}
+	if fh.Size > maxFotoBytes {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"error": "Ukuran foto maksimal 2 MB",
+		})
+	}
+
+	// Cek tipe dari ISI file, bukan dari nama/header kiriman client.
+	f, err := fh.Open()
+	if err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"error": "File foto tidak bisa dibaca",
+		})
+	}
+	head := make([]byte, 512)
+	n, _ := f.Read(head)
+	f.Close()
+
+	ext, ok := extFoto[http.DetectContentType(head[:n])]
+	if !ok {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"error": "Format foto harus JPG, PNG, atau WebP",
+		})
+	}
+
+	// Nama file acak, jadi tidak bisa ditebak dan browser tidak salah cache.
+	rnd := make([]byte, 8)
+	if _, err := rand.Read(rnd); err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"error": "Gagal menyimpan foto",
+		})
+	}
+	nama := userID + "-" + hex.EncodeToString(rnd) + ext
+
+	dir := filepath.Join("uploads", "avatars")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"error": "Gagal menyimpan foto",
+		})
+	}
+	if err := c.SaveFile(fh, filepath.Join(dir, nama)); err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"error": "Gagal menyimpan foto",
+		})
+	}
+
+	url := "/uploads/avatars/" + nama
+	oldURL, err := ctrl.userUsecase.UpdateAvatar(c.Context(), userID, url)
+	if err != nil {
+		os.Remove(filepath.Join(dir, nama)) // batalkan file kalau DB gagal
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"error": "Gagal menyimpan foto",
+		})
+	}
+
+	// Hapus foto lama (Base() mencegah path aneh keluar dari folder avatars).
+	if oldURL != "" {
+		os.Remove(filepath.Join(dir, filepath.Base(oldURL)))
+	}
+
+	return c.Status(fiber.StatusOK).JSON(fiber.Map{
+		"avatar_url": url,
 	})
 }
 

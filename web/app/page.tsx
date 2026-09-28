@@ -274,10 +274,11 @@ function Hero() {
         className="absolute inset-0 bg-cover bg-center"
         style={{
           backgroundImage:
-            "linear-gradient(180deg, rgba(15,23,42,0.55) 0%, rgba(15,23,42,0.72) 55%, rgba(15,23,42,0.88) 100%), url('/images/hero-cfd.jpg')",
+            "url('/images/CFD_SURABAYA.jpg')",
         }}
       />
-      <div className="absolute inset-0 bg-gradient-to-b from-ink-strong/20 via-transparent to-transparent" />
+      <div className="absolute inset-0 bg-black/55" />
+     
 
       <div className="relative mx-auto flex min-h-[640px] max-w-4xl flex-col items-center justify-center px-6 py-24 text-center sm:min-h-[720px] lg:px-8">
         <h1 className="font-display text-[2.75rem] font-semibold leading-[1.05] tracking-tight text-white sm:text-[3.6rem]">
