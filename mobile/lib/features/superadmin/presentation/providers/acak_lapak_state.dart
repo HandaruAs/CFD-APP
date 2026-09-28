@@ -8,7 +8,7 @@ const _unset = _Unset();
 
 class AcakLapakState {
   final bool isLoading;
-  final String? error; // gagal load wilayah
+  final String? error; 
   final WilayahSaya? saya;
   final List<AcakKecamatan> wilayah;
 
@@ -16,7 +16,6 @@ class AcakLapakState {
   final String? kecamatanId;
   final String? jalanId;
   final String? ruasId;
-  final bool gantiPoolLama;
 
   final bool isSubmitting;
   final String? submitError;
@@ -31,7 +30,6 @@ class AcakLapakState {
     this.kecamatanId,
     this.jalanId,
     this.ruasId,
-    this.gantiPoolLama = false,
     this.isSubmitting = false,
     this.submitError,
     this.result,
@@ -117,7 +115,6 @@ class AcakLapakState {
     Object? kecamatanId = _unset,
     Object? jalanId = _unset,
     Object? ruasId = _unset,
-    bool? gantiPoolLama,
     bool? isSubmitting,
     Object? submitError = _unset,
     Object? result = _unset,
@@ -131,7 +128,6 @@ class AcakLapakState {
       kecamatanId: identical(kecamatanId, _unset) ? this.kecamatanId : kecamatanId as String?,
       jalanId: identical(jalanId, _unset) ? this.jalanId : jalanId as String?,
       ruasId: identical(ruasId, _unset) ? this.ruasId : ruasId as String?,
-      gantiPoolLama: gantiPoolLama ?? this.gantiPoolLama,
       isSubmitting: isSubmitting ?? this.isSubmitting,
       submitError: identical(submitError, _unset) ? this.submitError : submitError as String?,
       result: identical(result, _unset) ? this.result : result as GenerateSlotResult?,
