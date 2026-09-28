@@ -53,14 +53,29 @@ func (ctrl *UserController) Me(c fiber.Ctx) error {
 		})
 	}
 
+	user := fiber.Map{
+		"id":     userProfile.ID,
+		"name":   userProfile.Name,
+		"email":  userProfile.Email,
+		"status": userProfile.Status,
+		"role":   role,
+	}
+
+	// pedagang_stage dibaca badge topbar, halaman /pedagang, dan halaman
+	// Jadwal & Lokasi. Dulu field ini gak pernah dikirim, jadi semua
+	// pedagang tampil "Menunggu Verifikasi" dan jadwalnya "belum tersedia".
+	if role == "pedagang" {
+		stage, err := ctrl.userUsecase.GetPedagangStage(c.Context(), userID)
+		if err != nil {
+			return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+				"error": "Gagal mengambil status pedagang: " + err.Error(),
+			})
+		}
+		user["pedagang_stage"] = stage
+	}
+
 	return c.Status(fiber.StatusOK).JSON(fiber.Map{
-		"user": fiber.Map{
-			"id":     userProfile.ID,
-			"name":   userProfile.Name,
-			"email":  userProfile.Email,
-			"status": userProfile.Status,
-			"role":   role,
-		},
+		"user": user,
 	})
 }
 

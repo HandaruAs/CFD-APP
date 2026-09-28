@@ -142,7 +142,7 @@ export default function DaftarLapakPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ name: fullName, email, password }),
       });
-      const dataRegister = await resRegister.json();
+      const dataRegister = await resRegister.json().catch(() => ({}));
       if (!resRegister.ok) {
         throw new Error(dataRegister.error || "Pendaftaran akun gagal, silakan coba lagi.");
       }
@@ -154,7 +154,7 @@ export default function DaftarLapakPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email, password }),
       });
-      const dataLogin = await resLogin.json();
+      const dataLogin = await resLogin.json().catch(() => ({}));
       if (!resLogin.ok) {
         throw new Error("Akun berhasil dibuat, tapi auto-login gagal. Silakan login manual.");
       }
@@ -171,11 +171,39 @@ export default function DaftarLapakPage() {
     }
   };
 
+  // Ambil lapak yang SUDAH diklaim (dipakai kalau klaim sebelumnya ternyata
+  // sudah berhasil, mis. respons pertama gagal sampai karena koneksi putus).
+  const tampilkanLapakTerklaim = async () => {
+    const [resStatus, resProfil] = await Promise.all([
+      fetch(apiUrl("/api/pedagang/lapak/status"), { headers: authHeaders() }),
+      fetch(apiUrl("/api/pedagang/pengajuan"), { headers: authHeaders() }),
+    ]);
+    const status = await resStatus.json().catch(() => ({}));
+    const profil = await resProfil.json().catch(() => ({}));
+    if (!resStatus.ok || !status.sudah_klaim) {
+      throw new Error("Gagal mengambil data lapakmu. Silakan masuk ke akunmu untuk melihat nomor stan.");
+    }
+    setHasil({
+      nomorStand: status.nomor_lapak,
+      kecamatan: status.nama_kecamatan ?? "",
+      namaJalan: status.nama_jalan ?? "",
+      namaRuas: status.nama_ruas ?? "",
+    });
+    setPedagangId(profil.id ?? "");
+    setStep(3);
+  };
+
   // ---------- STEP 2: Data usaha, LANGSUNG lanjut klaim lokasi ----------
-  // Mode/kecamatan picker dihapus -- lokasi & nomor stan sekarang diambil
-  // otomatis dari pool yang udah disiapin admin (lihat app/admin/acak-lapak).
-  // Jadi begitu data usaha kesimpan, langsung lanjut klaim tanpa jeda form
-  // tambahan.
+  // Urutannya sengaja: CEK KETERSEDIAAN -> SIMPAN DATA USAHA -> KLAIM.
+  //
+  // Dulu data usaha disimpan dulu baru klaim. Kalau lapak belum diacak
+  // petugas, pedagang dapat pesan error TAPI datanya sudah tersimpan
+  // (terhitung "terdaftar" tanpa nomor lapak), dan waktu dia kirim ulang
+  // setelah lapak diacak, malah ditolak "kamu sudah pernah mengajukan
+  // usaha sebelumnya". Sekarang:
+  //   1. kalau lapak belum bisa diklaim, data usaha BELUM disimpan;
+  //   2. simpan data usaha aman dikirim ulang (backend meng-update);
+  //   3. kalau ternyata sudah pernah klaim, hasilnya langsung ditampilkan.
   const handleStep2 = async (e: FormEvent) => {
     e.preventDefault();
     setError(null);
@@ -184,13 +212,36 @@ export default function DaftarLapakPage() {
       setError("Semua field wajib diisi.");
       return;
     }
-    if (nik.trim().length !== 16) {
-      setError("NIK harus 16 digit.");
+    if (!/^\d{16}$/.test(nik.trim())) {
+      setError("NIK harus 16 digit angka.");
+      return;
+    }
+    if (dob >= new Date().toISOString().slice(0, 10)) {
+      setError("Tanggal lahir tidak valid.");
       return;
     }
 
     setLoading(true);
     try {
+      // 1. Cek dulu apakah masih ada lapak yang bisa diklaim hari ini.
+      const resCek = await fetch(apiUrl("/api/pedagang/lapak/ketersediaan"), { headers: authHeaders() });
+      const dataCek = await resCek.json().catch(() => ({}));
+      if (!resCek.ok) {
+        throw new Error(dataCek.error || "Gagal mengecek ketersediaan lapak.");
+      }
+      if (dataCek.status === "sudah_klaim") {
+        await tampilkanLapakTerklaim();
+        return;
+      }
+      if (!dataCek.tersedia) {
+        const pesan =
+          dataCek.status === "penuh"
+            ? "Maaf, semua lapak untuk hari ini sudah terisi."
+            : "Lokasi lapak hari ini belum disiapkan petugas.";
+        throw new Error(`${pesan} Data kamu belum disimpan, silakan coba lagi nanti tanpa perlu membuat akun baru.`);
+      }
+
+      // 2. Simpan data usaha (kalau dikirim ulang, datanya diperbarui).
       const resPengajuan = await fetch(apiUrl("/api/pedagang/pengajuan"), {
         method: "POST",
         headers: {
@@ -198,19 +249,20 @@ export default function DaftarLapakPage() {
           ...authHeaders(),
         },
         body: JSON.stringify({
-          nik,
-          nama_lengkap: fullName,
+          nik: nik.trim(),
+          nama_lengkap: fullName.trim(),
           tanggal_lahir: dob,
-          nama_usaha: businessName,
+          nama_usaha: businessName.trim(),
           jenis_dagangan: category,
           jenis_lapak: stallType,
         }),
       });
-      const dataPengajuan = await resPengajuan.json();
+      const dataPengajuan = await resPengajuan.json().catch(() => ({}));
       if (!resPengajuan.ok) {
         throw new Error(dataPengajuan.error || "Gagal menyimpan data usaha.");
       }
 
+      // 3. Klaim lapak.
       const resKlaim = await fetch(apiUrl("/api/pedagang/lapak/klaim"), {
         method: "POST",
         headers: {
@@ -218,9 +270,17 @@ export default function DaftarLapakPage() {
           ...authHeaders(),
         },
       });
-      const dataKlaim = await resKlaim.json();
+      const dataKlaim = await resKlaim.json().catch(() => ({}));
       if (!resKlaim.ok) {
-        throw new Error(dataKlaim.error || "Gagal mengklaim lapak.");
+        if (dataKlaim.kode === "sudah_klaim") {
+          await tampilkanLapakTerklaim();
+          return;
+        }
+        // Jarang terjadi (lapak habis di antara langkah 1 dan 3). Data usaha
+        // sudah tersimpan, jadi cukup coba lagi -- gak akan ditolak.
+        throw new Error(
+          `${dataKlaim.error || "Gagal mengklaim lapak."} Data usahamu sudah tersimpan, kamu bisa menekan tombol ini lagi nanti.`
+        );
       }
 
       setHasil({
@@ -415,18 +475,10 @@ export default function DaftarLapakPage() {
                 </div>
               </div>
 
-              <div className="flex gap-3">
-                <button
-                  type="button"
-                  onClick={() => setStep(1)}
-                  className="h-11 px-5 bg-white text-[#4b4d5a] border border-[#e2e5f1] text-[13px] font-medium rounded-lg hover:bg-[#f5f7fe] transition-all"
-                >
-                  Kembali
-                </button>
-                <div className="flex-1">
-                  <SubmitButton loading={loading} label="Dapatkan Nomor Stan" />
-                </div>
-              </div>
+              {/* Tombol "Kembali" ke langkah 1 dihapus: akun sudah dibuat &
+                  login di langkah 1, jadi kirim ulang langkah 1 selalu gagal
+                  "email sudah terdaftar". */}
+              <SubmitButton loading={loading} label="Dapatkan Nomor Stan" />
             </form>
           )}
 

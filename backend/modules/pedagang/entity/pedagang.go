@@ -46,6 +46,7 @@ type PedagangUserDTO struct {
 	JenisLapak       *string `json:"jenisLapak"`
 	PerkiraanHarga   *string `json:"perkiraanHarga"`
 	Alamat           *string `json:"alamat"`
+	LokasiLapak      *string `json:"lokasiLapak"`
 	StatusVerifikasi *string `json:"statusVerifikasi"`
 }
 

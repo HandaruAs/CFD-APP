@@ -15,6 +15,10 @@ import (
 
 var (
 	ErrLapakBelumDiacak       = errors.New("lapak belum diacak petugas, silakan coba lagi nanti")
+	// ErrLapakPenuh: pool hari ini SUDAH diacak petugas tapi semua
+	// slotnya sudah diambil. Dulu kasus ini ikut dilaporkan sebagai
+	// "belum diacak", jadi pedagang dikira harus menunggu petugas.
+	ErrLapakPenuh = errors.New("semua lapak hari ini sudah terisi")
 	ErrSudahKlaim             = errors.New("kamu sudah klaim lapak di sesi ini")
 	ErrPedagangTidakDitemukan = errors.New("profil pedagang tidak ditemukan")
 )
@@ -157,10 +161,42 @@ func (r *LapakRepository) ClaimSlot(ctx context.Context, pedagangID, sessionID s
 		if errors.Is(errTry, errSlotKalahRace) {
 			continue // slot yang kepilih keburu diambil transaksi lain, coba lagi
 		}
+		if errors.Is(errTry, ErrLapakBelumDiacak) {
+			return "", "", "", time.Time{}, r.bedakanBelumDiacakAtauPenuh(ctx, sessionID)
+		}
 		return "", "", "", time.Time{}, errTry
 	}
 
-	return "", "", "", time.Time{}, ErrLapakBelumDiacak
+	return "", "", "", time.Time{}, r.bedakanBelumDiacakAtauPenuh(ctx, sessionID)
+}
+
+// bedakanBelumDiacakAtauPenuh dipanggil waktu gak ada slot 'tersedia':
+// kalau sesi ini sama sekali belum punya slot -> belum diacak petugas;
+// kalau punya tapi semuanya sudah terpakai -> penuh.
+func (r *LapakRepository) bedakanBelumDiacakAtauPenuh(ctx context.Context, sessionID string) error {
+	_, total, err := r.HitungSlot(ctx, sessionID)
+	if err != nil {
+		return err
+	}
+	if total > 0 {
+		return ErrLapakPenuh
+	}
+	return ErrLapakBelumDiacak
+}
+
+// HitungSlot: jumlah slot yang masih 'tersedia' dan total slot hasil
+// Acak Lapak untuk sesi ini. Dipakai buat cek ketersediaan SEBELUM
+// pedagang mengirim data usaha di halaman Daftar Lapak.
+func (r *LapakRepository) HitungSlot(ctx context.Context, sessionID string) (tersedia, total int, err error) {
+	err = r.db.QueryRow(ctx,
+		`SELECT
+			COUNT(*) FILTER (WHERE status = 'tersedia'),
+			COUNT(*)
+		 FROM lapak_slot
+		 WHERE session_id = $1`,
+		sessionID,
+	).Scan(&tersedia, &total)
+	return tersedia, total, err
 }
 
 // errSlotKalahRace: sinyal internal doang (gak pernah keluar dari

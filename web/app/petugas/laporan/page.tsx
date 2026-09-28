@@ -18,6 +18,7 @@ import {
   XCircle,
   Loader2,
   Calendar,
+  CalendarCheck,
   FileSpreadsheet,
   Store,
   RefreshCw,
@@ -102,13 +103,29 @@ type StatsResponse = {
   totalOmset: number;
   rataOmset: number;
   persenHadir: number;
+  lapakTerisi?: number; // opsional supaya tetap jalan dengan backend lama
 };
+
+// Rupiah ringkas untuk kartu: 10.000.000 -> "Rp 10 jt", 356.000 -> "Rp 356 rb".
+// Dulu ditulis "Rp {n/1000}K", jadi 10 juta tampil "Rp 10000K".
+function formatRupiahRingkas(n: number) {
+  if (!Number.isFinite(n)) return "Rp 0";
+  if (n >= 1_000_000_000) return `Rp ${(n / 1_000_000_000).toLocaleString("id-ID", { maximumFractionDigits: 1 })} M`;
+  if (n >= 1_000_000) return `Rp ${(n / 1_000_000).toLocaleString("id-ID", { maximumFractionDigits: 1 })} jt`;
+  if (n >= 1_000) return `Rp ${Math.round(n / 1_000).toLocaleString("id-ID")} rb`;
+  return `Rp ${Math.round(n).toLocaleString("id-ID")}`;
+}
 
 // ============================================================
 // STYLES
 // ============================================================
 
 const KATEGORI_STYLE: Record<string, { label: string; bg: string; text: string }> = {
+  // Nilai yang benar-benar dikirim backend (enum jenis_dagangan). Dulu cuma
+  // kuliner/kerajinan/ritel yang dipetakan, jadi kategori tampil mentah
+  // "makanan_minuman".
+  makanan_minuman: { label: "Makanan & Minuman", bg: "bg-tertiary-fixed", text: "text-on-tertiary-fixed" },
+  bukan_makanan_minuman: { label: "Bukan Makanan & Minuman", bg: "bg-primary-fixed", text: "text-on-primary-fixed" },
   kuliner: { label: "Kuliner", bg: "bg-tertiary-container/15", text: "text-on-tertiary-container" },
   kerajinan: { label: "Kerajinan", bg: "bg-primary-container/20", text: "text-on-primary-container" },
   ritel: { label: "Ritel", bg: "bg-surface-container-high", text: "text-on-surface-variant" },
@@ -122,9 +139,11 @@ const STATUS_STYLE: Record<StatusKehadiran, { label: string; bg: string; text: s
     icon: UserCheck,
   },
   "check-out": {
-    label: "Check-out ✓",
-    bg: "bg-primary-container/20",
-    text: "text-on-primary-container",
+    // Warna lama (primary-container/20 + teks on-primary-container) hampir
+    // gak kebaca di latar terang.
+    label: "Check-out",
+    bg: "bg-primary-fixed",
+    text: "text-on-primary-fixed",
     icon: LogOut,
   },
   "belum-hadir": {
@@ -162,6 +181,37 @@ async function apiFetch<T>(path: string, options: RequestInit = {}): Promise<T> 
 }
 
 // ============================================================
+// FILTER TANGGAL
+// ============================================================
+
+// Tanggal hari ini menurut jam perangkat (WIB). Dulu pakai
+// toISOString() yang berbasis UTC, jadi sebelum pukul 07.00 WIB
+// "hari ini" malah terbaca tanggal kemarin.
+function tanggalHariIni() {
+  const d = new Date();
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+}
+
+// Rentang tanggal disimpan di sessionStorage supaya TIDAK kembali ke
+// "hari ini" setiap kali petugas pindah menu lalu kembali ke Laporan.
+// sessionStorage hilang sendiri saat tab browser ditutup, jadi besoknya
+// laporan tetap mulai dari hari ini.
+const KUNCI_FILTER = "cfd_laporan_filter";
+
+function bacaFilterTersimpan(): { startDate: string; endDate: string } | null {
+  try {
+    const raw = sessionStorage.getItem(KUNCI_FILTER);
+    if (!raw) return null;
+    const f = JSON.parse(raw);
+    const valid = (v: unknown) => typeof v === "string" && /^\d{4}-\d{2}-\d{2}$/.test(v);
+    return valid(f?.startDate) && valid(f?.endDate) ? { startDate: f.startDate, endDate: f.endDate } : null;
+  } catch {
+    return null;
+  }
+}
+
+// ============================================================
 // MAIN COMPONENT
 // ============================================================
 
@@ -173,14 +223,11 @@ export default function LaporanPage() {
   const [error, setError] = useState<string | null>(null);
 
   const [searchTerm, setSearchTerm] = useState("");
-  const [startDate, setStartDate] = useState(() => {
-    const today = new Date();
-    return today.toISOString().split("T")[0];
-  });
-  const [endDate, setEndDate] = useState(() => {
-    const today = new Date();
-    return today.toISOString().split("T")[0];
-  });
+  const [startDate, setStartDate] = useState(tanggalHariIni);
+  const [endDate, setEndDate] = useState(tanggalHariIni);
+  // false sampai filter tersimpan selesai dibaca -- supaya data "hari ini"
+  // gak sempat diambil dulu lalu langsung ditimpa filter yang tersimpan.
+  const [filterSiap, setFilterSiap] = useState(false);
   const [page, setPage] = useState(1);
   const [limit] = useState(20);
   const [toast, setToast] = useState<{ message: string; type: "success" | "error" } | null>(null);
@@ -250,8 +297,31 @@ export default function LaporanPage() {
     }
   };
 
+  // Baca rentang tanggal terakhir (kalau ada) sekali saat halaman dibuka.
+  useEffect(() => {
+    const tersimpan = bacaFilterTersimpan();
+    if (tersimpan) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setStartDate(tersimpan.startDate);
+      setEndDate(tersimpan.endDate);
+    }
+    setFilterSiap(true);
+  }, []);
+
+  // Simpan setiap kali rentang tanggal berubah.
+  useEffect(() => {
+    if (!filterSiap) return;
+    try {
+      sessionStorage.setItem(KUNCI_FILTER, JSON.stringify({ startDate, endDate }));
+    } catch {
+      // sessionStorage diblokir: filter cuma gak diingat, halaman tetap jalan
+    }
+  }, [startDate, endDate, filterSiap]);
+
   // ========== POLLING SETUP ==========
   useEffect(() => {
+    if (!filterSiap) return;
+
     // Fetch pertama kali
     fetchData(true);
 
@@ -272,7 +342,7 @@ export default function LaporanPage() {
         clearInterval(pollingIntervalRef.current);
       }
     };
-  }, [startDate, endDate, page, searchTerm, isPolling]);
+  }, [startDate, endDate, page, searchTerm, isPolling, filterSiap]);
 
   // ============================================================
   // HANDLERS
@@ -314,6 +384,7 @@ export default function LaporanPage() {
   };
 
   const periodeLabel = startDate === endDate ? startDate : `${startDate} s/d ${endDate}`;
+  const sedangHariIni = startDate === tanggalHariIni() && endDate === tanggalHariIni();
   const namaFile = `laporan-kehadiran-${startDate}${startDate === endDate ? "" : `_${endDate}`}`;
 
   const barisExport = (k: KehadiranItem) => ({
@@ -322,7 +393,7 @@ export default function LaporanPage() {
     Pemilik: k.pemilik || "-",
     Kategori: labelKategori(k.kategori),
     Lokasi: k.lokasiLapak || "-",
-    Status: (STATUS_STYLE[k.status] || STATUS_STYLE["belum-hadir"]).label.replace(" ✓", ""),
+    Status: (STATUS_STYLE[k.status] || STATUS_STYLE["belum-hadir"]).label,
     "Check-out": k.waktuCheckout || "-",
     Omset: k.omset ?? 0,
   });
@@ -506,17 +577,26 @@ export default function LaporanPage() {
             className="rounded-lg border border-outline bg-surface-container-lowest px-md py-sm text-body-md text-on-surface outline-none focus:border-primary focus:ring-2 focus:ring-primary/20"
           />
         </div>
+        {/* Tombol "Hari Ini": menonjol (biru penuh) kalau yang sedang dilihat
+            BUKAN hari ini, supaya gampang kembali ke laporan hari ini. */}
         <button
           type="button"
           onClick={() => {
-            const today = new Date().toISOString().split("T")[0];
+            const today = tanggalHariIni();
             setStartDate(today);
             setEndDate(today);
             setPage(1);
           }}
-          className="rounded-lg bg-primary/10 px-md py-sm text-label-md text-primary hover:bg-primary hover:text-on-primary transition-all"
+          disabled={sedangHariIni}
+          aria-pressed={sedangHariIni}
+          className={`inline-flex items-center gap-xs rounded-lg px-md py-sm text-label-md transition-all ${
+            sedangHariIni
+              ? "cursor-default bg-primary/10 text-primary"
+              : "bg-primary text-on-primary shadow-sm hover:bg-primary-container"
+          }`}
         >
-          Hari Ini
+          <CalendarCheck className="h-4 w-4" strokeWidth={2} />
+          {sedangHariIni ? "Menampilkan hari ini" : "Lihat hari ini"}
         </button>
         <div className="ml-auto flex items-center gap-2 text-label-sm text-on-surface-variant">
           <span className="relative flex h-2 w-2">
@@ -579,9 +659,9 @@ export default function LaporanPage() {
             <p className="mt-md text-label-sm uppercase tracking-wide text-on-surface-variant">
               Lapak Terisi
             </p>
-            <p className="text-headline-md text-on-surface">{lapakTerisi}</p>
+            <p className="text-headline-md text-on-surface">{stats.lapakTerisi ?? lapakTerisi}</p>
             <p className="text-label-sm text-on-surface-variant">
-              dari {data.length} pedagang check-in
+              dari {stats.totalCheckin} pedagang check-in
             </p>
           </div>
 
@@ -592,8 +672,8 @@ export default function LaporanPage() {
             <p className="mt-md text-label-sm uppercase tracking-wide text-on-surface-variant">
               Rata-rata Omset
             </p>
-            <p className="text-headline-md text-on-surface">
-              Rp {(stats.rataOmset / 1000).toFixed(0)}K
+            <p className="text-headline-md text-on-surface" title={`Rp ${Math.round(stats.rataOmset).toLocaleString("id-ID")}`}>
+              {formatRupiahRingkas(stats.rataOmset)}
             </p>
             <p className="text-label-sm text-on-surface-variant">
               Dari {stats.totalCheckout} pedagang
@@ -737,7 +817,7 @@ export default function LaporanPage() {
                         {k.lokasiLapak || "-"}
                       </td>
                       <td className="px-lg py-md">
-                        <span className={`inline-flex items-center gap-xs rounded-full px-sm py-1 text-label-sm ${status.bg} ${status.text}`}>
+                        <span className={`inline-flex items-center gap-xs whitespace-nowrap rounded-full px-sm py-1 text-label-sm ${status.bg} ${status.text}`}>
                           <StatusIcon className="h-3 w-3" strokeWidth={2.5} />
                           {status.label}
                         </span>
@@ -747,7 +827,7 @@ export default function LaporanPage() {
                       </td>
                       <td className="px-lg py-md text-right">
                         {k.omset ? (
-                          <span className="font-semibold text-primary">
+                          <span className="whitespace-nowrap font-semibold tabular-nums text-primary">
                             Rp {k.omset.toLocaleString("id-ID")}
                           </span>
                         ) : (

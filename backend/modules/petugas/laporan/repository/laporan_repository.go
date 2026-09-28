@@ -54,7 +54,14 @@ func (r *laporanRepository) GetKehadiranByDateRange(ctx context.Context, startDa
 				UPPER(SUBSTRING(u.name, 1, 2))
 			) AS inisial,
 			COALESCE(p.jenis_dagangan::text, '') AS kategori,
-			COALESCE(p.lokasi_lapak, p.alamat, '') AS lokasi_lapak,
+			-- Lokasi = lapak yang diklaim pedagang DI SESI ITU ("Jalan X / CFD-123456").
+			-- Dulu diambil dari profil (lokasi_lapak, bahkan alamat rumah), jadi
+			-- kolom Lokasi Lapak kosong / salah & kartu "Lapak Terisi" selalu 0.
+			COALESCE(
+				mj.nama_jalan || ' / ' || lk.nomor_lapak,
+				NULLIF(p.lokasi_lapak, ''),
+				''
+			) AS lokasi_lapak,
 			TO_CHAR(k.check_in_at, 'HH24:MI') AS waktu_checkin,
 			TO_CHAR(k.check_out_at, 'HH24:MI') AS waktu_checkout,
 			k.omset,
@@ -67,6 +74,16 @@ func (r *laporanRepository) GetKehadiranByDateRange(ctx context.Context, startDa
 		FROM kehadiran_pedagang k
 		JOIN pedagang_profiles p ON k.pedagang_id = p.id
 		JOIN users u ON p.user_id = u.id
+		LEFT JOIN LATERAL (
+			SELECT jalan_id, nomor_lapak
+			FROM lapak_klaim
+			WHERE pedagang_id = k.pedagang_id
+			  AND session_id = k.session_id
+			  AND status = 'aktif'
+			ORDER BY claimed_at DESC
+			LIMIT 1
+		) lk ON TRUE
+		LEFT JOIN master_jalan mj ON mj.id = lk.jalan_id
 		WHERE tanggal_wib(k.check_in_at) BETWEEN $1 AND $2
 			AND k.deleted_at IS NULL
 			%s
@@ -136,13 +153,26 @@ func (r *laporanRepository) GetStatsKehadiran(ctx context.Context, startDate, en
 			COALESCE(COUNT(DISTINCT k.pedagang_id), 0) AS total_checkin,
 			COALESCE(COUNT(DISTINCT CASE WHEN k.check_out_at IS NOT NULL THEN k.pedagang_id END), 0) AS total_checkout,
 			COALESCE(SUM(k.omset), 0) AS total_omset,
-			COALESCE(AVG(k.omset), 0) AS rata_omset,
+			-- dibulatkan ke rupiah: AVG menghasilkan desimal, dan desimal gak
+			-- bisa masuk ke kolom int64 di Go (bisa bikin endpoint ini error).
+			COALESCE(ROUND(AVG(k.omset)), 0)::bigint AS rata_omset,
 			CASE 
 				WHEN COALESCE((SELECT COUNT(*) FROM pedagang_profiles WHERE status_verifikasi = 'approved' AND deleted_at IS NULL), 0) > 0 
 				THEN ROUND((COALESCE(COUNT(DISTINCT k.pedagang_id), 0)::decimal / COALESCE((SELECT COUNT(*) FROM pedagang_profiles WHERE status_verifikasi = 'approved' AND deleted_at IS NULL), 0)::decimal) * 100, 2)
 				ELSE 0
-			END AS persen_hadir
+			END AS persen_hadir,
+			-- Lapak terisi = kehadiran yang punya klaim lapak aktif di sesinya.
+			COUNT(DISTINCT lk.id) AS lapak_terisi
 		FROM kehadiran_pedagang k
+		LEFT JOIN LATERAL (
+			SELECT id
+			FROM lapak_klaim
+			WHERE pedagang_id = k.pedagang_id
+			  AND session_id = k.session_id
+			  AND status = 'aktif'
+			ORDER BY claimed_at DESC
+			LIMIT 1
+		) lk ON TRUE
 		WHERE tanggal_wib(k.check_in_at) BETWEEN $1 AND $2
 			AND k.deleted_at IS NULL
 	`
@@ -155,6 +185,7 @@ func (r *laporanRepository) GetStatsKehadiran(ctx context.Context, startDate, en
 		&stats.TotalOmset,
 		&stats.RataOmset,
 		&stats.PersenHadir,
+		&stats.LapakTerisi,
 	)
 	if err != nil {
 		return nil, err

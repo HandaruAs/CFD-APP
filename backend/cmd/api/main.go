@@ -705,6 +705,15 @@ func main() {
 		lapakController.GetStatus,
 	)
 
+	// Cek dulu apakah lapak hari ini bisa diklaim (sudah diacak petugas &
+	// belum penuh) -- dipanggil halaman Daftar Lapak SEBELUM data usaha
+	// disimpan.
+	app.Get("/api/pedagang/lapak/ketersediaan",
+		middleware.AuthMiddleware(cfg.JWTSecret),
+		middleware.RoleMiddleware(userRepository, "pedagang"),
+		lapakController.CekKetersediaan,
+	)
+
 	// Checkout (cek-out akhir sesi + input omset)
 	app.Get("/api/pedagang/checkout",
 		middleware.AuthMiddleware(cfg.JWTSecret),

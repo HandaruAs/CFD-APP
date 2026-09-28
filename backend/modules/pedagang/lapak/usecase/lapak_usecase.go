@@ -15,6 +15,7 @@ type LapakRepository interface {
 	ClaimSlot(ctx context.Context, pedagangID, sessionID string) (nomorLapak, namaJalan, namaKecamatan string, claimedAt time.Time, err error)
 	GetKlaimByPedagangSession(ctx context.Context, pedagangID, sessionID string) (nomorLapak, namaJalan, namaKecamatan string, claimedAt time.Time, found bool, err error)
 	GetNamaRuasKlaim(ctx context.Context, pedagangID, sessionID string) (string, error)
+	HitungSlot(ctx context.Context, sessionID string) (tersedia, total int, err error)
 }
 
 type LapakUsecase interface {
@@ -22,6 +23,7 @@ type LapakUsecase interface {
 	ListJalan(ctx context.Context, kecamatanID string) ([]entity.JalanDTO, error)
 	ClaimLapak(ctx context.Context, userID string) (*entity.ClaimLapakResponse, error)
 	GetStatus(ctx context.Context, userID string) (*entity.StatusLapakResponse, error)
+	CekKetersediaan(ctx context.Context, userID string) (*entity.KetersediaanLapakResponse, error)
 }
 
 type lapakUsecase struct {
@@ -116,4 +118,57 @@ func (u *lapakUsecase) GetStatus(ctx context.Context, userID string) (*entity.St
 		NamaRuas:      namaRuasPtr,
 		ClaimedAt:     &claimedAt,
 	}, nil
+}
+
+// CekKetersediaan -- dicek halaman Daftar Lapak SEBELUM data usaha dikirim,
+// supaya pedagang gak "terdaftar duluan" padahal lapaknya belum bisa
+// diklaim (belum diacak petugas / sudah penuh).
+//
+// userID boleh punya profil atau belum (pedagang yang baru bikin akun
+// belum punya profil) -- kalau sudah punya & sudah klaim di sesi ini,
+// statusnya "sudah_klaim" supaya frontend langsung nampilin hasilnya.
+func (u *lapakUsecase) CekKetersediaan(ctx context.Context, userID string) (*entity.KetersediaanLapakResponse, error) {
+	sessionID, err := u.repo.GetOrCreateSessionHariIni(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	if pedagangID, errProfil := u.repo.GetPedagangProfileIDByUserID(ctx, userID); errProfil == nil {
+		_, _, _, _, found, errKlaim := u.repo.GetKlaimByPedagangSession(ctx, pedagangID, sessionID)
+		if errKlaim != nil {
+			return nil, errKlaim
+		}
+		if found {
+			return &entity.KetersediaanLapakResponse{
+				Tersedia: false,
+				Status:   "sudah_klaim",
+				Pesan:    "kamu sudah mendapatkan lapak untuk hari ini",
+			}, nil
+		}
+	}
+
+	tersedia, total, err := u.repo.HitungSlot(ctx, sessionID)
+	if err != nil {
+		return nil, err
+	}
+
+	switch {
+	case total == 0:
+		return &entity.KetersediaanLapakResponse{
+			Status: "belum_diacak",
+			Pesan:  "lokasi lapak hari ini belum disiapkan petugas, silakan coba lagi nanti",
+		}, nil
+	case tersedia == 0:
+		return &entity.KetersediaanLapakResponse{
+			Status: "penuh",
+			Pesan:  "semua lapak hari ini sudah terisi",
+		}, nil
+	default:
+		return &entity.KetersediaanLapakResponse{
+			Tersedia: true,
+			Status:   "tersedia",
+			Sisa:     tersedia,
+			Pesan:    "lapak masih tersedia",
+		}, nil
+	}
 }

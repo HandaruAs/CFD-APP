@@ -61,9 +61,11 @@ func (ctrl *LapakController) ClaimLapak(c fiber.Ctx) error {
 	if err != nil {
 		switch {
 		case errors.Is(err, repository.ErrLapakBelumDiacak):
-			return c.Status(fiber.StatusConflict).JSON(fiber.Map{"error": "lapak belum diacak petugas, silakan coba lagi nanti"})
+			return c.Status(fiber.StatusConflict).JSON(fiber.Map{"error": "lapak belum diacak petugas, silakan coba lagi nanti", "kode": "belum_diacak"})
+		case errors.Is(err, repository.ErrLapakPenuh):
+			return c.Status(fiber.StatusConflict).JSON(fiber.Map{"error": "semua lapak hari ini sudah terisi", "kode": "penuh"})
 		case errors.Is(err, repository.ErrSudahKlaim):
-			return c.Status(fiber.StatusConflict).JSON(fiber.Map{"error": "kamu sudah klaim lapak di sesi ini"})
+			return c.Status(fiber.StatusConflict).JSON(fiber.Map{"error": "kamu sudah klaim lapak di sesi ini", "kode": "sudah_klaim"})
 		case errors.Is(err, repository.ErrPedagangTidakDitemukan):
 			return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "profil pedagang tidak ditemukan"})
 		default:
@@ -86,4 +88,18 @@ func (ctrl *LapakController) GetStatus(c fiber.Ctx) error {
 	}
 
 	return c.Status(fiber.StatusOK).JSON(status)
+}
+
+// CekKetersediaan - GET /api/pedagang/lapak/ketersediaan
+func (ctrl *LapakController) CekKetersediaan(c fiber.Ctx) error {
+	userID, exists := c.Locals("user_id").(string)
+	if !exists || userID == "" {
+		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "User tidak terautentikasi"})
+	}
+
+	result, err := ctrl.usecase.CekKetersediaan(c.Context(), userID)
+	if err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "gagal mengecek ketersediaan lapak"})
+	}
+	return c.Status(fiber.StatusOK).JSON(result)
 }
