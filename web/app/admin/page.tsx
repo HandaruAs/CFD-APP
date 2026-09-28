@@ -898,8 +898,8 @@ function GrafikPertumbuhan({ minggu }: { minggu: DashboardData["tren"]["minggu"]
         keterangan={`${totalSekarang} pedagang terdaftar · +${tambahan} dalam ${minggu.length} minggu`}
       />
       <div className="mb-sm flex flex-wrap gap-md text-label-sm text-on-surface-variant">
-        <Legenda warna="bg-secondary" label="Pedagang Baru (daftar sendiri)" />
-        <Legenda warna="bg-primary-fixed-dim" label="Pedagang Lama (ditambahkan admin)" />
+        <Legenda warna="bg-secondary" label="Pedagang Baru" />
+        <Legenda warna="bg-primary-fixed-dim" label="Pedagang Lama" />
       </div>
       <div className="flex h-[160px] items-end gap-sm border-b border-outline-variant">
         {minggu.map((m) => {

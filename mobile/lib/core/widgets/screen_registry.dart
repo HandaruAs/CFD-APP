@@ -3,8 +3,11 @@ import 'package:mobile/features/petugas/presentation/pages/petugas_home_screen.d
 import 'package:mobile/features/petugas/presentation/pages/jam_operasional_screen.dart';
 import 'package:mobile/features/petugas/presentation/pages/scan_qr_screen.dart';
 import 'package:mobile/features/petugas/presentation/pages/laporan_screen.dart';
-import 'package:mobile/features/superadmin/presentation/pages/superadmin_home_screen.dart';
+import 'package:mobile/features/superadmin/presentation/pages/superadmin_dashboard_screen.dart';
 import 'package:mobile/features/pedagang/presentation/pages/lapak_screen.dart';
+import 'package:mobile/features/user/domain/entities/managed_user.dart';
+import 'package:mobile/features/user/presentation/pages/manajemen_user_screen.dart';
+import 'package:mobile/features/user/presentation/pages/user_management_screen.dart';
 
 /// Pemetaan route (kolom `route` di tabel `menus` backend) -> widget
 /// BODY-nya doang (bukan halaman penuh -- Scaffold/AppBar udah dipegang
@@ -27,7 +30,20 @@ final Map<String, WidgetBuilder> screenRegistry = {
   '/petugas/jam-operasional': (_) => const JamOperasionalScreen(),
   '/petugas/scan-qr': (_) => const ScanQrScreen(),
   '/petugas/laporan': (_) => const LaporanScreen(),
-  '/admin': (_) => const SuperadminHomeScreen(),
+  '/admin': (_) => const SuperadminDashboardScreen(),
+  // Sama persis kayak petugas -- endpoint-nya dijaga permission (jadwal.*),
+  // bukan role, dan superadmin punya semua permission.
+  '/admin/jam-operasional': (_) => const JamOperasionalScreen(),
+  // Manajemen User: menu induk (tab Pedagang/Petugas/Superadmin) dipetakan
+  // lewat menus.flags.mobile_route = '/admin/manajemen-user'. Tiga route
+  // per-role di bawah cadangan kalau menunya dibuat terpisah kayak web.
+  '/admin/manajemen-user': (_) => const ManajemenUserScreen(),
+  '/admin/manajemen-user/pedagang': (_) =>
+      const UserManagementScreen(role: UserRole.pedagang),
+  '/admin/manajemen-user/petugas': (_) =>
+      const UserManagementScreen(role: UserRole.petugas),
+  '/admin/manajemen-user/superadmin': (_) =>
+      const UserManagementScreen(role: UserRole.superadmin),
   '/pedagang/pendaftaran': (_) => const LapakScreen(),
   '/pedagang/nomer-stand': (_) => const LapakScreen(),
 };
