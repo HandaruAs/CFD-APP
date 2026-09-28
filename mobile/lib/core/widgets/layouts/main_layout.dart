@@ -7,26 +7,8 @@ import 'package:mobile/core/widgets/profile_tab.dart';
 import 'package:mobile/core/widgets/screen_registry.dart';
 import 'package:mobile/features/auth/presentation/providers/auth_provider.dart';
 
-/// Batas jumlah tab yang masih nyaman ditaruh di bottom nav. Di atas
-/// ini, label mulai kepotong/kepepet (kasus lama: "Jam Operasional"
-/// kepotong separo) -- jadi otomatis pindah ke sidebar (drawer)
-/// daripada maksain muat di bawah.
 const _kMaxBottomNavItems = 5;
 
-/// Shell utama tiap role: satu Scaffold yang isi tab-nya (IndexedStack)
-/// dirakit dari menu dinamis backend lewat [screenRegistry], PLUS satu
-/// tab tambahan "Profil" (klien-only, bukan dari backend) yang isinya
-/// info akun + tombol Logout -- logout gak lagi nempel di AppBar.
-///
-/// Navigasinya adaptif:
-///  - <= 5 tab total (termasuk Profil)  -> NavigationBar modern di bawah
-///  - >  5 tab total                    -> NavigationDrawer (sidebar),
-///    dibuka lewat ikon hamburger di AppBar, biar label tetap kebaca
-///    penuh tanpa dipotong.
-///
-/// [initialPath] opsional -- buat kasus kayak pedagang yang perlu milih
-/// tab awal beda tergantung kondisi (misal udah/belum ngajuin usaha),
-/// tanpa nunggu render pertama nunjukin tab index 0 dulu.
 class MainLayout extends ConsumerStatefulWidget {
   final String? initialPath;
 
@@ -70,18 +52,6 @@ class _MainLayoutState extends ConsumerState<MainLayout> {
     );
   }
 
-  // Path menu backend yang SENGAJA disembunyikan dari mobile, walau
-  // menunya masih aktif & dipakai di web. Sejauh ini cuma "Profil
-  // Usaha" (/pedagang/profil) -- web masih butuh halaman itu, tapi
-  // mobile udah punya tab "Profil" sendiri (ProfileTab, client-only,
-  // ada logout) jadi kalau baris menu backend ini ikut dirender di
-  // sini hasilnya dobel: satu tab "Profil Usaha" kosong ("belum
-  // dibuat", karena screenRegistry sengaja gak mapping path ini) plus
-  // satu lagi tab "Profil" yang asli. JANGAN nonaktifin menu ini dari
-  // Manajemen Menu superadmin -- itu bakal ikut ngilangin halamannya
-  // di web juga.
-  static const _kHiddenOnMobile = {'/pedagang/profil'};
-
   Widget _buildShell(List<MenuModel> backendMenus) {
     // "Pendaftaran" udah digabung ke "Nomor Stand" (LapakScreen), sama
     // kayak web. Kalau dua-duanya masih ada di tabel menus, sembunyiin
@@ -89,12 +59,15 @@ class _MainLayoutState extends ConsumerState<MainLayout> {
     // cuma Pendaftaran yang ada, dia tetap tampil (di-mapping ke
     // LapakScreen juga di screenRegistry).
     final adaNomerStand = backendMenus.any((m) => m.path == '/pedagang/nomer-stand');
-    final hidden = {
-      ..._kHiddenOnMobile,
-      if (adaNomerStand) '/pedagang/pendaftaran',
-    };
-    final visibleBackendMenus =
-        backendMenus.where((m) => !hidden.contains(m.path)).toList();
+    // Menu web-only ditandai lewat menus.flags {"mobile": false} di DB
+    // (lihat migrasi 000027), bukan lagi daftar path hardcoded di sini.
+    // Cuma aturan "Pendaftaran digabung ke Nomor Stand" yang masih
+    // dihitung di klien, karena itu soal dua menu yang isinya sama,
+    // bukan soal menu web-only.
+    final visibleBackendMenus = backendMenus
+        .where((m) => m.showOnMobile)
+        .where((m) => !(adaNomerStand && m.path == '/pedagang/pendaftaran'))
+        .toList();
 
     if (visibleBackendMenus.isEmpty) {
       return const Center(child: Text('Tidak ada menu untuk role Anda.'));

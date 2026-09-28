@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:mobile/features/auth/domain/entities/user.dart';
 import 'package:mobile/core/widgets/layouts/main_layout.dart';
-import 'package:mobile/features/superadmin/presentation/pages/superadmin_home_screen.dart';
 
 /// Titik tunggal buat nentuin halaman awal (home) tiap role setelah
 /// login/auto-login berhasil. Semua percabangan logic-per-role hidup
@@ -23,10 +22,11 @@ class RoleNavigation {
         // buat kondisi awal petugas, gak ada percabangan kayak pedagang.
         return const MainLayout();
       case 'superadmin':
-        // Superadmin BUKAN MainLayout -- menunya masih halaman
-        // manajemen (bukan tab dashboard), lihat komentar di
-        // SuperadminHomeScreen.
-        return const SuperadminHomeScreen();
+        // Sekarang pakai MainLayout juga (drawer, karena tab-nya > 5).
+        // Menu web-only disembunyiin lewat menus.flags {"mobile": false};
+        // menu yang layarnya belum ada di screenRegistry tampil sebagai
+        // placeholder "belum dibuat" -- aman ditambah bertahap.
+        return const MainLayout();
       default:
         // Role tak dikenal -- tetap kasih halaman (bukan crash), biar
         // gampang ketauan kalau ada role baru dari backend yang belum
