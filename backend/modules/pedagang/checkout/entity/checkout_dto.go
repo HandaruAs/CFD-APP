@@ -9,6 +9,7 @@ import "time"
 type DataCheckoutResponse struct {
 	Kecamatan     string `json:"kecamatan"`
 	NamaJalan     string `json:"namaJalan"`
+	NamaRuas      string `json:"namaRuas"` // kosong kalau jalannya belum dibagi ruas
 	NomorStan     string `json:"nomorStan"`
 	NIK           string `json:"nik"`
 	NamaLengkap   string `json:"namaLengkap"`

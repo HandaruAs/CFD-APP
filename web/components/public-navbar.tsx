@@ -49,9 +49,7 @@ export function PublicNavbar() {
     <header className="sticky top-0 z-30 border-b border-line/60 bg-paper/80 backdrop-blur-md">
       <nav className="mx-auto flex max-w-7xl items-center justify-between px-6 py-3.5 lg:px-8">
         <Link href="/" className="focus-ring flex items-center gap-2.5" onClick={() => setMobileOpen(false)}>
-          <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-blue text-white shadow-sm shadow-blue/30">
-             <img src="/logo.png" alt="Logo" className="h-full w-full object-cover" />
-          </span>
+        <img src="/images/logo-cfd.png" alt="Logo" className="h-9 w-9 object-contain" />
           <span className="font-display text-[15px] font-semibold tracking-tight text-ink-strong">
             E-Event Surabaya
           </span>

@@ -3,6 +3,8 @@
 class CheckoutData {
   final String kecamatan;
   final String namaJalan;
+  /// Kosong kalau lapaknya dari jalan yang belum dibagi ruas.
+  final String namaRuas;
   final String nomorStan;
   final String nik;
   final String namaLengkap;
@@ -24,6 +26,7 @@ class CheckoutData {
   CheckoutData({
     required this.kecamatan,
     required this.namaJalan,
+    this.namaRuas = '',
     required this.nomorStan,
     required this.nik,
     required this.namaLengkap,
@@ -42,6 +45,7 @@ class CheckoutData {
     return CheckoutData(
       kecamatan: json['kecamatan'] as String? ?? '',
       namaJalan: json['namaJalan'] as String? ?? '',
+      namaRuas: json['namaRuas'] as String? ?? '',
       nomorStan: json['nomorStan'] as String? ?? '',
       nik: json['nik'] as String? ?? '',
       namaLengkap: json['namaLengkap'] as String? ?? '',

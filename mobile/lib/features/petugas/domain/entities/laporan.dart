@@ -89,3 +89,88 @@ class LaporanResponse {
     );
   }
 }
+
+/// Response GET /api/petugas/laporan/:id -- detail 1 baris kehadiran.
+/// NIK & email udah disensor dari backend.
+class DetailKehadiran {
+  // kehadiran
+  final String id;
+  final String tanggal;
+  final String namaSesi;
+  final String waktuCheckin;
+  final String? waktuCheckout;
+  final int? omset;
+  final String status;
+  final String dicatatOleh;
+  // lokasi
+  final String namaJalan;
+  final String kecamatan;
+  final String nomorLapak;
+  final String lokasiLapak;
+  // usaha
+  final String namaUsaha;
+  final String jenisDagangan;
+  final String jenisLapak;
+  // pribadi
+  final String namaLengkap;
+  final String nik;
+  final String email;
+  final String tanggalLahir;
+  final String statusPedagang; // "lama" | "baru"
+
+  DetailKehadiran({
+    required this.id,
+    required this.tanggal,
+    required this.namaSesi,
+    required this.waktuCheckin,
+    this.waktuCheckout,
+    this.omset,
+    required this.status,
+    required this.dicatatOleh,
+    required this.namaJalan,
+    required this.kecamatan,
+    required this.nomorLapak,
+    required this.lokasiLapak,
+    required this.namaUsaha,
+    required this.jenisDagangan,
+    required this.jenisLapak,
+    required this.namaLengkap,
+    required this.nik,
+    required this.email,
+    required this.tanggalLahir,
+    required this.statusPedagang,
+  });
+
+  factory DetailKehadiran.fromJson(Map<String, dynamic> json) {
+    Map<String, dynamic> bagian(String key) =>
+        (json[key] as Map<String, dynamic>?) ?? const <String, dynamic>{};
+    final k = bagian('kehadiran');
+    final l = bagian('lokasi');
+    final u = bagian('usaha');
+    final p = bagian('pribadi');
+    String s(Map<String, dynamic> m, String key) => m[key] as String? ?? '';
+
+    return DetailKehadiran(
+      id: s(k, 'id'),
+      tanggal: s(k, 'tanggal'),
+      namaSesi: s(k, 'namaSesi'),
+      waktuCheckin: s(k, 'waktuCheckin'),
+      waktuCheckout: k['waktuCheckout'] as String?,
+      omset: k['omset'] == null ? null : (k['omset'] as num).toInt(),
+      status: k['status'] as String? ?? 'belum-hadir',
+      dicatatOleh: s(k, 'dicatatOleh'),
+      namaJalan: s(l, 'namaJalan'),
+      kecamatan: s(l, 'kecamatan'),
+      nomorLapak: s(l, 'nomorLapak'),
+      lokasiLapak: s(l, 'lokasiLapak'),
+      namaUsaha: s(u, 'namaUsaha'),
+      jenisDagangan: s(u, 'jenisDagangan'),
+      jenisLapak: s(u, 'jenisLapak'),
+      namaLengkap: s(p, 'namaLengkap'),
+      nik: s(p, 'nik'),
+      email: s(p, 'email'),
+      tanggalLahir: s(p, 'tanggalLahir'),
+      statusPedagang: s(p, 'statusPedagang'),
+    );
+  }
+}

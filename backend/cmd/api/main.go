@@ -680,6 +680,15 @@ func main() {
 		pedagangController.StatusPengajuan,
 	)
 
+	// Pedagang mengubah biodatanya sendiri dari halaman Profil (NIK & email
+	// tidak ikut diubah). user_id diambil dari token, jadi pedagang hanya
+	// bisa mengubah datanya sendiri.
+	app.Put("/api/pedagang/profil",
+		middleware.AuthMiddleware(cfg.JWTSecret),
+		middleware.RoleMiddleware(userRepository, "pedagang"),
+		pedagangController.UpdateProfilSendiri,
+	)
+
 	// Lapak (klaim nomor stand / "war")
 	app.Get("/api/pedagang/lapak/kecamatan",
 		middleware.AuthMiddleware(cfg.JWTSecret),

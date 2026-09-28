@@ -1,7 +1,4 @@
-import 'dart:convert';
-import 'package:http/http.dart' as http;
-import 'package:mobile/core/network/api_config.dart';
-import 'package:mobile/features/auth/data/datasources/auth_remote_datasource.dart';
+import 'package:mobile/core/network/api_client.dart';
 import 'package:mobile/features/petugas/domain/entities/laporan.dart';
 
 class LaporanDatasource {
@@ -14,22 +11,39 @@ class LaporanDatasource {
     int page = 1,
     int limit = 20,
   }) async {
-    final token = await AuthRemoteDatasource.getToken();
-    final query = {
-      if (startDate != null) 'startDate': startDate,
-      if (endDate != null) 'endDate': endDate,
-      if (search.isNotEmpty) 'search': search,
-      'page': '$page',
-      'limit': '$limit',
-    };
-    final uri = Uri.parse('${ApiConfig.baseUrl}/api/petugas/laporan')
-        .replace(queryParameters: query);
+    final data = await ApiClient.get(
+      '/api/petugas/laporan',
+      query: {
+        if (startDate != null) 'startDate': startDate,
+        if (endDate != null) 'endDate': endDate,
+        if (search.isNotEmpty) 'search': search,
+        'page': '$page',
+        'limit': '$limit',
+      },
+    );
+    return LaporanResponse.fromJson(data as Map<String, dynamic>);
+  }
 
-    final res = await http.get(uri, headers: {'Authorization': 'Bearer $token'});
-    final data = jsonDecode(res.body) as Map<String, dynamic>;
-    if (res.statusCode != 200) {
-      throw ApiException(data['error'] as String? ?? 'Gagal mengambil laporan.');
-    }
-    return LaporanResponse.fromJson(data);
+  /// GET /api/petugas/laporan/:id -- detail satu kehadiran (modal detail).
+  static Future<DetailKehadiran> getDetail(String kehadiranId) async {
+    final data = await ApiClient.get('/api/petugas/laporan/$kehadiranId');
+    return DetailKehadiran.fromJson(data as Map<String, dynamic>);
+  }
+
+  /// SEMUA baris sesuai filter tanggal & pencarian (bukan cuma halaman
+  /// yang lagi tampil) -- buat export PDF/Excel, sama kayak
+  /// fetchSemuaUntukExport() di web (limit 10000).
+  static Future<LaporanResponse> getSemuaUntukExport({
+    String? startDate,
+    String? endDate,
+    String search = '',
+  }) {
+    return getLaporan(
+      startDate: startDate,
+      endDate: endDate,
+      search: search,
+      page: 1,
+      limit: 10000,
+    );
   }
 }

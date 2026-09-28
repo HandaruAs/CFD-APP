@@ -3,6 +3,7 @@ package controller
 import (
 	"errors"
 	"strings"
+	"time"
 
 	"cfd-backend/modules/pedagang/entity"
 	"cfd-backend/modules/pedagang/repository"
@@ -32,6 +33,17 @@ type UpdatePedagangByAdminRequest struct {
 	JenisDagangan string `json:"jenis_dagangan" validate:"required,oneof=makanan_minuman bukan_makanan_minuman"`
 	JenisLapak    string `json:"jenis_lapak" validate:"required,oneof=rombong meja"`
 	LokasiLapak   string `json:"lokasi_lapak"`
+}
+
+// UpdateProfilSendiriRequest -- body PUT /api/pedagang/profil. Field yang
+// boleh kosong pakai pointer karena frontend mengirim null.
+type UpdateProfilSendiriRequest struct {
+	NamaLengkap   string  `json:"nama_lengkap"`
+	TanggalLahir  *string `json:"tanggal_lahir"`
+	Alamat        *string `json:"alamat"`
+	NamaUsaha     string  `json:"nama_usaha"`
+	JenisDagangan string  `json:"jenis_dagangan"`
+	JenisLapak    *string `json:"jenis_lapak"`
 }
 
 type PedagangController struct {
@@ -328,5 +340,94 @@ func (ctrl *PedagangController) CekStatusPendaftaran(c fiber.Ctx) error {
 	return c.Status(fiber.StatusOK).JSON(fiber.Map{
 		"is_open":   isOpen,
 		"dalam_jam": dalamJam,
+	})
+}
+
+// ============================================================
+// PROFIL SENDIRI (pedagang)
+// ============================================================
+
+func isiAtauKosong(p *string) string {
+	if p == nil {
+		return ""
+	}
+	return strings.TrimSpace(*p)
+}
+
+// validasiProfilSendiri: sama seperti validasiUpdatePedagang, dicek manual
+// karena Fiber v3 belum dipasangi StructValidator.
+func validasiProfilSendiri(req *UpdateProfilSendiriRequest) (tanggalLahir, alamat, jenisLapak string, err error) {
+	req.NamaLengkap = strings.TrimSpace(req.NamaLengkap)
+	req.NamaUsaha = strings.TrimSpace(req.NamaUsaha)
+	tanggalLahir = isiAtauKosong(req.TanggalLahir)
+	alamat = isiAtauKosong(req.Alamat)
+	jenisLapak = isiAtauKosong(req.JenisLapak)
+
+	switch {
+	case req.NamaLengkap == "":
+		return "", "", "", errors.New("nama lengkap wajib diisi")
+	case req.NamaUsaha == "":
+		return "", "", "", errors.New("nama usaha wajib diisi")
+	case req.JenisDagangan != "makanan_minuman" && req.JenisDagangan != "bukan_makanan_minuman":
+		return "", "", "", errors.New("kategori dagangan tidak valid")
+	case jenisLapak != "" && jenisLapak != "rombong" && jenisLapak != "meja":
+		return "", "", "", errors.New("pilihan lapak tidak valid")
+	case len(alamat) > 255:
+		return "", "", "", errors.New("alamat terlalu panjang (maksimal 255 karakter)")
+	}
+
+	if tanggalLahir != "" {
+		tgl, errTgl := time.Parse("2006-01-02", tanggalLahir)
+		if errTgl != nil {
+			return "", "", "", errors.New("format tanggal lahir tidak valid")
+		}
+		if tgl.After(time.Now()) || tgl.Year() < 1900 {
+			return "", "", "", errors.New("tanggal lahir tidak valid, periksa lagi tahunnya")
+		}
+	}
+
+	return tanggalLahir, alamat, jenisLapak, nil
+}
+
+// UpdateProfilSendiri - PUT /api/pedagang/profil
+func (ctrl *PedagangController) UpdateProfilSendiri(c fiber.Ctx) error {
+	userID, exists := c.Locals("user_id").(string)
+	if !exists || userID == "" {
+		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{
+			"error": "User tidak terautentikasi",
+		})
+	}
+
+	var req UpdateProfilSendiriRequest
+	if err := c.Bind().Body(&req); err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"error": "format data tidak valid",
+		})
+	}
+
+	tanggalLahir, alamat, jenisLapak, err := validasiProfilSendiri(&req)
+	if err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"error": err.Error(),
+		})
+	}
+
+	err = ctrl.pedagangUsecase.UpdateProfilSendiri(
+		c.Context(), userID,
+		req.NamaLengkap, tanggalLahir, alamat, req.NamaUsaha, req.JenisDagangan, jenisLapak,
+	)
+	if err != nil {
+		if errors.Is(err, repository.ErrPedagangTidakDitemukan) {
+			return c.Status(fiber.StatusNotFound).JSON(fiber.Map{
+				"error": "data usaha belum diisi, isi data usaha dulu",
+			})
+		}
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"error": "gagal menyimpan biodata",
+		})
+	}
+
+	return c.Status(fiber.StatusOK).JSON(fiber.Map{
+		"message": "biodata berhasil disimpan",
 	})
 }

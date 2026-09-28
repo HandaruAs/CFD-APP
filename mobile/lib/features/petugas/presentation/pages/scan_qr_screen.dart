@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
-import 'package:mobile/core/widgets/layouts/main_layout.dart';
 import 'package:mobile/features/petugas/domain/entities/scan_result.dart';
 import 'package:mobile/features/petugas/presentation/providers/scan_provider.dart';
 import 'package:mobile/features/petugas/presentation/providers/scan_state.dart';
@@ -117,6 +116,11 @@ class _ScanResultSheet extends ConsumerWidget {
     if (state.lastCheckIn != null) {
       return _buildSuccessCard(context, state.lastCheckIn!);
     }
+    // Pedagang masih punya sesi lama yang belum checkout -- kasih
+    // penjelasan yang jelas, bukan pesan error mentah dari backend.
+    if (state.errorCode == 'BELUM_CHECKOUT') {
+      return _buildBelumCheckoutCard(context);
+    }
     if (state.error != null) {
       return _buildErrorCard(context, state.error!);
     }
@@ -144,6 +148,35 @@ class _ScanResultSheet extends ConsumerWidget {
             onPressed: () => Navigator.pop(context),
             style: ElevatedButton.styleFrom(backgroundColor: _brandColor),
             child: const Text('Scan Lagi', style: TextStyle(color: Colors.white)),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildBelumCheckoutCard(BuildContext context) {
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        const Icon(Icons.assignment_late_outlined, color: Color(0xFFB45309), size: 48),
+        const SizedBox(height: 12),
+        const Text('Pedagang Belum Checkout',
+            style: TextStyle(fontSize: 17, fontWeight: FontWeight.bold)),
+        const SizedBox(height: 8),
+        const Text(
+          'Pedagang ini masih punya sesi sebelumnya yang belum di-checkout. '
+          'Minta pedagang membuka aplikasi CFD, isi omset di halaman Checkout, '
+          'lalu scan ulang QR-nya.',
+          textAlign: TextAlign.center,
+          style: TextStyle(color: Colors.black54, height: 1.4),
+        ),
+        const SizedBox(height: 16),
+        SizedBox(
+          width: double.infinity,
+          child: ElevatedButton(
+            onPressed: () => Navigator.pop(context),
+            style: ElevatedButton.styleFrom(backgroundColor: _brandColor),
+            child: const Text('Mengerti', style: TextStyle(color: Colors.white)),
           ),
         ),
       ],
@@ -215,7 +248,10 @@ class _ScanResultSheet extends ConsumerWidget {
         ),
         const SizedBox(height: 12),
         _infoRow(Icons.category_outlined, pedagang.kategori),
-        _infoRow(Icons.place_outlined, pedagang.lokasiLapak),
+        _infoRow(
+          Icons.place_outlined,
+          pedagang.lokasiLapak.trim().isEmpty ? 'Lokasi belum diisi' : pedagang.lokasiLapak,
+        ),
         const SizedBox(height: 16),
         if (result.sudahCheckIn)
           Container(

@@ -357,6 +357,50 @@ func (r *PedagangRepository) UpdatePedagang(ctx context.Context, id, name, phone
 	return tx.Commit(ctx)
 }
 
+// UpdateProfilSendiri -- pedagang mengubah biodatanya sendiri (halaman
+// Profil). Dicari lewat user_id dari token, bukan id dari URL, jadi
+// pedagang gak bisa mengubah data orang lain. NIK sengaja gak ikut diubah.
+//
+// users.name ikut di-update supaya nama di header/akun sama dengan nama
+// lengkap di profil -- sama seperti yang dilakukan UpdatePedagang (admin).
+//
+// tanggalLahir / alamat / jenisLapak boleh kosong -> disimpan NULL.
+func (r *PedagangRepository) UpdateProfilSendiri(ctx context.Context, userID, namaLengkap, tanggalLahir, alamat, namaUsaha, jenisDagangan, jenisLapak string) error {
+	tx, err := r.db.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback(ctx)
+
+	tag, err := tx.Exec(ctx,
+		`UPDATE pedagang_profiles
+		 SET nama_lengkap   = $1,
+		     tanggal_lahir  = NULLIF($2, '')::date,
+		     alamat         = NULLIF($3, ''),
+		     nama_usaha     = $4,
+		     jenis_dagangan = $5::jenis_dagangan_enum,
+		     jenis_lapak    = NULLIF($6, '')::jenis_lapak_enum,
+		     updated_at     = NOW()
+		 WHERE user_id = $7 AND deleted_at IS NULL`,
+		namaLengkap, tanggalLahir, alamat, namaUsaha, jenisDagangan, jenisLapak, userID,
+	)
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() == 0 {
+		return ErrPedagangTidakDitemukan
+	}
+
+	if _, err := tx.Exec(ctx,
+		`UPDATE users SET name = $1, updated_at = NOW() WHERE id = $2 AND deleted_at IS NULL`,
+		namaLengkap, userID,
+	); err != nil {
+		return err
+	}
+
+	return tx.Commit(ctx)
+}
+
 // DeletePedagang soft-delete akun pedagang BESERTA profilnya dalam satu
 // transaksi.
 //

@@ -63,4 +63,43 @@ class LaporanNotifier extends StateNotifier<LaporanState> {
     state = state.copyWith(search: value);
     load();
   }
+
+  /// Refresh diam-diam buat polling "Live" tiap 30 detik (kayak web):
+  /// gak nyalain spinner, dan ngambil ulang SEMUA halaman yang udah
+  /// ke-load (bukan cuma halaman 1) biar posisi scroll gak loncat. Gagal
+  /// = abaikan, coba lagi di tick berikutnya.
+  Future<void> refreshSilent() async {
+    final current = state.laporan;
+    if (state.isLoading || state.isLoadingMore || current == null) return;
+
+    try {
+      final halaman = <LaporanResponse>[];
+      for (var p = 1; p <= current.page; p++) {
+        halaman.add(await LaporanDatasource.getLaporan(
+          startDate: state.startDate == null ? null : _fmt(state.startDate!),
+          endDate: state.endDate == null ? null : _fmt(state.endDate!),
+          search: state.search,
+          page: p,
+        ));
+      }
+      final last = halaman.last;
+      state = state.copyWith(
+        error: null,
+        laporan: LaporanResponse(
+          totalTerdaftar: last.totalTerdaftar,
+          totalCheckin: last.totalCheckin,
+          totalCheckout: last.totalCheckout,
+          totalOmset: last.totalOmset,
+          rataOmset: last.rataOmset,
+          persenHadir: last.persenHadir,
+          data: [for (final h in halaman) ...h.data],
+          page: last.page,
+          limit: last.limit,
+          total: last.total,
+        ),
+      );
+    } catch (_) {
+      // sengaja diam
+    }
+  }
 }

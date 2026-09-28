@@ -269,6 +269,18 @@ func (u *scanUsecase) GetStatusCheckIn(ctx context.Context, userID string) (*ent
 		return &entity.StatusCheckInResponse{SudahCheckIn: false}, nil
 	}
 
+	// Kehadiran yang belum checkout (sesi mana pun, termasuk sesi lama)
+	// juga dihitung "sudah check-in", biar pedagang diarahkan ke halaman
+	// checkout buat nyelesain omsetnya -- pasangan dari ErrBelumCheckout
+	// di CheckInPedagang dan GetSesiKehadiranBelumCheckout di modul checkout.
+	belumCheckout, err := u.repo.AdaKehadiranBelumCheckout(ctx, pedagangID)
+	if err != nil {
+		return nil, err
+	}
+	if belumCheckout {
+		return &entity.StatusCheckInResponse{SudahCheckIn: true}, nil
+	}
+
 	// Sengaja pakai GetSessionToday (bukan GetActiveSessionToday) di sini --
 	// status "sudah check-in" pedagang harus tetap kebaca walau sesinya udah
 	// ditutup (baik lewat "Akhiri Sesi Lebih Awal" ataupun lewat jam_selesai

@@ -1,56 +1,14 @@
 // features/pedagang/domain/entities/lapak_data.dart
 
-/// Satu kecamatan yang bisa dipilih pedagang sebagai lokasi lapak.
-class Kecamatan {
-  final String id;
-  final String nama;
-
-  Kecamatan({required this.id, required this.nama});
-
-  factory Kecamatan.fromJson(Map<String, dynamic> json) {
-    return Kecamatan(
-      id: json['id'] as String,
-      nama: json['nama'] as String? ?? '',
-    );
-  }
-}
-
-/// Satu ruas jalan di kecamatan terpilih, lengkap dengan info kapasitas
-/// & sisa slot. Mirror dari interface `Jalan` di
-/// web/app/pedagang/nomer-stand/page.tsx.
-class Jalan {
-  final String id;
-  final String namaJalan;
-  final int kapasitas;
-  final int terisi;
-  final int sisa;
-  final bool penuh;
-
-  Jalan({
-    required this.id,
-    required this.namaJalan,
-    required this.kapasitas,
-    required this.terisi,
-    required this.sisa,
-    required this.penuh,
-  });
-
-  factory Jalan.fromJson(Map<String, dynamic> json) {
-    return Jalan(
-      id: json['id'] as String,
-      namaJalan: json['namaJalan'] as String? ?? '',
-      kapasitas: json['kapasitas'] as int? ?? 0,
-      terisi: json['terisi'] as int? ?? 0,
-      sisa: json['sisa'] as int? ?? 0,
-      penuh: json['penuh'] as bool? ?? false,
-    );
-  }
-}
-
 /// Hasil GET /api/pedagang/lapak/status -- dicek begitu halaman dibuka
-/// buat tau apakah sesi klaim lagi dibuka petugas, dan apakah pedagang
-/// ini udah pernah klaim lapak sebelumnya (biar gak nampilin form lagi,
-/// langsung tampilin hasil klaimnya).
+/// buat tau apakah sesi klaim lagi dibuka, dan apakah pedagang ini udah
+/// pernah klaim lapak sebelumnya (biar gak nampilin form lagi, langsung
+/// tampilin hasil klaimnya).
+///
+/// CATATAN: class Kecamatan & Jalan (dulu dipakai buat pilihan mode
+/// "Se-Surabaya / Kecamatan") udah dihapus -- backend sekarang yang
+/// milih lokasi secara acak, pedagang gak milih apa-apa lagi. Sama
+/// kayak web (nomer-stand/page.tsx).
 class LapakStatus {
   final bool sesiAktif;
   final String? pesanSesi;
@@ -59,6 +17,9 @@ class LapakStatus {
   final String? namaKecamatan;
   final String? namaJalan;
 
+  /// Kosong/null kalau lapaknya dari jalan yang belum dibagi ruas.
+  final String? namaRuas;
+
   LapakStatus({
     required this.sesiAktif,
     this.pesanSesi,
@@ -66,6 +27,7 @@ class LapakStatus {
     this.nomorLapak,
     this.namaKecamatan,
     this.namaJalan,
+    this.namaRuas,
   });
 
   factory LapakStatus.fromJson(Map<String, dynamic> json) {
@@ -76,6 +38,7 @@ class LapakStatus {
       nomorLapak: json['nomor_lapak'] as String?,
       namaKecamatan: json['nama_kecamatan'] as String?,
       namaJalan: json['nama_jalan'] as String?,
+      namaRuas: json['nama_ruas'] as String?,
     );
   }
 }
@@ -88,9 +51,14 @@ class HasilKlaim {
   final String kecamatan;
   final String namaJalan;
 
+  /// String kosong kalau jalannya gak punya ruas -- baris "Ruas" di UI
+  /// cuma dirender kalau ini gak kosong (sama kayak web).
+  final String namaRuas;
+
   HasilKlaim({
     required this.nomorStand,
     required this.kecamatan,
     required this.namaJalan,
+    this.namaRuas = '',
   });
 }

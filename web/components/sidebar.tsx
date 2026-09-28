@@ -6,6 +6,7 @@ import { useRouter, usePathname } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import { LogOut, Store, ChevronDown } from "lucide-react";
 import { getMyMenus, resolveMenuIcon, type MenuNode } from "@/lib/menu";
+import Image from "next/image";
 
 // Beberapa halaman itu secara fungsi satu alur/menu yang sama, tapi
 // route/foldernya kepisah di Next.js (contoh: check-in di
@@ -244,13 +245,13 @@ export function Sidebar() {
   return (
     <aside className="hidden lg:flex lg:w-[280px] shrink-0 flex-col border-r border-outline-variant bg-surface-container-lowest h-screen sticky top-0">
       <div className="flex items-center gap-3 px-6 py-7">
-        <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-primary to-on-primary-fixed-variant shadow-md ring-1 ring-black/5 overflow-hidden">
-          <img
-            src="/logo.png"
-            alt="Logo"
-            className="h-full w-full object-cover"
-          />
-        </span>
+      <Image
+  src="/images/logo-cfd.png"
+  alt="CFD Hub Logo"
+  width={44}
+  height={44}
+  className="h-11 w-11 rounded-2xl object-contain"
+/>
         <span className="text-title-lg font-bold tracking-tight text-primary">
           E-Event Surabaya
         </span>

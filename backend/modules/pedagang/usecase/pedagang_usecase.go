@@ -21,6 +21,7 @@ type PedagangRepository interface {
 	GetPedagangStats(ctx context.Context) (entity.PedagangStatsResponse, error)
 	GetPedagangByID(ctx context.Context, id string) (*entity.PedagangUserDTO, error)
 	UpdatePedagang(ctx context.Context, id, name, phone, namaUsaha, jenisDagangan, jenisLapak, lokasiLapak string) error
+	UpdateProfilSendiri(ctx context.Context, userID, namaLengkap, tanggalLahir, alamat, namaUsaha, jenisDagangan, jenisLapak string) error
 	DeletePedagang(ctx context.Context, id string) error
 }
 
@@ -33,6 +34,7 @@ type PedagangUsecase interface {
 	GetPedagangStats(ctx context.Context) (entity.PedagangStatsResponse, error)
 	GetPedagangByID(ctx context.Context, id string) (*entity.PedagangUserDTO, error)
 	UpdatePedagangByAdmin(ctx context.Context, id, name, phone, namaUsaha, jenisDagangan, jenisLapak, lokasiLapak string) error
+	UpdateProfilSendiri(ctx context.Context, userID, namaLengkap, tanggalLahir, alamat, namaUsaha, jenisDagangan, jenisLapak string) error
 	DeletePedagangByAdmin(ctx context.Context, id string) error
 }
 
@@ -91,6 +93,12 @@ func (u *pedagangUsecase) GetPedagangByID(ctx context.Context, id string) (*enti
 
 func (u *pedagangUsecase) UpdatePedagangByAdmin(ctx context.Context, id, name, phone, namaUsaha, jenisDagangan, jenisLapak, lokasiLapak string) error {
 	return u.pedagangRepo.UpdatePedagang(ctx, id, name, phone, namaUsaha, jenisDagangan, jenisLapak, lokasiLapak)
+}
+
+// UpdateProfilSendiri -- pedagang mengubah biodatanya sendiri dari halaman
+// Profil. Input sudah divalidasi di controller (validasiProfilSendiri).
+func (u *pedagangUsecase) UpdateProfilSendiri(ctx context.Context, userID, namaLengkap, tanggalLahir, alamat, namaUsaha, jenisDagangan, jenisLapak string) error {
+	return u.pedagangRepo.UpdateProfilSendiri(ctx, userID, namaLengkap, tanggalLahir, alamat, namaUsaha, jenisDagangan, jenisLapak)
 }
 
 func (u *pedagangUsecase) DeletePedagangByAdmin(ctx context.Context, id string) error {

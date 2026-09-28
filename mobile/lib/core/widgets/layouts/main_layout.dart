@@ -70,15 +70,40 @@ class _MainLayoutState extends ConsumerState<MainLayout> {
     );
   }
 
+  // Path menu backend yang SENGAJA disembunyikan dari mobile, walau
+  // menunya masih aktif & dipakai di web. Sejauh ini cuma "Profil
+  // Usaha" (/pedagang/profil) -- web masih butuh halaman itu, tapi
+  // mobile udah punya tab "Profil" sendiri (ProfileTab, client-only,
+  // ada logout) jadi kalau baris menu backend ini ikut dirender di
+  // sini hasilnya dobel: satu tab "Profil Usaha" kosong ("belum
+  // dibuat", karena screenRegistry sengaja gak mapping path ini) plus
+  // satu lagi tab "Profil" yang asli. JANGAN nonaktifin menu ini dari
+  // Manajemen Menu superadmin -- itu bakal ikut ngilangin halamannya
+  // di web juga.
+  static const _kHiddenOnMobile = {'/pedagang/profil'};
+
   Widget _buildShell(List<MenuModel> backendMenus) {
-    if (backendMenus.isEmpty) {
+    // "Pendaftaran" udah digabung ke "Nomor Stand" (LapakScreen), sama
+    // kayak web. Kalau dua-duanya masih ada di tabel menus, sembunyiin
+    // Pendaftaran biar gak ada 2 tab yang isinya sama. Kalau ternyata
+    // cuma Pendaftaran yang ada, dia tetap tampil (di-mapping ke
+    // LapakScreen juga di screenRegistry).
+    final adaNomerStand = backendMenus.any((m) => m.path == '/pedagang/nomer-stand');
+    final hidden = {
+      ..._kHiddenOnMobile,
+      if (adaNomerStand) '/pedagang/pendaftaran',
+    };
+    final visibleBackendMenus =
+        backendMenus.where((m) => !hidden.contains(m.path)).toList();
+
+    if (visibleBackendMenus.isEmpty) {
       return const Center(child: Text('Tidak ada menu untuk role Anda.'));
     }
 
     // Tab "Profil" selalu ditambahin di akhir -- klien-only, gak perlu
     // nunggu row di tabel `menus` backend.
     final items = [
-      ...backendMenus,
+      ...visibleBackendMenus,
       MenuModel(label: 'Profil', path: '__profile__', iconName: 'person'),
     ];
     final useSidebar = items.length > _kMaxBottomNavItems;
@@ -88,7 +113,7 @@ class _MainLayoutState extends ConsumerState<MainLayout> {
     if (!_initialIndexApplied) {
       _initialIndexApplied = true;
       if (widget.initialPath != null) {
-        final idx = backendMenus.indexWhere((m) => m.path == widget.initialPath);
+        final idx = visibleBackendMenus.indexWhere((m) => m.path == widget.initialPath);
         if (idx != -1) {
           WidgetsBinding.instance.addPostFrameCallback((_) {
             ref.read(bottomNavIndexProvider.notifier).state = idx;

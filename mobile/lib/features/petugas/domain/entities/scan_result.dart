@@ -31,7 +31,8 @@ class PedagangDetail {
       pemilik: json['pemilik'] as String? ?? '-',
       inisial: json['inisial'] as String? ?? '??',
       kategori: json['kategori'] as String? ?? '-',
-      lokasiLapak: json['lokasi_lapak'] as String? ?? '-',
+      // Kosong kalau pedagang belum klaim lapak (UI: "Lokasi belum diisi").
+      lokasiLapak: json['lokasi_lapak'] as String? ?? '',
       nik: json['nik'] as String?,
       alamat: json['alamat'] as String?,
       perkiraanHarga: json['perkiraan_harga'] as String?,
@@ -103,19 +104,25 @@ class RiwayatScanItem {
   final String status; // "berhasil" | "gagal"
   final String? pedagangId;
 
+  /// "Jalan Gubeng, Ruas 1 - CFD-160139". String kosong kalau pedagang
+  /// belum klaim lapak -- UI yang nampilin "Lokasi belum diisi".
+  final String lokasiLapak;
+
   RiwayatScanItem({
     required this.waktu,
     required this.namaUsaha,
     required this.status,
     this.pedagangId,
+    this.lokasiLapak = '',
   });
 
   factory RiwayatScanItem.fromJson(Map<String, dynamic> json) {
     return RiwayatScanItem(
-      waktu: json['waktu'] as String,
+      waktu: json['waktu'] as String? ?? '-',
       namaUsaha: json['nama_usaha'] as String? ?? '-',
       status: json['status'] as String? ?? 'berhasil',
       pedagangId: json['pedagang_id'] as String?,
+      lokasiLapak: json['lokasi_lapak'] as String? ?? '',
     );
   }
 }

@@ -1,4 +1,4 @@
-// app/petugas/jam-operasional/page.tsx
+// app/admin/jam-operasional/page.tsx
 "use client";
 
 import { useEffect, useState } from "react";
@@ -496,7 +496,7 @@ export default function JamOperasionalPage() {
           <div className="flex flex-wrap items-center justify-between gap-sm">
             <h3 className="pt-section-title">Sesi CFD Hari Ini</h3>
             <div className="flex items-center gap-sm">
-              <Link href="/petugas/acak-lapak" className="pt-btn pt-btn-secondary">
+              <Link href="/admin/acak-lapak" className="pt-btn pt-btn-secondary">
                 <Shuffle className="h-4 w-4" strokeWidth={2} />
                 Acak Lapak
               </Link>

@@ -5,14 +5,15 @@ import Link from "next/link";
 import {
   AlertCircle,
   Check,
-  ChevronDown,
   Eye,
   EyeOff,
   HelpCircle,
   IdCard,
   Loader2,
-  MessageCircle,
+  Mail,
+  MapPin,
   Pencil,
+  Phone,
   RefreshCw,
   ShoppingCart,
   Store,
@@ -22,7 +23,7 @@ import {
 
 // ============================================================
 // Profil pedagang (versi sederhana).
-// Satu kolom: kartu nama, kartu biodata, lalu "Butuh bantuan?".
+// Satu kolom: kartu nama, kartu biodata, lalu kontak "Butuh bantuan?".
 // Pedagang bisa ubah biodata sendiri (kecuali NIK & email).
 //
 // Endpoint:
@@ -33,10 +34,16 @@ import {
 
 const API = process.env.NEXT_PUBLIC_API_URL ?? "";
 
-// Isi dengan nomor WhatsApp pengelola CFD (format internasional tanpa "+",
-// contoh "6281234567890") supaya muncul tombol "Kirim pesan ke petugas".
-// Selama masih kosong, tombolnya tidak ditampilkan.
-const NOMOR_WA_PETUGAS = "";
+// Kontak Dinas Kominfo Kota Surabaya untuk bantuan pedagang.
+// Ubah di sini kalau nomor/email berganti.
+const KONTAK_DISKOMINFO = {
+  telepon: [
+    { label: "(031) 5321444", href: "tel:+62315321444" },
+    { label: "(031) 99277339", href: "tel:+623199277339" },
+  ],
+  email: ["dinkominfo@surabaya.go.id", "mediacenter@surabaya.go.id"],
+  alamat: "Jl. Jimerto No. 25-27, Ketabang, Kec. Genteng, Kota Surabaya, Jawa Timur 60272",
+};
 
 type Profil = {
   id: string;
@@ -182,7 +189,7 @@ export default function ProfilPage() {
         <LihatBiodata profil={profil} namaAkun={data.nama} email={data.email} onUbah={() => setModeUbah(true)} />
       )}
 
-      <Bantuan profil={profil} namaAkun={data.nama} />
+      <Bantuan />
 
       <div aria-live="polite" className="pointer-events-none fixed inset-x-0 bottom-lg z-50 flex justify-center px-md">
         {notif && (
@@ -508,37 +515,11 @@ function Pilihan({
 }
 
 // ============================================================
-// BUTUH BANTUAN?
+// BUTUH BANTUAN? -> langsung kontak Diskominfo
 // ============================================================
 
-const BANTUAN = [
-  {
-    tanya: "Kenapa saya tidak bisa check-in?",
-    jawab:
-      "Biasanya karena omset CFD sebelumnya belum diisi. Buka menu Check in / Check Out, isi omset yang tertunda, lalu minta petugas scan QR lagi.",
-  },
-  {
-    tanya: "Lapak belum tersedia saat saya klaim",
-    jawab:
-      "Petugas belum menyiapkan lokasi lapak untuk hari ini, atau semua lapak sudah terisi. Coba klaim lagi beberapa saat kemudian.",
-  },
-  {
-    tanya: "Di mana QR check-in saya?",
-    jawab: "QR ada di menu Check in / Check Out. Tunjukkan ke petugas saat kamu tiba di lapak.",
-  },
-  {
-    tanya: "Data diri atau data usaha saya salah",
-    jawab:
-      "Tekan tombol \"Ubah biodata\" di atas untuk memperbaikinya sendiri. Khusus NIK dan email, hubungi petugas CFD.",
-  },
-];
-
-function Bantuan({ profil, namaAkun }: { profil: Profil; namaAkun: string }) {
-  const [terbuka, setTerbuka] = useState<number | null>(null);
-  const pesanWa = encodeURIComponent(
-    `Halo petugas CFD, saya ${profil.nama_lengkap || namaAkun} dari usaha "${profil.nama_usaha}". Saya butuh bantuan: `
-  );
-
+function Bantuan() {
+  const subjek = encodeURIComponent("Bantuan aplikasi E-Event CFD Surabaya");
   return (
     <section className="rounded-2xl border border-outline-variant bg-surface-container-lowest p-lg">
       <div className="mb-xs flex items-center gap-sm">
@@ -548,47 +529,37 @@ function Bantuan({ profil, namaAkun }: { profil: Profil; namaAkun: string }) {
         <h2 className="text-title-lg text-on-surface">Butuh bantuan?</h2>
       </div>
       <p className="mb-md text-body-md text-on-surface-variant">
-        Pilih pertanyaan di bawah. Kalau masalahnya belum selesai, laporkan ke petugas CFD.
+        Hubungi Diskominfo Kota Surabaya. Tekan nomor untuk langsung menelepon.
       </p>
 
       <ul className="flex flex-col gap-xs">
-        {BANTUAN.map((b, i) => {
-          const buka = terbuka === i;
-          return (
-            <li key={b.tanya} className="overflow-hidden rounded-xl bg-surface-container-low">
-              <button
-                type="button"
-                onClick={() => setTerbuka(buka ? null : i)}
-                aria-expanded={buka}
-                className="flex min-h-[48px] w-full items-center justify-between gap-sm px-md py-sm text-left text-body-lg text-on-surface"
-              >
-                {b.tanya}
-                <ChevronDown className={`h-5 w-5 shrink-0 text-on-surface-variant transition-transform ${buka ? "rotate-180" : ""}`} />
-              </button>
-              {buka && <p className="px-md pb-md text-body-md text-on-surface-variant">{b.jawab}</p>}
-            </li>
-          );
-        })}
+        {KONTAK_DISKOMINFO.telepon.map((t) => (
+          <li key={t.href}>
+            <a href={t.href} className={kelasKontak}>
+              <Phone className="h-5 w-5 shrink-0 text-primary" />
+              <span className="tabular-nums">{t.label}</span>
+            </a>
+          </li>
+        ))}
+        {KONTAK_DISKOMINFO.email.map((e) => (
+          <li key={e}>
+            <a href={`mailto:${e}?subject=${subjek}`} className={kelasKontak}>
+              <Mail className="h-5 w-5 shrink-0 text-primary" />
+              <span className="break-all">{e}</span>
+            </a>
+          </li>
+        ))}
+        <li className="flex min-h-[48px] items-start gap-sm px-md py-sm text-body-md text-on-surface-variant">
+          <MapPin className="mt-0.5 h-5 w-5 shrink-0 text-primary" />
+          {KONTAK_DISKOMINFO.alamat}
+        </li>
       </ul>
-
-      {NOMOR_WA_PETUGAS ? (
-        <a
-          href={`https://wa.me/${NOMOR_WA_PETUGAS}?text=${pesanWa}`}
-          target="_blank"
-          rel="noreferrer"
-          className="mt-md flex min-h-[48px] w-full items-center justify-center gap-sm rounded-xl border border-outline-variant text-label-lg font-semibold text-primary transition-colors hover:bg-surface-container-low"
-        >
-          <MessageCircle className="h-4 w-4" />
-          Kirim pesan ke petugas
-        </a>
-      ) : (
-        <p className="mt-md rounded-xl bg-surface-container-low px-md py-sm text-body-md text-on-surface-variant">
-          Masih bingung? Datangi pos petugas di lokasi CFD.
-        </p>
-      )}
     </section>
   );
 }
+
+const kelasKontak =
+  "flex min-h-[48px] items-center gap-sm rounded-xl border border-outline-variant px-md py-sm text-body-lg text-on-surface transition-colors hover:bg-surface-container-low focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary";
 
 // ============================================================
 // LOADING & PESAN
