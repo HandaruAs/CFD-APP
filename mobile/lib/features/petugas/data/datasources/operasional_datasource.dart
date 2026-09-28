@@ -1,85 +1,56 @@
 import 'package:mobile/core/network/api_client.dart';
 import 'package:mobile/features/petugas/domain/entities/status_operasional.dart';
-import 'package:mobile/features/petugas/domain/entities/jadwal_mingguan.dart';
-import 'package:mobile/core/network/api_exception.dart';
 
+/// Endpoint Jam Operasional -- disamakan dengan yang dipanggil web
+/// (web/app/admin/jam-operasional/page.tsx). Jadwal Mingguan & toggle
+/// buka/tutup pendaftaran sudah gak dipakai lagi di web, jadi di sini
+/// juga dihapus.
 class OperasionalDatasource {
   static Future<StatusOperasional> getStatusOperasional() async {
     final data = await ApiClient.get('/api/petugas/jam-operasional');
     return StatusOperasional.fromJson(data as Map<String, dynamic>);
   }
 
-  /// Set jam sesi hari ini (bikin baru kalau belum ada, update kalau
-  /// udah -- backend yang nentuin insert vs update).
-  static Future<SesiAktif> simpanSesi({
+  /// Atur jam sesi hari ini (bikin baru kalau belum ada, update kalau
+  /// sudah -- backend yang nentuin insert vs update).
+  static Future<void> simpanSesi({
     required String jamMulai,
     required String jamSelesaiRencana,
   }) async {
-    final data = await ApiClient.patch(
+    await ApiClient.patch(
       '/api/petugas/jam-operasional/sesi',
       body: {
         'jamMulai': jamMulai,
         'jamSelesaiRencana': jamSelesaiRencana,
       },
     );
-    return SesiAktif.fromJson(data['sesi'] as Map<String, dynamic>);
   }
 
-  /// Buka sesi langsung sekarang tanpa isi jam manual (jam mulai =
-  /// waktu sekarang, jam selesai default 23:59:59 -- lihat
-  /// operasional_usecase.go BukaSesiManual).
-  static Future<SesiAktif> bukaSesiManual() async {
-    final data = await ApiClient.patch('/api/petugas/jam-operasional/sesi/buka');
-    return SesiAktif.fromJson(data['sesi'] as Map<String, dynamic>);
+  /// Buka sesi langsung sekarang (jam mulai = sekarang, selesai 23:59:59).
+  static Future<void> bukaSesiManual() async {
+    await ApiClient.patch('/api/petugas/jam-operasional/sesi/buka');
   }
 
-  static Future<SesiAktif> akhiriSesiLebihAwal() async {
-    final data = await ApiClient.patch('/api/petugas/jam-operasional/sesi/akhiri');
-    return SesiAktif.fromJson(data['sesi'] as Map<String, dynamic>);
+  static Future<void> akhiriSesiLebihAwal() async {
+    await ApiClient.patch('/api/petugas/jam-operasional/sesi/akhiri');
   }
 
-  /// Catatan bisnis dari backend: kalau hari ini Jumat, pengaturan
-  /// pendaftaran cuma boleh diubah SEKALI (lihat ErrPendaftaranSudahDiubah
-  /// di operasional_usecase.go). Di luar Jumat, bebas diubah kapan saja.
-  static Future<void> updatePendaftaran({
-    required bool isOpen,
-    String? jamBuka,
-    String? jamTutup,
-    String? linkPendaftaran,
+  /// Simpan Kode Event. Endpoint-nya masih "pendaftaran" (kontrak lama),
+  /// jadi isOpen/jamBuka/jamTutup/link dikirim balik APA ADANYA supaya
+  /// gak ada yang ikut berubah -- cuma kodeEvent yang diganti.
+  static Future<void> simpanKodeEvent({
+    required PendaftaranStatus sekarang,
+    required String kodeEvent,
   }) async {
     await ApiClient.patch(
       '/api/petugas/jam-operasional/pendaftaran',
       body: {
-        'isOpen': isOpen,
-        'jamBuka': jamBuka,
-        'jamTutup': jamTutup,
-        'linkPendaftaran': linkPendaftaran,
+        'isOpen': sekarang.isOpen,
+        'jamBuka': sekarang.jamBuka,
+        'jamTutup': sekarang.jamTutup,
+        'linkPendaftaran': sekarang.linkPendaftaran,
+        'kodeEvent': kodeEvent,
       },
     );
-  }
-
-  static Future<List<JadwalMingguan>> getJadwalMingguan() async {
-    final data = await ApiClient.get('/api/petugas/jam-operasional/jadwal-mingguan');
-    return (data['jadwal'] as List<dynamic>)
-        .map((e) => JadwalMingguan.fromJson(e as Map<String, dynamic>))
-        .toList();
-  }
-
-  static Future<JadwalMingguan> updateJadwalMingguan({
-    required String hari,
-    required String jamMulai,
-    required String jamSelesaiRencana,
-    required bool isActive,
-  }) async {
-    final data = await ApiClient.patch(
-      '/api/petugas/jam-operasional/jadwal-mingguan',
-      body: {
-        'hari': hari,
-        'jamMulai': jamMulai,
-        'jamSelesaiRencana': jamSelesaiRencana,
-        'isActive': isActive,
-      },
-    );
-    return JadwalMingguan.fromJson(data['jadwal'] as Map<String, dynamic>);
   }
 }

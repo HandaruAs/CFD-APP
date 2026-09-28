@@ -68,10 +68,6 @@ class AcakLapakNotifier extends StateNotifier<AcakLapakState> {
     state = state.copyWith(ruasId: id, submitError: null, result: null);
   }
 
-  void setGantiPoolLama(bool value) {
-    state = state.copyWith(gantiPoolLama: value);
-  }
-
   Future<void> submit() async {
     if (!state.canSubmit) return;
     state = state.copyWith(isSubmitting: true, submitError: null, result: null);
@@ -81,7 +77,8 @@ class AcakLapakNotifier extends StateNotifier<AcakLapakState> {
         kecamatanId: state.kecamatanId,
         jalanId: state.jalanId,
         ruasId: state.ruasId,
-        gantiPoolLama: state.gantiPoolLama,
+        // Selalu ganti pool lama -- toggle-nya sudah dihapus dari UI.
+        gantiPoolLama: true,
       );
       if (!mounted) return;
       state = state.copyWith(isSubmitting: false, result: hasil);

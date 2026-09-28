@@ -146,69 +146,59 @@ function ModalShell({
 }
 
 // ===== TIME STEPPER (ganti input jam bawaan browser) =====
-// Jam, menit, & detik bisa diubah lewat tombol panah, ATAU diklik
-// lalu diketik langsung angkanya (lebih cepat dari klik panah
-// berkali-kali). Tetap tidak memakai <input type="time"> bawaan
-// browser karena tampilannya tidak konsisten dengan desain halaman.
+// Jam & menit bisa diubah lewat tombol panah, ATAU diklik lalu diketik
+// langsung angkanya (lebih cepat dari klik panah berkali-kali). Detik
+// sengaja tidak ada -- sesi CFD cukup presisi sampai menit. Tetap tidak
+// memakai <input type="time"> bawaan browser karena tampilannya tidak
+// konsisten dengan desain halaman.
 function TimeStepper({
   value,
   onChange,
   disabled = false,
-  showSeconds = true,
 }: {
-  value: string; // format "HH:MM" atau "HH:MM:SS"
+  value: string; // format "HH:MM" (detik, kalau ada, diabaikan)
   onChange: (next: string) => void;
   disabled?: boolean;
-  showSeconds?: boolean;
 }) {
-  const [hh, mm, ss] = value.split(":").map((n) => parseInt(n, 10) || 0);
-  const [editingUnit, setEditingUnit] = useState<"hh" | "mm" | "ss" | null>(null);
+  const [hh, mm] = value.split(":").map((n) => parseInt(n, 10) || 0);
+  const [editingUnit, setEditingUnit] = useState<"hh" | "mm" | null>(null);
   const [draft, setDraft] = useState("");
 
-  const build = (h: number, m: number, s: number) => {
-    const parts = [String(h).padStart(2, "0"), String(m).padStart(2, "0")];
-    if (showSeconds) parts.push(String(s).padStart(2, "0"));
-    return parts.join(":");
-  };
+  const build = (h: number, m: number) =>
+    `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
 
   const setHour = (next: number) => {
     const wrapped = ((next % 24) + 24) % 24;
-    onChange(build(wrapped, mm, ss));
+    onChange(build(wrapped, mm));
   };
-  // Menit & detik melompat per 5 dan selalu "snap" ke kelipatan 5
-  // terdekat di arah yang ditekan -- jadi dari angka aneh manapun
-  // (mis. 08 atau 59) satu klik langsung ke angka bulat (10 atau 00),
-  // bukan geser 1-1. Kalau butuh angka persis, tinggal klik lalu ketik.
+  // Menit melompat per 5 dan selalu "snap" ke kelipatan 5 terdekat di
+  // arah yang ditekan -- jadi dari angka aneh manapun (mis. 08 atau 59)
+  // satu klik langsung ke angka bulat (10 atau 00), bukan geser 1-1.
+  // Kalau butuh angka persis, tinggal klik lalu ketik.
   const setMinute = (direction: 1 | -1) => {
     const next = direction === 1 ? Math.ceil((mm + 1) / 5) * 5 : Math.floor((mm - 1) / 5) * 5;
     const wrapped = ((next % 60) + 60) % 60;
-    onChange(build(hh, wrapped, ss));
-  };
-  const setSecond = (direction: 1 | -1) => {
-    const next = direction === 1 ? Math.ceil((ss + 1) / 5) * 5 : Math.floor((ss - 1) / 5) * 5;
-    const wrapped = ((next % 60) + 60) % 60;
-    onChange(build(hh, mm, wrapped));
+    onChange(build(hh, wrapped));
   };
 
-  const startEdit = (unit: "hh" | "mm" | "ss", current: number) => {
+  const startEdit = (unit: "hh" | "mm", current: number) => {
     if (disabled) return;
     setEditingUnit(unit);
     setDraft(String(current).padStart(2, "0"));
   };
-  const commitEdit = (unit: "hh" | "mm" | "ss") => {
+  const commitEdit = (unit: "hh" | "mm") => {
     const parsed = parseInt(draft, 10);
     if (!isNaN(parsed)) {
       const max = unit === "hh" ? 23 : 59;
       const clamped = Math.min(Math.max(parsed, 0), max);
-      if (unit === "hh") onChange(build(clamped, mm, ss));
-      else if (unit === "mm") onChange(build(hh, clamped, ss));
-      else onChange(build(hh, mm, clamped));
+      if (unit === "hh") onChange(build(clamped, mm));
+      else onChange(build(hh, clamped));
     }
     setEditingUnit(null);
   };
 
   const renderUnit = (
-    unit: "hh" | "mm" | "ss",
+    unit: "hh" | "mm",
     val: number,
     onUp: () => void,
     onDown: () => void,
@@ -255,12 +245,6 @@ function TimeStepper({
       {renderUnit("hh", hh, () => setHour(hh + 1), () => setHour(hh - 1), "jam")}
       <span className="text-title-lg font-semibold text-on-surface">:</span>
       {renderUnit("mm", mm, () => setMinute(1), () => setMinute(-1), "menit")}
-      {showSeconds && (
-        <>
-          <span className="text-title-lg font-semibold text-on-surface">:</span>
-          {renderUnit("ss", ss, () => setSecond(1), () => setSecond(-1), "detik")}
-        </>
-      )}
     </div>
   );
 }
