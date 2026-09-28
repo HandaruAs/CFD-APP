@@ -52,6 +52,9 @@ type VerifyQRResponse = {
   pedagang?: PedagangDetail;
   sudah_check_in: boolean;
   check_in_at?: string;
+  // false = check-in pasti ditolak (belum klaim lapak / belum checkout sesi lama)
+  bisa_check_in?: boolean;
+  peringatan?: string;
 };
 
 type CheckInResponse = {
@@ -125,6 +128,10 @@ export default function ScanQrPage() {
   const [isCheckingIn, setIsCheckingIn] = useState(false);
   const [isLoadingRiwayat, setIsLoadingRiwayat] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [peringatan, setPeringatan] = useState<string | null>(null);
+  // true = backend sudah memastikan check-in pasti ditolak -> tombol dimatikan.
+  // Error check-in biasa (mis. koneksi putus) tetap boleh dicoba lagi.
+  const [terblokir, setTerblokir] = useState(false);
 
   // State untuk toast & riwayat
   const [toast, setToast] = useState<{ message: string; type: "success" | "error" } | null>(null);
@@ -268,6 +275,8 @@ export default function ScanQrPage() {
     setPedagang(null);
     setSudahCheckin(false);
     setCheckInAt(null);
+    setPeringatan(null);
+    setTerblokir(false);
 
     try {
       const data = await apiFetch<VerifyQRResponse>("/api/petugas/scan", {
@@ -280,6 +289,10 @@ export default function ScanQrPage() {
         setPedagang(data.pedagang);
         setSudahCheckin(data.sudah_check_in);
         setCheckInAt(data.check_in_at || null);
+        // bisa_check_in undefined = backend lama -> anggap boleh
+        const ditolak = data.bisa_check_in === false;
+        setTerblokir(ditolak);
+        setPeringatan(ditolak ? data.peringatan || "Pedagang ini belum bisa check-in." : null);
         showToast("✅ QR Code berhasil diverifikasi!", "success");
 
         // Refresh riwayat setelah scan berhasil
@@ -330,6 +343,9 @@ export default function ScanQrPage() {
       }
     } catch (err) {
       const errorMsg = err instanceof Error ? err.message : "Gagal melakukan check-in";
+      // Tampilkan juga di kartu hasil, supaya alasannya tetap terlihat
+      // setelah toast hilang.
+      setPeringatan(errorMsg);
       showToast(errorMsg, "error");
     } finally {
       setIsCheckingIn(false);
@@ -346,6 +362,8 @@ export default function ScanQrPage() {
     setSudahCheckin(false);
     setCheckInAt(null);
     setError(null);
+    setPeringatan(null);
+    setTerblokir(false);
     setCameraError(null);
     setCameraActive(false);
     setQrCodeInput("");
@@ -566,9 +584,11 @@ export default function ScanQrPage() {
                       )}
                     </div>
 
-                    <span className="mt-sm inline-flex items-center rounded-full bg-secondary-container/40 px-sm py-1 text-label-sm text-on-secondary-container">
-                      {pedagang.status_pendaftaran}
-                    </span>
+                    {pedagang.status_pendaftaran && (
+                      <span className="mt-sm inline-flex items-center rounded-full bg-secondary-container/40 px-sm py-1 text-label-sm text-on-secondary-container">
+                        {pedagang.status_pendaftaran}
+                      </span>
+                    )}
                   </div>
                 </div>
 
@@ -579,10 +599,17 @@ export default function ScanQrPage() {
                     {checkInAt ? new Date(checkInAt).toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit" }) : "..."}
                   </div>
                 ) : (
+                  <>
+                  {peringatan && (
+                    <div role="alert" className="flex items-start gap-sm rounded-md bg-error-container/60 px-md py-sm text-label-md text-on-error-container animate-in fade-in">
+                      <ShieldAlert className="mt-0.5 h-[18px] w-[18px] shrink-0" strokeWidth={2} />
+                      <span>{peringatan}</span>
+                    </div>
+                  )}
                   <button
                     type="button"
                     onClick={handleCheckin}
-                    disabled={isCheckingIn}
+                    disabled={isCheckingIn || terblokir}
                     className="flex items-center justify-center gap-sm rounded-lg bg-secondary px-lg py-md text-label-md text-on-secondary transition-all hover:bg-secondary-container hover:shadow-md disabled:opacity-60"
                   >
                     {isCheckingIn ? (
@@ -597,6 +624,7 @@ export default function ScanQrPage() {
                       </>
                     )}
                   </button>
+                  </>
                 )}
               </div>
             )}

@@ -167,8 +167,17 @@ func (r *CheckoutRepository) GetDataCheckout(ctx context.Context, pedagangID, se
 			cs.jam_selesai::text,
 			cs.is_active
 		FROM pedagang_profiles pp
-		LEFT JOIN lapak_klaim lk
-		       ON lk.pedagang_id = pp.id AND lk.session_id = $2 AND lk.status = 'aktif'
+		-- Klaim pedagang di sesi ini: yang 'aktif' diutamakan, tapi kalau
+		-- klaimnya sempat dibatalkan (sesi ditutup lalu dibuka lagi) tetap
+		-- pakai klaim terakhir -- pedagangnya sudah check-in & berjualan di
+		-- lapak itu, jadi lokasinya tetap ditampilkan di halaman checkout.
+		LEFT JOIN LATERAL (
+			SELECT k.jalan_id, k.ruas_id, k.nomor_lapak
+			FROM lapak_klaim k
+			WHERE k.pedagang_id = pp.id AND k.session_id = $2
+			ORDER BY (k.status = 'aktif') DESC, k.claimed_at DESC
+			LIMIT 1
+		) lk ON true
 		LEFT JOIN master_jalan j
 		       ON j.id = lk.jalan_id
 		LEFT JOIN jalan_instansi ji

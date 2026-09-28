@@ -80,6 +80,12 @@ func (c *ScanController) CheckIn(ctx fiber.Ctx) error {
                 "code":  "BELUM_CHECKOUT",
             })
         }
+        if errors.Is(err, usecase.ErrBelumKlaimLapak) {
+            return ctx.Status(fiber.StatusConflict).JSON(fiber.Map{
+                "error": err.Error(),
+                "code":  "BELUM_KLAIM",
+            })
+        }
         return ctx.Status(fiber.StatusBadRequest).JSON(fiber.Map{
             "error": err.Error(),
         })

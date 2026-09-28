@@ -19,6 +19,7 @@ type ScanRepository interface {
 	GetActiveSessionToday(ctx context.Context, t time.Time) (*entity.CfdSession, error)
 	GetSessionToday(ctx context.Context, t time.Time) (*entity.CfdSession, error)
 	AdaKehadiranBelumCheckout(ctx context.Context, pedagangID string) (bool, error)
+	PunyaKlaimAktif(ctx context.Context, pedagangID, sessionID string) (bool, error)
 }
 
 type scanRepository struct {
@@ -285,6 +286,24 @@ func (r *scanRepository) AdaKehadiranBelumCheckout(ctx context.Context, pedagang
 		return false, err
 	}
 	return exists, nil
+}
+
+// PunyaKlaimAktif -- pedagang harus punya klaim lapak berstatus 'aktif' di
+// sesi ini sebelum boleh check-in. Klaim bisa berubah jadi 'batal' kalau
+// sesi sempat ditutup sebelum pedagang di-scan (BatalkanKlaimBelumCheckIn);
+// tanpa cek ini, check-in tetap lolos dan halaman checkout jadi tanpa lokasi.
+func (r *scanRepository) PunyaKlaimAktif(ctx context.Context, pedagangID, sessionID string) (bool, error) {
+	var ada bool
+	err := r.db.QueryRow(ctx, `
+        SELECT EXISTS(
+            SELECT 1 FROM lapak_klaim
+            WHERE pedagang_id = $1 AND session_id = $2 AND status = 'aktif'
+        )
+    `, pedagangID, sessionID).Scan(&ada)
+	if err != nil {
+		return false, err
+	}
+	return ada, nil
 }
 
 func (r *scanRepository) GetPedagangProfileIDByUserID(ctx context.Context, userID string) (string, error) {
