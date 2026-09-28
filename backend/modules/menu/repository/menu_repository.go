@@ -2,6 +2,7 @@ package repository
 
 import (
 	"context"
+	"encoding/json"
 	"sort"
 
 	"cfd-backend/modules/menu/entity"
@@ -26,6 +27,30 @@ type menuRow struct {
 	Icon      *string
 	Route     *string
 	SortOrder int
+	Flags     map[string]any
+}
+
+// nonNilFlags mastiin flags yang dikirim ke client selalu object ({}),
+// bukan null -- biar sisi Flutter/web gak perlu cek null.
+func nonNilFlags(f map[string]any) map[string]any {
+	if f == nil {
+		return map[string]any{}
+	}
+	return f
+}
+
+// flagsArg nyiapin parameter SQL buat kolom JSONB `flags`. nil map ->
+// nil (SQL NULL), dipakai bareng COALESCE di query biar "gak dikirim"
+// berarti "jangan ubah / pakai default", bukan "kosongin".
+func flagsArg(f map[string]any) (any, error) {
+	if f == nil {
+		return nil, nil
+	}
+	b, err := json.Marshal(f)
+	if err != nil {
+		return nil, err
+	}
+	return string(b), nil
 }
 
 // GetMenusByRoleSlug mengambil semua menu yang boleh dilihat role
@@ -41,7 +66,7 @@ type menuRow struct {
 // fillMissingAncestors, murni buat rendering, bukan buat akses.
 func (r *MenuRepository) GetMenusByRoleSlug(ctx context.Context, roleSlug string, pedagangStage *string) ([]*entity.MenuItem, error) {
 	rows, err := r.db.Query(ctx, `
-		SELECT m.id, m.parent_id, m.name, m.slug, m.icon, m.route, m.sort_order
+		SELECT m.id, m.parent_id, m.name, m.slug, m.icon, m.route, m.sort_order, m.flags
 		FROM menus m
 		JOIN menu_roles mr ON mr.menu_id = m.id AND mr.deleted_at IS NULL
 		JOIN roles r ON r.id = mr.role_id AND r.deleted_at IS NULL
@@ -60,7 +85,7 @@ func (r *MenuRepository) GetMenusByRoleSlug(ctx context.Context, roleSlug string
 
 	for rows.Next() {
 		var m menuRow
-		if err := rows.Scan(&m.ID, &m.ParentID, &m.Name, &m.Slug, &m.Icon, &m.Route, &m.SortOrder); err != nil {
+		if err := rows.Scan(&m.ID, &m.ParentID, &m.Name, &m.Slug, &m.Icon, &m.Route, &m.SortOrder, &m.Flags); err != nil {
 			return nil, err
 		}
 		byID[m.ID] = &entity.MenuItem{
@@ -71,6 +96,7 @@ func (r *MenuRepository) GetMenusByRoleSlug(ctx context.Context, roleSlug string
 			Icon:      m.Icon,
 			Route:     m.Route,
 			SortOrder: m.SortOrder,
+			Flags:     nonNilFlags(m.Flags),
 			Children:  []*entity.MenuItem{},
 		}
 	}
@@ -137,7 +163,7 @@ func (r *MenuRepository) fillMissingAncestors(ctx context.Context, byID map[stri
 		}
 
 		rows, err := r.db.Query(ctx, `
-			SELECT id, parent_id, name, slug, icon, route, sort_order
+			SELECT id, parent_id, name, slug, icon, route, sort_order, flags
 			FROM menus
 			WHERE id = ANY($1) AND deleted_at IS NULL AND is_active = true
 		`, ids)
@@ -148,7 +174,7 @@ func (r *MenuRepository) fillMissingAncestors(ctx context.Context, byID map[stri
 		found := 0
 		for rows.Next() {
 			var m menuRow
-			if err := rows.Scan(&m.ID, &m.ParentID, &m.Name, &m.Slug, &m.Icon, &m.Route, &m.SortOrder); err != nil {
+			if err := rows.Scan(&m.ID, &m.ParentID, &m.Name, &m.Slug, &m.Icon, &m.Route, &m.SortOrder, &m.Flags); err != nil {
 				rows.Close()
 				return err
 			}
@@ -160,6 +186,7 @@ func (r *MenuRepository) fillMissingAncestors(ctx context.Context, byID map[stri
 				Icon:      m.Icon,
 				Route:     m.Route,
 				SortOrder: m.SortOrder,
+				Flags:     nonNilFlags(m.Flags),
 				Children:  []*entity.MenuItem{},
 			}
 			found++
@@ -183,7 +210,7 @@ func (r *MenuRepository) fillMissingAncestors(ctx context.Context, byID map[stri
 func (r *MenuRepository) ListAllMenus(ctx context.Context) ([]*entity.AdminMenuItem, error) {
 	rows, err := r.db.Query(ctx, `
 		SELECT
-			m.id, m.parent_id, m.name, m.slug, m.icon, m.route, m.sort_order, m.is_active,
+			m.id, m.parent_id, m.name, m.slug, m.icon, m.route, m.sort_order, m.is_active, m.flags,
 			COALESCE(array_agg(ro.slug) FILTER (WHERE ro.slug IS NOT NULL), '{}')
 		FROM menus m
 		LEFT JOIN menu_roles mr ON mr.menu_id = m.id AND mr.deleted_at IS NULL
@@ -202,10 +229,11 @@ func (r *MenuRepository) ListAllMenus(ctx context.Context) ([]*entity.AdminMenuI
 		var m entity.AdminMenuItem
 		if err := rows.Scan(
 			&m.ID, &m.ParentID, &m.Name, &m.Slug, &m.Icon, &m.Route,
-			&m.SortOrder, &m.IsActive, &m.RoleSlugs,
+			&m.SortOrder, &m.IsActive, &m.Flags, &m.RoleSlugs,
 		); err != nil {
 			return nil, err
 		}
+		m.Flags = nonNilFlags(m.Flags)
 		items = append(items, &m)
 	}
 	if err := rows.Err(); err != nil {
@@ -224,11 +252,16 @@ func (r *MenuRepository) CreateMenu(ctx context.Context, in entity.MenuInput) (s
 	}
 	defer tx.Rollback(ctx)
 
+	flags, err := flagsArg(in.Flags)
+	if err != nil {
+		return "", err
+	}
+
 	var menuID string
 	err = tx.QueryRow(ctx,
-		`INSERT INTO menus (parent_id, name, slug, icon, route, sort_order)
-		 VALUES ($1, $2, $3, $4, $5, $6) RETURNING id`,
-		in.ParentID, in.Name, in.Slug, in.Icon, in.Route, in.SortOrder,
+		`INSERT INTO menus (parent_id, name, slug, icon, route, sort_order, flags)
+		 VALUES ($1, $2, $3, $4, $5, $6, COALESCE($7::jsonb, '{}'::jsonb)) RETURNING id`,
+		in.ParentID, in.Name, in.Slug, in.Icon, in.Route, in.SortOrder, flags,
 	).Scan(&menuID)
 	if err != nil {
 		return "", err
@@ -254,12 +287,20 @@ func (r *MenuRepository) UpdateMenu(ctx context.Context, id string, in entity.Me
 	}
 	defer tx.Rollback(ctx)
 
+	// flags nil (client gak ngirim field flags) -> COALESCE mempertahankan
+	// isi lama. Ini penting: form Manajemen Menu di web yang belum tau soal
+	// flags gak boleh diam-diam nge-reset {"mobile": false} tiap disimpan.
+	flags, err := flagsArg(in.Flags)
+	if err != nil {
+		return err
+	}
+
 	cmdTag, err := tx.Exec(ctx,
 		`UPDATE menus
 		 SET parent_id = $1, name = $2, slug = $3, icon = $4, route = $5,
-		     sort_order = $6, updated_at = now()
-		 WHERE id = $7 AND deleted_at IS NULL`,
-		in.ParentID, in.Name, in.Slug, in.Icon, in.Route, in.SortOrder, id,
+		     sort_order = $6, flags = COALESCE($7::jsonb, flags), updated_at = now()
+		 WHERE id = $8 AND deleted_at IS NULL`,
+		in.ParentID, in.Name, in.Slug, in.Icon, in.Route, in.SortOrder, flags, id,
 	)
 	if err != nil {
 		return err

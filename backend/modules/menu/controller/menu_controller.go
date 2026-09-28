@@ -12,13 +12,16 @@ import (
 // MenuFormRequest -- body buat POST/PUT menu. RoleSlugs itu REPLACE
 // penuh assignment role (dipakai apa adanya oleh usecase.UpdateMenu).
 type MenuFormRequest struct {
-	Name      string   `json:"name" validate:"required"`
-	Slug      string   `json:"slug" validate:"required"`
-	Icon      *string  `json:"icon"`
-	Route     *string  `json:"route"`
-	ParentID  *string  `json:"parent_id"`
-	SortOrder int      `json:"sort_order"`
-	RoleSlugs []string `json:"role_slugs" validate:"required"`
+	Name      string  `json:"name" validate:"required"`
+	Slug      string  `json:"slug" validate:"required"`
+	Icon      *string `json:"icon"`
+	Route     *string `json:"route"`
+	ParentID  *string `json:"parent_id"`
+	SortOrder int     `json:"sort_order"`
+	// Flags opsional. Tidak dikirim (nil) = flags lama dipertahankan saat
+	// update, {} saat create. Dikirim (termasuk {}) = replace penuh.
+	Flags     map[string]any `json:"flags"`
+	RoleSlugs []string       `json:"role_slugs" validate:"required"`
 }
 
 func (req MenuFormRequest) toInput() entity.MenuInput {
@@ -29,6 +32,7 @@ func (req MenuFormRequest) toInput() entity.MenuInput {
 		Route:     req.Route,
 		ParentID:  req.ParentID,
 		SortOrder: req.SortOrder,
+		Flags:     req.Flags,
 		RoleSlugs: req.RoleSlugs,
 	}
 }
