@@ -3,6 +3,7 @@ package repository
 import (
 	"context"
 	"database/sql"
+	"errors"
 
 	"cfd-backend/modules/pedagang/entity"
 
@@ -44,6 +45,53 @@ func (r *PedagangRepository) CreatePengajuanMandiri(
 		userID, nik, namaLengkap, tanggalLahir, namaUsaha, jenisDagangan, jenisLapak, mandiri,
 	).Scan(&id)
 	if err != nil {
+		return "", err
+	}
+	return id, nil
+}
+
+// ErrProfilSudahDihapus: user ini pernah punya profil pedagang yang sudah
+// dihapus admin, jadi tidak bisa mengisi data usaha lagi dengan akun ini.
+var ErrProfilSudahDihapus = errors.New("profil pedagang untuk akun ini sudah dihapus admin")
+
+// SimpanPengajuanMandiri -- dipakai alur self-service (pedagang daftar
+// sendiri). Bedanya dengan CreatePengajuanMandiri: kalau user ini SUDAH
+// punya profil, datanya DIPERBARUI, bukan ditolak.
+//
+// Kenapa: di halaman Daftar Lapak, data usaha disimpan lalu langsung
+// klaim lapak. Kalau klaimnya gagal (lapak belum diacak / penuh), dulu
+// pedagang kejebak -- kirim ulang form ditolak "kamu sudah pernah
+// mengajukan usaha sebelumnya", padahal belum dapat nomor lapak. Sekarang
+// kirim ulang aman: profilnya di-update, lalu klaim dicoba lagi.
+//
+// submitted_at sengaja gak diubah waktu update, supaya status Pedagang
+// Lama/Baru-nya tetap. Profil yang sudah dihapus (deleted_at terisi)
+// tidak ikut di-update -> ErrProfilSudahDihapus.
+func (r *PedagangRepository) SimpanPengajuanMandiri(
+	ctx context.Context,
+	userID, nik, namaLengkap, tanggalLahir, namaUsaha, jenisDagangan, jenisLapak string,
+) (string, error) {
+	var id string
+	err := r.db.QueryRow(ctx,
+		`INSERT INTO pedagang_profiles
+		 (user_id, nik, nama_lengkap, tanggal_lahir, nama_usaha, jenis_dagangan, jenis_lapak, status_verifikasi, submitted_at)
+		 VALUES ($1, $2, $3, $4, $5, $6::jenis_dagangan_enum, $7::jenis_lapak_enum, 'approved', NOW())
+		 ON CONFLICT (user_id) DO UPDATE SET
+			nik            = EXCLUDED.nik,
+			nama_lengkap   = EXCLUDED.nama_lengkap,
+			tanggal_lahir  = EXCLUDED.tanggal_lahir,
+			nama_usaha     = EXCLUDED.nama_usaha,
+			jenis_dagangan = EXCLUDED.jenis_dagangan,
+			jenis_lapak    = EXCLUDED.jenis_lapak,
+			updated_at     = NOW()
+		 WHERE pedagang_profiles.deleted_at IS NULL
+		 RETURNING id`,
+		userID, nik, namaLengkap, tanggalLahir, namaUsaha, jenisDagangan, jenisLapak,
+	).Scan(&id)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return "", ErrProfilSudahDihapus
+		}
 		return "", err
 	}
 	return id, nil
@@ -210,24 +258,28 @@ func (r *PedagangRepository) GetPedagangStats(ctx context.Context) (entity.Pedag
 
 func (r *PedagangRepository) GetPedagangByID(ctx context.Context, id string) (*entity.PedagangUserDTO, error) {
 	var u entity.PedagangUserDTO
-	var createdAt, status, nik, namaLengkap, tanggalLahir, namaUsaha, jenisDagangan, jenisLapak, perkiraanHarga, alamat, statusVerifikasi sql.NullString
+	var createdAt, status, nik, namaLengkap, tanggalLahir, namaUsaha, jenisDagangan, jenisLapak, perkiraanHarga, alamat, lokasiLapak, statusVerifikasi sql.NullString
+	var phone sql.NullString
 
+	// Filter r.slug = 'pedagang' supaya endpoint ini gak bisa dipakai buat
+	// ngintip data akun petugas/superadmin lewat id-nya.
 	err := r.db.QueryRow(ctx, `
-		SELECT 
-			u.id, u.name, u.email, u.phone, u.created_at, u.status,
-			p.nik, p.nama_lengkap, p.tanggal_lahir::text, p.nama_usaha, p.jenis_dagangan,
-			p.jenis_lapak, p.perkiraan_harga, p.alamat, p.status_verifikasi
+		SELECT
+			u.id, u.name, u.email, u.phone, u.created_at::text, u.status::text,
+			p.nik, p.nama_lengkap, p.tanggal_lahir::text, p.nama_usaha, p.jenis_dagangan::text,
+			p.jenis_lapak::text, p.perkiraan_harga, p.alamat, p.lokasi_lapak, p.status_verifikasi::text
 		FROM users u
 		JOIN user_roles ur ON ur.user_id = u.id AND ur.deleted_at IS NULL
-		JOIN roles r ON r.id = ur.role_id AND r.deleted_at IS NULL
+		JOIN roles r ON r.id = ur.role_id AND r.deleted_at IS NULL AND r.slug = 'pedagang'
 		LEFT JOIN pedagang_profiles p ON p.user_id = u.id AND p.deleted_at IS NULL
 		WHERE u.id = $1 AND u.deleted_at IS NULL
+		LIMIT 1
 	`, id,
 	).Scan(
-		&u.ID, &u.Name, &u.Email, &u.Phone,
+		&u.ID, &u.Name, &u.Email, &phone,
 		&createdAt, &status,
 		&nik, &namaLengkap, &tanggalLahir, &namaUsaha, &jenisDagangan,
-		&jenisLapak, &perkiraanHarga, &alamat, &statusVerifikasi,
+		&jenisLapak, &perkiraanHarga, &alamat, &lokasiLapak, &statusVerifikasi,
 	)
 	if err != nil {
 		if err == pgx.ErrNoRows {
@@ -236,9 +288,12 @@ func (r *PedagangRepository) GetPedagangByID(ctx context.Context, id string) (*e
 		return nil, err
 	}
 
+	u.Phone = phone.String
 	u.JoinedAt = createdAt.String
 	u.Active = status.String == "active"
-	u.Initial = string([]rune(u.Name)[0])
+	if nama := []rune(u.Name); len(nama) > 0 {
+		u.Initial = string(nama[0])
+	}
 	u.NIK = &nik.String
 	u.NamaLengkap = &namaLengkap.String
 	u.TanggalLahir = &tanggalLahir.String
@@ -247,35 +302,53 @@ func (r *PedagangRepository) GetPedagangByID(ctx context.Context, id string) (*e
 	u.JenisLapak = &jenisLapak.String
 	u.PerkiraanHarga = &perkiraanHarga.String
 	u.Alamat = &alamat.String
+	u.LokasiLapak = &lokasiLapak.String
 	u.StatusVerifikasi = &statusVerifikasi.String
 
 	return &u, nil
 }
 
+// ErrPedagangTidakDitemukan dipakai UpdatePedagang & DeletePedagang kalau
+// id user-nya gak ada (atau sudah dihapus).
+var ErrPedagangTidakDitemukan = errors.New("pedagang tidak ditemukan")
+
 // UpdatePedagang meng-update data akun (users) sekaligus profil dagangan
 // (pedagang_profiles) dalam satu transaksi. NIK, email, dan tanggal lahir
 // sengaja gak ikut diupdate di sini -- itu data identitas yang dikunci
 // (disabled) di form edit, konsisten sama halaman Edit Petugas/Superadmin.
-func (r *PedagangRepository) UpdatePedagang(ctx context.Context, id, name, phone, namaUsaha, jenisDagangan, jenisLapak string) error {
+//
+// jenisDagangan / jenisLapak / lokasiLapak boleh kosong -> disimpan NULL
+// (NULLIF), supaya pedagang lama hasil import yang kolomnya belum diisi
+// gak bikin error "invalid input value for enum".
+func (r *PedagangRepository) UpdatePedagang(ctx context.Context, id, name, phone, namaUsaha, jenisDagangan, jenisLapak, lokasiLapak string) error {
 	tx, err := r.db.Begin(ctx)
 	if err != nil {
 		return err
 	}
 	defer tx.Rollback(ctx)
 
-	_, err = tx.Exec(ctx,
+	tag, err := tx.Exec(ctx,
 		`UPDATE users SET name = $1, phone = $2, updated_at = NOW() WHERE id = $3 AND deleted_at IS NULL`,
 		name, phone, id,
 	)
 	if err != nil {
 		return err
 	}
+	if tag.RowsAffected() == 0 {
+		return ErrPedagangTidakDitemukan
+	}
 
 	_, err = tx.Exec(ctx,
-		`UPDATE pedagang_profiles 
-		 SET nama_lengkap = $1, nama_usaha = $2, jenis_dagangan = $3::jenis_dagangan_enum, jenis_lapak = $4::jenis_lapak_enum, updated_at = NOW()
-		 WHERE user_id = $5 AND deleted_at IS NULL`,
-		name, namaUsaha, jenisDagangan, jenisLapak, id,
+		`UPDATE pedagang_profiles
+		 SET nama_lengkap   = $1,
+		     nama_usaha     = $2,
+		     jenis_dagangan = NULLIF($3, '')::jenis_dagangan_enum,
+		     jenis_lapak    = NULLIF($4, '')::jenis_lapak_enum,
+		     lokasi_lapak   = NULLIF($5, ''),
+		     phone          = $6,
+		     updated_at     = NOW()
+		 WHERE user_id = $7 AND deleted_at IS NULL`,
+		name, namaUsaha, jenisDagangan, jenisLapak, lokasiLapak, phone, id,
 	)
 	if err != nil {
 		return err
@@ -284,8 +357,105 @@ func (r *PedagangRepository) UpdatePedagang(ctx context.Context, id, name, phone
 	return tx.Commit(ctx)
 }
 
-// DeletePedagang soft-delete pedagang
+// UpdateProfilSendiri -- pedagang mengubah biodatanya sendiri (halaman
+// Profil). Dicari lewat user_id dari token, bukan id dari URL, jadi
+// pedagang gak bisa mengubah data orang lain. NIK sengaja gak ikut diubah.
+//
+// users.name ikut di-update supaya nama di header/akun sama dengan nama
+// lengkap di profil -- sama seperti yang dilakukan UpdatePedagang (admin).
+//
+// tanggalLahir / alamat / jenisLapak boleh kosong -> disimpan NULL.
+func (r *PedagangRepository) UpdateProfilSendiri(ctx context.Context, userID, namaLengkap, tanggalLahir, alamat, namaUsaha, jenisDagangan, jenisLapak string) error {
+	tx, err := r.db.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback(ctx)
+
+	tag, err := tx.Exec(ctx,
+		`UPDATE pedagang_profiles
+		 SET nama_lengkap   = $1,
+		     tanggal_lahir  = NULLIF($2, '')::date,
+		     alamat         = NULLIF($3, ''),
+		     nama_usaha     = $4,
+		     jenis_dagangan = $5::jenis_dagangan_enum,
+		     jenis_lapak    = NULLIF($6, '')::jenis_lapak_enum,
+		     updated_at     = NOW()
+		 WHERE user_id = $7 AND deleted_at IS NULL`,
+		namaLengkap, tanggalLahir, alamat, namaUsaha, jenisDagangan, jenisLapak, userID,
+	)
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() == 0 {
+		return ErrPedagangTidakDitemukan
+	}
+
+	if _, err := tx.Exec(ctx,
+		`UPDATE users SET name = $1, updated_at = NOW() WHERE id = $2 AND deleted_at IS NULL`,
+		namaLengkap, userID,
+	); err != nil {
+		return err
+	}
+
+	return tx.Commit(ctx)
+}
+
+// DeletePedagang soft-delete akun pedagang BESERTA profilnya dalam satu
+// transaksi.
+//
+// Profil ikut di-soft-delete karena unique index NIK
+// (idx_pedagang_nik_active) cuma berlaku untuk baris dengan
+// deleted_at IS NULL. Dulu cuma users yang dihapus, jadi NIK pedagang yang
+// sudah dihapus tetap "terkunci" dan gak bisa didaftarkan ulang.
+//
+// Klaim lapak AKTIF di sesi hari ini / yang akan datang yang belum
+// check-in ikut dibatalkan (status 'batal'), sama seperti yang dilakukan
+// BatalkanKlaimBelumCheckIn waktu sesi ditutup. Riwayat klaim & kehadiran
+// di sesi yang sudah lewat dibiarkan apa adanya buat laporan.
 func (r *PedagangRepository) DeletePedagang(ctx context.Context, id string) error {
-	_, err := r.db.Exec(ctx, `UPDATE users SET deleted_at = NOW() WHERE id = $1`, id)
-	return err
+	tx, err := r.db.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback(ctx)
+
+	if _, err := tx.Exec(ctx, `
+		UPDATE lapak_klaim lk
+		SET status = 'batal'
+		FROM pedagang_profiles p, cfd_sessions cs
+		WHERE p.user_id = $1
+		  AND lk.pedagang_id = p.id
+		  AND cs.id = lk.session_id
+		  AND lk.status = 'aktif'
+		  AND cs.tanggal >= CURRENT_DATE
+		  AND NOT EXISTS (
+			SELECT 1 FROM kehadiran_pedagang kh
+			WHERE kh.pedagang_id = lk.pedagang_id
+			  AND kh.session_id = lk.session_id
+			  AND kh.deleted_at IS NULL
+		  )
+	`, id); err != nil {
+		return err
+	}
+
+	if _, err := tx.Exec(ctx,
+		`UPDATE pedagang_profiles SET deleted_at = NOW(), updated_at = NOW() WHERE user_id = $1 AND deleted_at IS NULL`,
+		id,
+	); err != nil {
+		return err
+	}
+
+	tag, err := tx.Exec(ctx,
+		`UPDATE users SET deleted_at = NOW(), updated_at = NOW() WHERE id = $1 AND deleted_at IS NULL`,
+		id,
+	)
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() == 0 {
+		return ErrPedagangTidakDitemukan
+	}
+
+	return tx.Commit(ctx)
 }

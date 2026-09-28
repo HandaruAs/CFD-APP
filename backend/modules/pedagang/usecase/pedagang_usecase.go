@@ -14,12 +14,14 @@ var (
 
 type PedagangRepository interface {
 	CreatePengajuanMandiri(ctx context.Context, userID, nik, namaLengkap, tanggalLahir, namaUsaha, jenisDagangan, jenisLapak string, mandiri bool) (string, error)
+	SimpanPengajuanMandiri(ctx context.Context, userID, nik, namaLengkap, tanggalLahir, namaUsaha, jenisDagangan, jenisLapak string) (string, error)
 	GetStatusPendaftaran(ctx context.Context) (isOpen bool, dalamJam bool, err error)
 	GetPengajuanByUserID(ctx context.Context, userID string) (*entity.PengajuanStatus, error)
 	ListPedagang(ctx context.Context) ([]entity.PedagangUserDTO, int, error)
 	GetPedagangStats(ctx context.Context) (entity.PedagangStatsResponse, error)
 	GetPedagangByID(ctx context.Context, id string) (*entity.PedagangUserDTO, error)
-	UpdatePedagang(ctx context.Context, id, name, phone, namaUsaha, jenisDagangan, jenisLapak string) error
+	UpdatePedagang(ctx context.Context, id, name, phone, namaUsaha, jenisDagangan, jenisLapak, lokasiLapak string) error
+	UpdateProfilSendiri(ctx context.Context, userID, namaLengkap, tanggalLahir, alamat, namaUsaha, jenisDagangan, jenisLapak string) error
 	DeletePedagang(ctx context.Context, id string) error
 }
 
@@ -31,7 +33,8 @@ type PedagangUsecase interface {
 	ListPedagangByAdmin(ctx context.Context) ([]entity.PedagangUserDTO, int, error)
 	GetPedagangStats(ctx context.Context) (entity.PedagangStatsResponse, error)
 	GetPedagangByID(ctx context.Context, id string) (*entity.PedagangUserDTO, error)
-	UpdatePedagangByAdmin(ctx context.Context, id, name, phone, namaUsaha, jenisDagangan, jenisLapak string) error
+	UpdatePedagangByAdmin(ctx context.Context, id, name, phone, namaUsaha, jenisDagangan, jenisLapak, lokasiLapak string) error
+	UpdateProfilSendiri(ctx context.Context, userID, namaLengkap, tanggalLahir, alamat, namaUsaha, jenisDagangan, jenisLapak string) error
 	DeletePedagangByAdmin(ctx context.Context, id string) error
 }
 
@@ -46,8 +49,11 @@ func NewPedagangUsecase(pedagangRepo PedagangRepository) PedagangUsecase {
 // AjukanUsaha dipakai alur self-service (pedagang daftar sendiri). Cuma
 // bisa jalan kalau petugas lagi buka pendaftaran (is_open) DAN sekarang
 // masih dalam rentang jam_buka_pendaftaran-jam_tutup_pendaftaran (kalau di-set).
+// AjukanUsaha -- pedagang daftar sendiri (Pedagang Baru). Aman dikirim
+// ulang: kalau profilnya sudah ada, datanya diperbarui (lihat
+// repository.SimpanPengajuanMandiri).
 func (u *pedagangUsecase) AjukanUsaha(ctx context.Context, userID string, req *entity.PengajuanUsahaRequest) (string, error) {
-	return u.pedagangRepo.CreatePengajuanMandiri(
+	return u.pedagangRepo.SimpanPengajuanMandiri(
 		ctx,
 		userID,
 		req.NIK,
@@ -56,7 +62,6 @@ func (u *pedagangUsecase) AjukanUsaha(ctx context.Context, userID string, req *e
 		req.NamaUsaha,
 		req.JenisDagangan,
 		req.JenisLapak,
-		true, // daftar sendiri -> Pedagang Baru
 	)
 }
 
@@ -86,8 +91,14 @@ func (u *pedagangUsecase) GetPedagangByID(ctx context.Context, id string) (*enti
 	return u.pedagangRepo.GetPedagangByID(ctx, id)
 }
 
-func (u *pedagangUsecase) UpdatePedagangByAdmin(ctx context.Context, id, name, phone, namaUsaha, jenisDagangan, jenisLapak string) error {
-	return u.pedagangRepo.UpdatePedagang(ctx, id, name, phone, namaUsaha, jenisDagangan, jenisLapak)
+func (u *pedagangUsecase) UpdatePedagangByAdmin(ctx context.Context, id, name, phone, namaUsaha, jenisDagangan, jenisLapak, lokasiLapak string) error {
+	return u.pedagangRepo.UpdatePedagang(ctx, id, name, phone, namaUsaha, jenisDagangan, jenisLapak, lokasiLapak)
+}
+
+// UpdateProfilSendiri -- pedagang mengubah biodatanya sendiri dari halaman
+// Profil. Input sudah divalidasi di controller (validasiProfilSendiri).
+func (u *pedagangUsecase) UpdateProfilSendiri(ctx context.Context, userID, namaLengkap, tanggalLahir, alamat, namaUsaha, jenisDagangan, jenisLapak string) error {
+	return u.pedagangRepo.UpdateProfilSendiri(ctx, userID, namaLengkap, tanggalLahir, alamat, namaUsaha, jenisDagangan, jenisLapak)
 }
 
 func (u *pedagangUsecase) DeletePedagangByAdmin(ctx context.Context, id string) error {

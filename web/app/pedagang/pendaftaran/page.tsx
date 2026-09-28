@@ -83,7 +83,7 @@ export default function PendaftaranPedagangPage() {
     if (!success) return;
 
     if (redirectIn <= 0) {
-      router.push("/pedagang");
+      router.push("/pedagang/profil");
       return;
     }
 
@@ -179,10 +179,10 @@ export default function PendaftaranPedagangPage() {
             </p>
             <button
               type="button"
-              onClick={() => router.push("/pedagang")}
+              onClick={() => router.push("/pedagang/profil")}
               className="mt-2 h-9 px-6 bg-[#00288e] text-white text-[12.5px] font-medium rounded-lg hover:bg-[#173bab] active:scale-[0.98] transition-all"
             >
-              Ke Dashboard
+              Ke Profil
             </button>
           </section>
         </div>
@@ -426,7 +426,7 @@ export default function PendaftaranPedagangPage() {
               Selamat Pendaftaran Anda Berhasil.
             </p>
             <p className="text-[12px] text-[#8fa3d6]">
-              Mengarahkan ke dashboard dalam {redirectIn} detik...
+              Mengarahkan ke profil dalam {redirectIn} detik...
             </p>
           </section>
         )}

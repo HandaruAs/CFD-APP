@@ -46,15 +46,17 @@ function LoginForm() {
 
       const role = data.user?.role;
 
-      // Pedagang selalu diarahkan ke halaman pendaftaran setelah login --
-      // gak perlu cek has_pengajuan lagi (status-verifikasi udah gak
-      // dipakai), dan pendaftaran sendiri emang gak dibatasi jam/status apapun.
+      // Pedagang diarahkan ke /pedagang, yang langsung meneruskan ke
+      // halaman Profil kalau data usahanya sudah diisi, atau ke Pendaftaran
+      // kalau belum (lihat app/pedagang/page.tsx). Dulu pedagang selalu
+      // dilempar ke Pendaftaran, lalu tombol "Ke Dashboard"-nya membawa
+      // ke halaman status-verifikasi yang sudah tidak ada.
       const dashboardByRole: Record<string, string> = {
-        pedagang: "/pedagang/pendaftaran",
+        pedagang: "/pedagang",
         petugas: "/petugas",
         superadmin: "/admin",
       };
-      window.location.href = dashboardByRole[role] ?? "/pedagang/pendaftaran";
+      window.location.href = dashboardByRole[role] ?? "/pedagang";
     } catch {
       setError("Tidak bisa terhubung ke server. Periksa koneksi kamu.");
       setLoading(false);
@@ -240,7 +242,7 @@ function LoginForm() {
         <p className="text-center text-sm text-slate-500 mt-6">
           Belum punya akun?{" "}
           <Link
-            href="/auth/register"
+            href="/daftar-lapak"
             className="font-medium text-[#2563EB] hover:text-[#1D4ED8]"
           >
             Daftar di sini
