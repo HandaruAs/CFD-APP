@@ -16,6 +16,11 @@ type VerifyQRResponse struct {
     Pedagang      *PedagangDetailDTO `json:"pedagang,omitempty"`
     SudahCheckIn  bool               `json:"sudah_check_in"`
     CheckInAt     *time.Time         `json:"check_in_at,omitempty"`
+    // BisaCheckIn false kalau pedagang belum punya lapak aktif di sesi ini
+    // atau masih punya sesi lama yang belum checkout -- frontend menonaktifkan
+    // tombol Konfirmasi dan menampilkan Peringatan.
+    BisaCheckIn   bool               `json:"bisa_check_in"`
+    Peringatan    string             `json:"peringatan,omitempty"`
 }
 
 type PedagangDetailDTO struct {

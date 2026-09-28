@@ -42,6 +42,9 @@ import (
 	// Repository Dashboard Superadmin
 	adminDashboardRepo "cfd-backend/modules/admin/dashboard/repository"
 
+	// Repository Laporan Superadmin
+	adminLaporanRepo "cfd-backend/modules/admin/laporan/repository"
+
 	// Modul Usecase
 	authUsecase "cfd-backend/modules/auth/usecase"
 	"cfd-backend/pkg/mailer"
@@ -74,6 +77,9 @@ import (
 	// Usecase Dashboard Superadmin
 	adminDashboardUsecase "cfd-backend/modules/admin/dashboard/usecase"
 
+	// Usecase Laporan Superadmin
+	adminLaporanUsecase "cfd-backend/modules/admin/laporan/usecase"
+
 	// Modul Controller
 	authController "cfd-backend/modules/auth/controller"
 	menuController "cfd-backend/modules/menu/controller"
@@ -104,6 +110,9 @@ import (
 
 	// Controller Dashboard Superadmin
 	adminDashboardController "cfd-backend/modules/admin/dashboard/controller"
+
+	// Controller Laporan Superadmin
+	adminLaporanController "cfd-backend/modules/admin/laporan/controller"
 
 	"github.com/gofiber/fiber/v3"
 	"github.com/gofiber/fiber/v3/middleware/cors"
@@ -150,6 +159,9 @@ func main() {
 	// Repository Dashboard Superadmin
 	adminDashboardRepository := adminDashboardRepo.NewDashboardRepository(db)
 
+	// Repository Laporan Superadmin
+	adminLaporanRepository := adminLaporanRepo.NewLaporanRepository(db)
+
 	// ============================================================
 	// 2. INIT USECASES
 	// ============================================================
@@ -190,6 +202,9 @@ func main() {
 	// Usecase Dashboard Superadmin
 	adminDashboardUC := adminDashboardUsecase.NewDashboardUsecase(adminDashboardRepository)
 
+	// Usecase Laporan Superadmin
+	adminLaporanUC := adminLaporanUsecase.NewLaporanUsecase(adminLaporanRepository)
+
 	// ============================================================
 	// 3. INIT CONTROLLERS
 	// ============================================================
@@ -222,6 +237,9 @@ func main() {
 
 	// Controller Dashboard Superadmin
 	adminDashboardCtrl := adminDashboardController.NewDashboardController(adminDashboardUC)
+
+	// Controller Laporan Superadmin
+	adminLaporanCtrl := adminLaporanController.NewLaporanController(adminLaporanUC)
 
 	// ============================================================
 	// 4. INIT FIBER APP
@@ -342,6 +360,14 @@ func main() {
 		middleware.AuthMiddleware(cfg.JWTSecret),
 		middleware.RoleMiddleware(userRepository, "superadmin"),
 		adminDashboardCtrl.GetDashboard,
+	)
+
+	// 8c-2. Superadmin -- laporan semua role kecuali superadmin (pedagang &
+	// petugas): ringkasan, rekap per akun, dan daftar kehadiran.
+	app.Get("/api/admin/laporan",
+		middleware.AuthMiddleware(cfg.JWTSecret),
+		middleware.RoleMiddleware(userRepository, "superadmin"),
+		adminLaporanCtrl.GetLaporan,
 	)
 
 	// 8d. Multi-role (Superadmin & Petugas)

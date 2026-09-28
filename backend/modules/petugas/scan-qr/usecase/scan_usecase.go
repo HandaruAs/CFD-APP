@@ -16,6 +16,11 @@ import (
 // pedagangnya diarahkan (stuck) ke halaman checkout, bukan cuma pesan error biasa.
 var ErrBelumCheckout = errors.New("pedagang masih punya sesi sebelumnya yang belum checkout, harus isi omset dulu sebelum bisa check-in lagi")
 
+// ErrBelumKlaimLapak -- pedagang belum punya lapak aktif di sesi ini (belum
+// klaim, atau klaimnya dibatalkan karena sesi sempat ditutup). Harus klaim
+// lapak dulu supaya lokasi jualannya tercatat.
+var ErrBelumKlaimLapak = errors.New("pedagang belum punya lapak aktif di sesi ini, minta pedagang klaim lapak dulu")
+
 type ScanUsecase interface {
     VerifyQRCode(ctx context.Context, qrCode string, petugasID string) (*entity.VerifyQRResponse, error)
     CheckInPedagang(ctx context.Context, pedagangID, petugasID, catatan string) (*entity.CheckInResponse, error)
@@ -91,12 +96,38 @@ func (u *scanUsecase) VerifyQRCode(ctx context.Context, qrCode string, petugasID
         PerkiraanHarga:    getString(pedagang.PerkiraanHarga),
     }
 
+    // 5. Cek lebih awal apakah check-in-nya bakal ditolak, supaya petugas
+    // langsung tahu alasannya sebelum menekan Konfirmasi. Aturannya sama
+    // persis dengan CheckInPedagang di bawah.
+    bisaCheckIn := !sudahCheckIn
+    peringatan := ""
+    if !sudahCheckIn {
+        belumCheckout, err := u.repo.AdaKehadiranBelumCheckout(ctx, pedagang.ID)
+        if err != nil {
+            return nil, err
+        }
+        punyaLapak, err := u.repo.PunyaKlaimAktif(ctx, pedagang.ID, session.ID)
+        if err != nil {
+            return nil, err
+        }
+        switch {
+        case belumCheckout:
+            bisaCheckIn = false
+            peringatan = "Pedagang masih punya sesi sebelumnya yang belum checkout. Minta pedagang mengisi omset di menu Check in / Check Out dulu."
+        case !punyaLapak:
+            bisaCheckIn = false
+            peringatan = "Pedagang belum punya lapak aktif hari ini. Minta pedagang klaim lapak dulu, lalu scan ulang."
+        }
+    }
+
     return &entity.VerifyQRResponse{
         Valid:        true,
         Message:      "QR Code terverifikasi",
         Pedagang:     detail,
         SudahCheckIn: sudahCheckIn,
         CheckInAt:    checkInAt,
+        BisaCheckIn:  bisaCheckIn,
+        Peringatan:   peringatan,
     }, nil
 }
 
@@ -137,6 +168,16 @@ func (u *scanUsecase) CheckInPedagang(ctx context.Context, pedagangID, petugasID
     }
     if belumCheckout {
         return nil, ErrBelumCheckout
+    }
+
+    // 3c. Wajib punya klaim lapak aktif di sesi ini -- kalau enggak, lokasi
+    // jualannya gak tercatat dan halaman checkout pedagang jadi kosong.
+    punyaLapak, err := u.repo.PunyaKlaimAktif(ctx, pedagangID, session.ID)
+    if err != nil {
+        return nil, err
+    }
+    if !punyaLapak {
+        return nil, ErrBelumKlaimLapak
     }
 
     // 4. Simpan check-in
