@@ -53,21 +53,10 @@ class _MainLayoutState extends ConsumerState<MainLayout> {
   }
 
   Widget _buildShell(List<MenuModel> backendMenus) {
-    // "Pendaftaran" udah digabung ke "Nomor Stand" (LapakScreen), sama
-    // kayak web. Kalau dua-duanya masih ada di tabel menus, sembunyiin
-    // Pendaftaran biar gak ada 2 tab yang isinya sama. Kalau ternyata
-    // cuma Pendaftaran yang ada, dia tetap tampil (di-mapping ke
-    // LapakScreen juga di screenRegistry).
-    final adaNomerStand = backendMenus.any((m) => m.path == '/pedagang/nomer-stand');
-    // Menu web-only ditandai lewat menus.flags {"mobile": false} di DB
-    // (lihat migrasi 000027), bukan lagi daftar path hardcoded di sini.
-    // Cuma aturan "Pendaftaran digabung ke Nomor Stand" yang masih
-    // dihitung di klien, karena itu soal dua menu yang isinya sama,
-    // bukan soal menu web-only.
-    final visibleBackendMenus = backendMenus
-        .where((m) => m.showOnMobile)
-        .where((m) => !(adaNomerStand && m.path == '/pedagang/pendaftaran'))
-        .toList();
+    // Aturan menu mana yang jadi tab (flag mobile & Pendaftaran yang
+    // digabung ke Nomor Stand) ada di visibleTabMenus -- lihat
+    // nav_provider.dart.
+    final visibleBackendMenus = visibleTabMenus(backendMenus);
 
     if (visibleBackendMenus.isEmpty) {
       return const Center(child: Text('Tidak ada menu untuk role Anda.'));

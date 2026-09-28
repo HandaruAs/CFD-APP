@@ -9,10 +9,10 @@ import 'package:mobile/features/superadmin/presentation/providers/acak_lapak_sta
 /// MainLayout). Dipakai petugas dan superadmin.
 ///
 /// Fungsinya: nyiapin pool lokasi (slot lapak) SEBELUM pedagang daftar,
-/// per cakupan Se-Surabaya / Kecamatan / Jalan / Ruas. Aman diklik ulang
-/// (backend cuma nambahin kekurangannya). Cakupan yang bisa dipilih
-/// ngikutin wilayah tugas: petugas kecamatan/jalan gak bisa acak di luar
-/// wilayahnya.
+/// per cakupan Se-Surabaya / Kecamatan / Jalan / Ruas. Tiap acak selalu
+/// mengganti slot lama yang belum diklaim (gantiPoolLama = true).
+/// Cakupan yang bisa dipilih ngikutin wilayah tugas: petugas
+/// kecamatan/jalan gak bisa acak di luar wilayahnya.
 class AcakLapakScreen extends ConsumerStatefulWidget {
   const AcakLapakScreen({super.key});
 
@@ -35,32 +35,31 @@ class _AcakLapakScreenState extends ConsumerState<AcakLapakScreen>
     final notifier = ref.read(acakLapakProvider.notifier);
     final state = ref.read(acakLapakProvider);
 
-    // Ganti pool lama = buang slot yang belum diklaim -> minta konfirmasi.
-    if (state.gantiPoolLama) {
-      final yakin = await showDialog<bool>(
-        context: context,
-        builder: (ctx) => AlertDialog(
-          title: const Text('Ganti pool lama?'),
-          content: Text(
-            'Slot lama di ${state.labelCakupan} yang belum diklaim pedagang akan '
-            'dihapus, lalu diganti hasil acak baru. Slot yang sudah diklaim tidak '
-            'akan disentuh.',
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(ctx).pop(false),
-              child: const Text('Batal'),
-            ),
-            FilledButton(
-              onPressed: () => Navigator.of(ctx).pop(true),
-              style: FilledButton.styleFrom(backgroundColor: kBrandColor),
-              child: const Text('Ya, Acak'),
-            ),
-          ],
+    // Tiap acak SELALU mengganti pool lama (sama kayak default di web):
+    // slot yang belum diklaim dibuang dulu, jadi minta konfirmasi.
+    final yakin = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Acak lapak sekarang?'),
+        content: Text(
+          'Lokasi di ${state.labelCakupan} akan diacak ulang. Lokasi lama yang belum '
+          'diambil pedagang akan dihapus, jadi pedagang hanya mendapat lokasi dari '
+          'hasil acak ini. Lokasi yang sudah diambil pedagang tidak akan disentuh.',
         ),
-      );
-      if (yakin != true) return;
-    }
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: const Text('Batal'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(ctx).pop(true),
+            style: FilledButton.styleFrom(backgroundColor: kBrandColor),
+            child: const Text('Ya, Acak'),
+          ),
+        ],
+      ),
+    );
+    if (yakin != true) return;
     await notifier.submit();
   }
 
@@ -177,19 +176,6 @@ class _AcakLapakScreenState extends ConsumerState<AcakLapakScreen>
               onChanged: notifier.setRuas,
             ),
           ],
-          const SizedBox(height: 8),
-          SwitchListTile(
-            contentPadding: EdgeInsets.zero,
-            value: state.gantiPoolLama,
-            onChanged: notifier.setGantiPoolLama,
-            // ignore: deprecated_member_use
-            activeColor: kBrandColor,
-            title: const Text('Ganti pool lama'),
-            subtitle: const Text(
-              'Buang slot lama yang belum diklaim, jadi pedagang cuma bisa klaim '
-              'hasil acak ini. Kalau mati, hasil acak ditambahkan ke pool yang ada.',
-            ),
-          ),
           if (state.submitError != null) ...[
             const SizedBox(height: 8),
             Text(state.submitError!, style: const TextStyle(color: Colors.red)),
@@ -238,9 +224,9 @@ class _InfoCard extends StatelessWidget {
           SizedBox(width: 10),
           Expanded(
             child: Text(
-              'Acak Lapak menyiapkan pool lokasi sebelum pedagang daftar. '
-              'Aman diklik ulang: yang sudah ada tidak digandakan, cuma '
-              'kekurangannya yang ditambah.',
+              'Acak Lapak menyiapkan lokasi lapak sebelum pedagang daftar. '
+              'Setiap kali diacak, lokasi lama yang belum diambil pedagang '
+              'otomatis diganti hasil acak baru.',
               style: TextStyle(fontSize: 13),
             ),
           ),

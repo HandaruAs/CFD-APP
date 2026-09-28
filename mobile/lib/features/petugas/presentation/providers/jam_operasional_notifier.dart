@@ -1,77 +1,64 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:mobile/core/network/api_exception.dart';
 import 'package:mobile/features/petugas/data/datasources/operasional_datasource.dart';
 import 'jam_operasional_state.dart';
 
 class JamOperasionalNotifier extends StateNotifier<JamOperasionalState> {
   JamOperasionalNotifier() : super(JamOperasionalState.initial());
 
-  Future<void> loadAll() async {
-    state = state.copyWith(isLoading: true, error: null);
+  /// [silent] = refresh di belakang layar (auto-refresh tiap menit, sama
+  /// kayak web) -- gak nyalain spinner & gak nimpa layar dengan error
+  /// kalau data lama masih ada.
+  Future<void> load({bool silent = false}) async {
+    if (!silent) state = state.copyWith(isLoading: true, error: null);
     try {
       final status = await OperasionalDatasource.getStatusOperasional();
-      final jadwal = await OperasionalDatasource.getJadwalMingguan();
-      state = state.copyWith(isLoading: false, status: status, jadwalMingguan: jadwal);
+      state = state.copyWith(isLoading: false, isSaving: false, status: status, error: null);
     } catch (e) {
-      state = state.copyWith(isLoading: false, error: e.toString());
+      if (silent && state.status != null) return;
+      state = state.copyWith(isLoading: false, isSaving: false, error: _pesan(e));
     }
   }
 
-  /// Dipakai tiap aksi cepat (buka sesi, akhiri sesi, simpan sesi,
-  /// update pendaftaran) -- return true kalau sukses, false kalau
-  /// gagal (pesan errornya udah kesimpen di state.error, tinggal
-  /// ditampilin lewat SnackBar di UI).
-  Future<bool> _runAction(Future<void> Function() action) async {
-    state = state.copyWith(isSaving: true, error: null);
+  /// Dipakai tiap aksi (buka sesi, akhiri sesi, simpan jam, simpan kode
+  /// event). Balikin null kalau sukses, atau pesan error kalau gagal --
+  /// UI tinggal nampilin lewat SnackBar.
+  Future<String?> _runAction(Future<void> Function() action) async {
+    state = state.copyWith(isSaving: true);
     try {
       await action();
-      await loadAll();
-      return true;
+      await load(silent: true);
+      state = state.copyWith(isSaving: false);
+      return null;
     } catch (e) {
-      state = state.copyWith(isSaving: false, error: e.toString());
-      return false;
+      state = state.copyWith(isSaving: false);
+      return _pesan(e);
     }
   }
 
-  Future<bool> simpanSesi(String jamMulai, String jamSelesaiRencana) {
+  Future<String?> simpanSesi(String jamMulai, String jamSelesaiRencana) {
     return _runAction(() => OperasionalDatasource.simpanSesi(
           jamMulai: jamMulai,
           jamSelesaiRencana: jamSelesaiRencana,
         ));
   }
 
-  Future<bool> bukaSesiSekarang() {
-    return _runAction(() => OperasionalDatasource.bukaSesiManual());
+  Future<String?> bukaSesiSekarang() {
+    return _runAction(OperasionalDatasource.bukaSesiManual);
   }
 
-  Future<bool> akhiriSesiLebihAwal() {
-    return _runAction(() => OperasionalDatasource.akhiriSesiLebihAwal());
+  Future<String?> akhiriSesiLebihAwal() {
+    return _runAction(OperasionalDatasource.akhiriSesiLebihAwal);
   }
 
-  Future<bool> updatePendaftaran({
-    required bool isOpen,
-    String? jamBuka,
-    String? jamTutup,
-    String? linkPendaftaran,
-  }) {
-    return _runAction(() => OperasionalDatasource.updatePendaftaran(
-          isOpen: isOpen,
-          jamBuka: jamBuka,
-          jamTutup: jamTutup,
-          linkPendaftaran: linkPendaftaran,
+  Future<String?> simpanKodeEvent(String kodeEvent) {
+    final sekarang = state.status?.pendaftaran;
+    if (sekarang == null) return Future.value('Data belum dimuat');
+    return _runAction(() => OperasionalDatasource.simpanKodeEvent(
+          sekarang: sekarang,
+          kodeEvent: kodeEvent,
         ));
   }
 
-  Future<bool> updateJadwalHari({
-    required String hari,
-    required String jamMulai,
-    required String jamSelesaiRencana,
-    required bool isActive,
-  }) {
-    return _runAction(() => OperasionalDatasource.updateJadwalMingguan(
-          hari: hari,
-          jamMulai: jamMulai,
-          jamSelesaiRencana: jamSelesaiRencana,
-          isActive: isActive,
-        ));
-  }
+  String _pesan(Object e) => e is ApiException ? e.message : e.toString();
 }
