@@ -17,6 +17,8 @@ import {
   ChevronUp,
   ChevronDown,
   Tag,
+  Play,
+  RefreshCw,
 } from "lucide-react";
 
 // ========== TYPES ==========
@@ -82,6 +84,17 @@ function formatSisaWaktu(totalMenit: number) {
   const jam = Math.floor(totalMenit / 60);
   const menit = totalMenit % 60;
   return `${String(jam).padStart(2, "0")}:${String(menit).padStart(2, "0")}`;
+}
+// "2026-09-28" -> "Senin, 28 September 2026" (panjang) / "Sen, 28 Sep 2026" (pendek)
+function formatTanggal(iso: string, panjang = false) {
+  const d = new Date(`${iso.slice(0, 10)}T00:00:00`);
+  if (Number.isNaN(d.getTime())) return iso;
+  return d.toLocaleDateString(
+    "id-ID",
+    panjang
+      ? { weekday: "long", day: "numeric", month: "long", year: "numeric" }
+      : { weekday: "short", day: "numeric", month: "short", year: "numeric" }
+  );
 }
 function formatWaktuTabel(waktu: string) {
   return waktu.split(".")[0];
@@ -458,8 +471,22 @@ export default function JamOperasionalPage() {
   }
   if (loadError || !status) {
     return (
-      <div className="rounded-xl border border-error-container bg-error-container/20 px-md py-sm text-body-sm text-on-error-container">
-        Gagal memuat data: {loadError ?? "data tidak ditemukan"}
+      <div
+        role="alert"
+        className="flex items-center justify-between gap-md rounded-xl border border-error-container bg-error-container/20 px-md py-sm text-body-sm text-on-error-container"
+      >
+        <span>Gagal memuat data: {loadError ?? "data tidak ditemukan"}</span>
+        <button
+          type="button"
+          onClick={() => {
+            setIsLoadingPage(true);
+            loadStatus();
+          }}
+          className="inline-flex shrink-0 items-center gap-xs font-semibold underline"
+        >
+          <RefreshCw className="h-4 w-4" />
+          Coba lagi
+        </button>
       </div>
     );
   }
@@ -536,7 +563,7 @@ export default function JamOperasionalPage() {
             <div className="mt-md flex flex-col gap-sm rounded-xl border border-outline-variant bg-surface-container-low p-md sm:flex-row sm:items-center sm:justify-between">
               <div className="min-w-0">
                 <div className="flex flex-wrap items-center gap-sm">
-                  <p className="text-title-md text-on-surface">CFD {sesi.tanggal}</p>
+                  <p className="text-title-md text-on-surface">{formatTanggal(sesi.tanggal, true)}</p>
                   <span className={`pt-pill ${sesi.aktif ? "pt-pill-success" : "pt-pill-neutral"}`}>
                     <span className={`pt-pill-dot ${sesi.aktif ? "is-pulse" : ""}`} />
                     {sesi.aktif ? "Berlangsung" : sesiSudahLewat ? "Sudah Berakhir" : "Belum Mulai"}
@@ -552,7 +579,7 @@ export default function JamOperasionalPage() {
                   )}
                 </p>
               </div>
-              {sesi.aktif && (
+              {sesi.aktif ? (
                 <button
                   type="button"
                   onClick={handleAkhiriSesi}
@@ -561,7 +588,25 @@ export default function JamOperasionalPage() {
                   <AlertTriangle className="h-4 w-4" strokeWidth={2} />
                   Akhiri Lebih Awal
                 </button>
-              )}
+              ) : sesiSudahLewat ? (
+                // Sebelumnya tombol "Buka Sesi Sekarang" cuma muncul kalau
+                // belum ada sesi sama sekali. Setelah sesi diakhiri, admin
+                // harus lewat "Ubah Jam" -- sekarang bisa langsung dari sini
+                // (endpoint yang sama, backend memakai ulang baris sesi hari ini;
+                // jam selesai jadi 23.59, bisa diubah lewat "Ubah Jam"). Sesi
+                // yang BELUM mulai tidak diberi tombol ini -- nanti mulai
+                // otomatis sesuai jadwal, dan tombol ini akan mengganti jam
+                // selesainya.
+                <button
+                  type="button"
+                  onClick={handleBukaSesiManual}
+                  disabled={isBukaSesi}
+                  className="pt-btn pt-btn-primary self-end sm:self-center"
+                >
+                  {isBukaSesi ? <Loader2 className="h-4 w-4 animate-spin" strokeWidth={2} /> : <Play className="h-4 w-4" strokeWidth={2} />}
+                  Buka Lagi Sekarang
+                </button>
+              ) : null}
             </div>
           )}
 
@@ -635,20 +680,26 @@ export default function JamOperasionalPage() {
               />
             </svg>
             <div className="absolute flex flex-col items-center">
-              <span className="text-title-lg font-semibold text-on-surface">
+              <span className="text-headline-md font-semibold tabular-nums text-on-surface">
                 {sesi && sesi.aktif ? formatSisaWaktu(sesi.sisaMenit) : "--:--"}
               </span>
-              <span className="text-label-sm text-on-surface-variant">Sisa Waktu CFD</span>
+              <span className="text-label-sm text-on-surface-variant">jam : menit</span>
             </div>
           </div>
-          <p className="text-label-sm text-on-surface-variant">
-            {sesi && sesi.aktif ? (
+          <p className="text-title-md text-on-surface">Sisa Waktu CFD</p>
+          <p className="text-label-sm font-normal text-on-surface-variant">
+            {!sesi ? (
+              "Belum ada sesi untuk hari ini."
+            ) : sesi.aktif ? (
               <>
-                Sesi hari ini akan berakhir pada{" "}
-                <strong className="text-on-surface">{formatJamTampilan(sesi.jamSelesaiRencana)} WIB</strong>
+                Berakhir pukul <strong className="text-on-surface">{formatJamTampilan(sesi.jamSelesaiRencana)} WIB</strong>
               </>
+            ) : sesiSudahLewat ? (
+              <>Sesi hari ini sudah berakhir.</>
             ) : (
-              "Belum ada sesi yang sedang berlangsung"
+              <>
+                Dimulai pukul <strong className="text-on-surface">{formatJamTampilan(sesi.jamMulai)} WIB</strong>
+              </>
             )}
           </p>
         </div>
@@ -687,9 +738,9 @@ export default function JamOperasionalPage() {
                         key={row.id}
                         className="border-b border-outline-variant last:border-0 hover:bg-surface-container-low/50 transition-colors"
                       >
-                        <td className="px-sm py-sm text-body-md text-on-surface">{row.tanggal}</td>
-                        <td className="px-sm py-sm text-body-md text-on-surface-variant">{formatWaktuTabel(row.jamMulai)}</td>
-                        <td className="px-sm py-sm text-body-md text-on-surface-variant">{formatWaktuTabel(row.jamSelesai)}</td>
+                        <td className="px-sm py-sm text-body-md text-on-surface">{formatTanggal(row.tanggal)}</td>
+                        <td className="px-sm py-sm text-body-md tabular-nums text-on-surface-variant">{formatWaktuTabel(row.jamMulai)}</td>
+                        <td className="px-sm py-sm text-body-md tabular-nums text-on-surface-variant">{formatWaktuTabel(row.jamSelesai)}</td>
                         <td className="px-sm py-sm text-body-md text-on-surface-variant">{row.durasi}</td>
                         <td className="px-sm py-sm">
                           <span className={`pt-pill ${style.pill}`}>
@@ -712,7 +763,7 @@ export default function JamOperasionalPage() {
                 return (
                   <div key={row.id} className="rounded-xl border border-outline-variant bg-surface-container-low p-md">
                     <div className="flex items-center justify-between gap-sm">
-                      <p className="text-body-md font-medium text-on-surface">{row.tanggal}</p>
+                      <p className="text-body-md font-medium text-on-surface">{formatTanggal(row.tanggal)}</p>
                       <span className={`pt-pill ${style.pill}`}>
                         <Icon className="h-3 w-3" strokeWidth={2.5} />
                         {style.label}

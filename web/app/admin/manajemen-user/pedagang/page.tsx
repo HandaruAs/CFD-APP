@@ -19,12 +19,15 @@ import {
   ChevronLeft,
   ChevronRight,
   Loader2,
+  RotateCcw,
   X,
   type LucideIcon,
 } from "lucide-react";
 import { ConfirmDialog } from "@/components/confirm-dialog";
 
-const API_URL = "http://localhost:8080";
+// Sama dengan halaman admin lain -- sebelumnya hardcode localhost:8080,
+// jadi halaman ini tidak jalan saat aplikasi di-deploy.
+const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "";
 
 type PedagangItem = {
   pedagangId: string;
@@ -70,6 +73,12 @@ type StatusFilter = "" | "lama" | "baru";
 function todayStr() {
   return new Date().toISOString().split("T")[0];
 }
+
+const LABEL_KATEGORI: Record<string, string> = {
+  makanan_minuman: "Makanan & Minuman",
+  bukan_makanan_minuman: "Bukan Makanan & Minuman",
+};
+const labelKategori = (k: string) => LABEL_KATEGORI[k] ?? (k && k !== "-" ? k : "-");
 
 function statusLabel(it: PedagangItem) {
   return it.statusPedagang === "baru" ? "Pedagang Baru" : "Pedagang Lama";
@@ -250,12 +259,13 @@ export default function ManajemenUserPedagangPage() {
           it.namaLengkap,
           it.email,
           it.namaUsaha,
-          it.kategori,
+          labelKategori(it.kategori),
           it.kontak || "-",
           statusLabel(it),
         ]),
-        styles: { fontSize: 8 },
-        headStyles: { fillColor: [30, 58, 138] },
+        styles: { fontSize: 8, cellPadding: 2 },
+        headStyles: { fillColor: [0, 40, 142], textColor: 255, fontStyle: "bold" },
+        alternateRowStyles: { fillColor: [243, 246, 255] },
       });
       doc.save(`data-pedagang-${todayStr()}.pdf`);
     } catch (err) {
@@ -277,7 +287,7 @@ export default function ManajemenUserPedagangPage() {
           Pedagang: it.namaLengkap,
           Email: it.email,
           Usaha: it.namaUsaha,
-          Kategori: it.kategori,
+          Kategori: labelKategori(it.kategori),
           Kontak: it.kontak || "-",
           Status: statusLabel(it),
         }))
@@ -311,189 +321,255 @@ export default function ManajemenUserPedagangPage() {
     }
   }
 
-  const statCards: { label: string; value: number | null; icon: LucideIcon; bg: string; color: string; sub?: string }[] = [
-    { label: "Total Pedagang", value: stats.total, icon: Users, bg: "bg-blue-50", color: "text-blue-700" },
-    { label: "Pedagang Lama", value: stats.lama, icon: Store, bg: "bg-emerald-50", color: "text-emerald-600" },
-    { label: "Pedagang Baru", value: stats.baru, icon: UserPlus, bg: "bg-amber-50", color: "text-amber-600" },
+  const statCards: { label: string; value: number | null; icon: LucideIcon; warna: string; filter: StatusFilter }[] = [
+    { label: "Total Pedagang", value: stats.total, icon: Users, warna: "bg-primary-fixed text-on-primary-fixed", filter: "" },
+    { label: "Pedagang Baru", value: stats.baru, icon: UserPlus, warna: "bg-tertiary-fixed text-on-tertiary-fixed", filter: "baru" },
+    { label: "Pedagang Lama", value: stats.lama, icon: Store, warna: "bg-secondary-container/60 text-on-secondary-container", filter: "lama" },
   ];
 
   const totalPages = Math.max(1, Math.ceil(total / LIMIT));
-  const selectCls =
-    "rounded-lg border border-slate-200 bg-slate-50 px-3 py-3 text-sm text-slate-700 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/15";
-  const secondaryBtn =
-    "flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-600 hover:bg-slate-50 disabled:opacity-50";
+  const dari = total === 0 ? 0 : (page - 1) * LIMIT + 1;
+  const sampai = Math.min(page * LIMIT, total);
+  const adaFilter = Boolean(searchInput || ruasKey || statusFilter);
+
+  function resetFilter() {
+    setSearchInput("");
+    setSearch("");
+    setRuasKey("");
+    setStatusFilter("");
+    setPage(1);
+  }
+
+  // Nomor halaman ringkas: 1 … 4 5 6 … 12
+  const nomorHalaman = useMemo(() => {
+    const set = new Set([1, totalPages, page - 1, page, page + 1].filter((n) => n >= 1 && n <= totalPages));
+    const urut = [...set].sort((a, b) => a - b);
+    const hasil: (number | "…")[] = [];
+    urut.forEach((n, i) => {
+      if (i > 0 && n - urut[i - 1] > 1) hasil.push("…");
+      hasil.push(n);
+    });
+    return hasil;
+  }, [page, totalPages]);
 
   return (
-    <div>
-      {/* Heading */}
-      <div className="mb-8 flex flex-wrap items-start justify-between gap-4">
+    <div className="flex flex-col gap-lg pb-xl">
+      {/* ===== HEADER ===== */}
+      <div className="flex flex-wrap items-end justify-between gap-md">
         <div>
-          <h1 className="text-4xl font-bold tracking-tight text-slate-900">Manajemen User Pedagang</h1>
-          <p className="mt-2 text-base text-slate-500">
+          <h2 className="text-headline-lg text-on-surface">Manajemen User Pedagang</h2>
+          <p className="mt-xs max-w-2xl text-body-md text-on-surface-variant">
             Kelola akun dan data pedagang CFD: tambah manual, import dari file, filter per ruas, dan export laporan.
           </p>
         </div>
         <button
           type="button"
           onClick={() => router.push("/admin/manajemen-user/pedagang/tambah")}
-          className="flex items-center gap-2 rounded-lg bg-blue-900 px-5 py-3 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-950"
+          className="pt-btn pt-btn-primary"
         >
           <UserPlus className="h-4 w-4" strokeWidth={2.2} />
           Tambah Pedagang
         </button>
       </div>
 
-      {/* Stat cards */}
-      <div className="mb-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-        {statCards.map((c) => (
-          <div key={c.label} className="relative rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
-            <div className={`absolute right-4 top-4 flex h-10 w-10 items-center justify-center rounded-lg ${c.bg}`}>
-              <c.icon className={`h-5 w-5 ${c.color}`} strokeWidth={2.2} />
-            </div>
-            <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">{c.label}</p>
-            <p className="mt-2 text-4xl font-bold text-slate-900">{c.value ?? "-"}</p>
-            {c.sub && <p className="mt-1.5 text-sm font-medium text-slate-500">{c.sub}</p>}
-          </div>
-        ))}
-      </div>
-
-      {/* Filter */}
-      <div className="mb-4 flex flex-wrap items-center gap-3 rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-        <div className="relative min-w-[220px] flex-1">
-          <Search className="absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-          <input
-            type="text"
-            value={searchInput}
-            onChange={(e) => setSearchInput(e.target.value)}
-            placeholder="Cari nama, NIK, atau usaha..."
-            className="w-full rounded-lg border border-slate-200 bg-slate-50 py-3 pl-10 pr-3 text-sm text-slate-900 outline-none placeholder:text-slate-400 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/15"
-          />
-        </div>
-        <select
-          value={ruasKey}
-          onChange={(e) => {
-            setRuasKey(e.target.value);
-            setPage(1);
-          }}
-          className={selectCls}
-        >
-          <option value="">Semua ruas</option>
-          {daftarRuas.map((r) => (
-            <option key={r.key} value={r.key}>
-              {r.label}
-            </option>
-          ))}
-        </select>
-        <select
-          value={statusFilter}
-          onChange={(e) => {
-            setStatusFilter(e.target.value as StatusFilter);
-            setPage(1);
-          }}
-          className={selectCls}
-        >
-          <option value="">Semua status</option>
-          <option value="lama">Pedagang Lama</option>
-          <option value="baru">Pedagang Baru</option>
-        </select>
-      </div>
-
-      {/* Aksi massal */}
-      <div className="mb-4 flex flex-wrap items-center gap-2">
-        <button type="button" onClick={handleExportPdf} disabled={exporting !== null} className={secondaryBtn}>
-          <FileText className="h-4 w-4" />
-          {exporting === "pdf" ? "Membuat PDF..." : "Export PDF"}
-        </button>
-        <button type="button" onClick={handleExportExcel} disabled={exporting !== null} className={secondaryBtn}>
-          <FileSpreadsheet className="h-4 w-4" />
-          {exporting === "excel" ? "Membuat Excel..." : "Export Excel"}
-        </button>
-        <button type="button" onClick={() => setShowImport(true)} className={secondaryBtn}>
-          <Upload className="h-4 w-4" />
-          Import File
-        </button>
+      {/* ===== KARTU STATISTIK (klik = filter status) ===== */}
+      <div className="grid grid-cols-1 gap-md sm:grid-cols-3">
+        {statCards.map((c) => {
+          const aktif = statusFilter === c.filter;
+          return (
+            <button
+              key={c.label}
+              type="button"
+              onClick={() => {
+                setStatusFilter(c.filter);
+                setPage(1);
+              }}
+              aria-pressed={aktif}
+              className={`flex items-center justify-between gap-md rounded-2xl border bg-surface-container-lowest p-lg text-left transition-[border-color,box-shadow] hover:shadow-md ${
+                aktif ? "border-primary ring-2 ring-primary/15" : "border-outline-variant"
+              }`}
+            >
+              <div>
+                <p className="text-label-md text-on-surface-variant">{c.label}</p>
+                <p className="mt-1 text-headline-lg tabular-nums text-on-surface">{c.value ?? "–"}</p>
+                {c.value !== null && stats.total ? (
+                  <p className="text-label-sm text-on-surface-variant">
+                    {c.filter === "" ? "Klik untuk tampilkan semua" : `${Math.round((c.value / stats.total) * 100)}% dari total`}
+                  </p>
+                ) : null}
+              </div>
+              <span className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl ${c.warna}`}>
+                <c.icon className="h-6 w-6" strokeWidth={2} />
+              </span>
+            </button>
+          );
+        })}
       </div>
 
       {error && (
-        <div className="mb-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</div>
+        <div role="alert" className="rounded-xl border border-error-container bg-error-container/30 px-md py-sm text-body-sm text-on-error-container">
+          {error}
+        </div>
       )}
 
-      {/* Tabel */}
-      <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+      {/* ===== TABEL + TOOLBAR ===== */}
+      <section className="overflow-hidden rounded-2xl border border-outline-variant bg-surface-container-lowest">
+        <div className="flex flex-col gap-sm border-b border-outline-variant p-md">
+          <div className="flex flex-wrap items-center gap-sm">
+            <label className="relative min-w-[220px] flex-1">
+              <span className="sr-only">Cari pedagang</span>
+              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-on-surface-variant" />
+              <input
+                type="text"
+                value={searchInput}
+                onChange={(e) => setSearchInput(e.target.value)}
+                placeholder="Cari nama, NIK, atau usaha"
+                className="pt-input !py-2.5 pl-9"
+              />
+            </label>
+            <select
+              value={ruasKey}
+              onChange={(e) => {
+                setRuasKey(e.target.value);
+                setPage(1);
+              }}
+              className="pt-input !w-auto !py-2.5"
+              aria-label="Filter ruas"
+            >
+              <option value="">Semua ruas</option>
+              {daftarRuas.map((r) => (
+                <option key={r.key} value={r.key}>
+                  {r.label}
+                </option>
+              ))}
+            </select>
+            <select
+              value={statusFilter}
+              onChange={(e) => {
+                setStatusFilter(e.target.value as StatusFilter);
+                setPage(1);
+              }}
+              className="pt-input !w-auto !py-2.5"
+              aria-label="Filter status"
+            >
+              <option value="">Semua status</option>
+              <option value="baru">Pedagang Baru</option>
+              <option value="lama">Pedagang Lama</option>
+            </select>
+            {adaFilter && (
+              <button type="button" onClick={resetFilter} className="pt-btn pt-btn-ghost">
+                <RotateCcw className="h-4 w-4" />
+                Reset
+              </button>
+            )}
+          </div>
+          <div className="flex flex-wrap items-center gap-sm">
+            <button type="button" onClick={handleExportPdf} disabled={exporting !== null} className="pt-btn pt-btn-ghost border border-outline-variant">
+              {exporting === "pdf" ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileText className="h-4 w-4" />}
+              {exporting === "pdf" ? "Membuat PDF..." : "Export PDF"}
+            </button>
+            <button type="button" onClick={handleExportExcel} disabled={exporting !== null} className="pt-btn pt-btn-ghost border border-outline-variant">
+              {exporting === "excel" ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileSpreadsheet className="h-4 w-4" />}
+              {exporting === "excel" ? "Membuat Excel..." : "Export Excel"}
+            </button>
+            <button type="button" onClick={() => setShowImport(true)} className="pt-btn pt-btn-ghost border border-outline-variant">
+              <Upload className="h-4 w-4" />
+              Import File
+            </button>
+            <span className="ml-auto text-label-sm font-normal text-on-surface-variant">
+              Export mengikuti filter yang sedang aktif.
+            </span>
+          </div>
+        </div>
+
         <div className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b border-slate-200 bg-slate-50/60 text-left">
-                {["LOKASI", "NIK / NO. KK", "PEDAGANG", "USAHA", "KONTAK", "STATUS"].map((h) => (
-                  <th key={h} className="whitespace-nowrap px-5 py-3.5 text-xs font-bold tracking-wide text-slate-500">
-                    {h}
-                  </th>
-                ))}
-                <th className="px-5 py-3.5 text-right text-xs font-bold tracking-wide text-slate-500">AKSI</th>
+          <table className="w-full min-w-[960px] text-left">
+            <thead className="bg-surface-container-low text-label-md">
+              <tr>
+                <th className="px-lg py-sm font-medium">Pedagang</th>
+                <th className="px-md py-sm font-medium">NIK / No. KK</th>
+                <th className="px-md py-sm font-medium">Usaha</th>
+                <th className="px-md py-sm font-medium">Lokasi terakhir</th>
+                <th className="px-md py-sm font-medium">Kontak</th>
+                <th className="px-md py-sm font-medium">Status</th>
+                <th className="px-lg py-sm text-right font-medium">Aksi</th>
               </tr>
             </thead>
-            <tbody>
+            <tbody className="divide-y divide-outline-variant">
               {loading ? (
-                <tr>
-                  <td colSpan={7} className="px-5 py-12 text-center text-sm text-slate-400">
-                    <span className="inline-flex items-center gap-2">
-                      <Loader2 className="h-4 w-4 animate-spin" /> Memuat data...
-                    </span>
-                  </td>
-                </tr>
+                Array.from({ length: 6 }).map((_, i) => (
+                  <tr key={i}>
+                    <td colSpan={7} className="px-lg py-sm">
+                      <div className="h-11 animate-pulse rounded-xl bg-surface-container-high" />
+                    </td>
+                  </tr>
+                ))
               ) : items.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="px-5 py-16">
-                    <div className="flex flex-col items-center gap-2 text-center">
-                      <Inbox className="h-9 w-9 text-slate-300" strokeWidth={1.6} />
-                      <p className="text-base font-semibold text-slate-600">Tidak ada data pedagang</p>
-                      <p className="text-sm text-slate-400">Coba ubah filter, atau tambah pedagang baru.</p>
+                  <td colSpan={7} className="px-lg py-xl">
+                    <div className="flex flex-col items-center gap-sm text-center">
+                      <span className="pt-empty-icon">
+                        <Inbox className="h-6 w-6" />
+                      </span>
+                      <p className="text-body-md font-semibold text-on-surface">Tidak ada data pedagang</p>
+                      <p className="text-body-sm text-on-surface-variant">
+                        {adaFilter ? "Coba ubah atau reset filter." : "Tambah pedagang baru atau import dari file."}
+                      </p>
                     </div>
                   </td>
                 </tr>
               ) : (
                 items.map((it) => (
-                  <tr key={it.pedagangId} className="border-b border-slate-100 transition last:border-0 hover:bg-slate-50/60">
-                    <td className="px-5 py-4">
-                      <span className="whitespace-nowrap rounded-full bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-600">
-                        {it.lokasi}
-                      </span>
+                  <tr key={it.pedagangId}>
+                    <td className="px-lg py-sm">
+                      <div className="flex items-center gap-sm">
+                        <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-primary/10 text-label-md font-semibold text-primary">
+                          {inisial(it.namaLengkap)}
+                        </span>
+                        <div className="min-w-0">
+                          <p className="truncate text-body-md font-semibold text-on-surface">{it.namaLengkap}</p>
+                          <p className="truncate text-label-sm font-normal text-on-surface-variant">{it.email}</p>
+                        </div>
+                      </div>
                     </td>
-                    <td className="px-5 py-4 font-medium text-slate-600">{it.nik}</td>
-                    <td className="px-5 py-4">
-                      <p className="font-semibold text-slate-900">{it.namaLengkap}</p>
-                      <p className="text-sm text-slate-400">{it.email}</p>
+                    <td className="px-md py-sm font-mono text-body-sm text-on-surface-variant">{it.nik}</td>
+                    <td className="px-md py-sm">
+                      <p className="text-body-md text-on-surface">{it.namaUsaha}</p>
+                      <p className="text-label-sm font-normal text-on-surface-variant">{labelKategori(it.kategori)}</p>
                     </td>
-                    <td className="px-5 py-4 text-slate-600">
-                      {it.namaUsaha}
-                      <p className="text-xs text-slate-400">{it.kategori}</p>
+                    <td className="px-md py-sm">
+                      {it.lokasi && it.lokasi !== "-" ? (
+                        <span className="whitespace-nowrap rounded-full bg-surface-container-low px-sm py-1 text-label-sm text-on-surface-variant">
+                          {it.lokasi}
+                        </span>
+                      ) : (
+                        <span className="text-label-sm font-normal text-outline">Belum pernah klaim</span>
+                      )}
                     </td>
-                    <td className="px-5 py-4 font-medium text-slate-600">{it.kontak || "-"}</td>
-                    <td className="px-5 py-4">
-                      <span
-                        className={`inline-flex items-center gap-1.5 whitespace-nowrap rounded-full px-2.5 py-1 text-xs font-semibold ${
-                          it.statusPedagang === "baru" ? "bg-amber-50 text-amber-700" : "bg-emerald-50 text-emerald-700"
-                        }`}
-                      >
-                        <span className="h-1.5 w-1.5 rounded-full bg-current" />
+                    <td className="px-md py-sm text-body-sm text-on-surface-variant">{it.kontak || "–"}</td>
+                    <td className="px-md py-sm">
+                      <span className={`pt-pill !px-sm !py-1 !text-label-sm ${it.statusPedagang === "baru" ? "pt-pill-warning" : "pt-pill-success"}`}>
+                        <span className="pt-pill-dot" aria-hidden="true" />
                         {statusLabel(it)}
                       </span>
                     </td>
-                    <td className="px-5 py-4">
-                      <div className="flex items-center justify-end gap-1.5">
+                    <td className="px-lg py-sm">
+                      <div className="flex items-center justify-end gap-xs">
                         <button
                           type="button"
                           onClick={() => router.push(`/admin/manajemen-user/pedagang/edit/${it.userId}`)}
-                          className="rounded-lg p-2 text-slate-400 hover:bg-slate-100 hover:text-blue-700"
+                          className="flex h-9 w-9 items-center justify-center rounded-lg text-on-surface-variant transition-colors hover:bg-primary/10 hover:text-primary"
                           aria-label={`Edit ${it.namaLengkap}`}
+                          title="Edit"
                         >
                           <Pencil className="h-4 w-4" />
                         </button>
                         <button
                           type="button"
                           onClick={() => setDeleteTarget(it)}
-                          className="rounded-lg p-2 text-slate-400 hover:bg-red-50 hover:text-red-600"
+                          className="flex h-9 w-9 items-center justify-center rounded-lg text-on-surface-variant transition-colors hover:bg-error-container/50 hover:text-error"
                           aria-label={`Hapus ${it.namaLengkap}`}
+                          title="Hapus"
                         >
                           <Trash2 className="h-4 w-4" />
                         </button>
@@ -506,33 +582,59 @@ export default function ManajemenUserPedagangPage() {
           </table>
         </div>
 
-        {/* Pagination */}
-        <div className="flex items-center justify-between border-t border-slate-200 px-5 py-4">
-          <p className="text-sm font-medium text-slate-500">
-            {total > 0 ? `Menampilkan ${items.length} dari ${total}` : "Tidak ada data"}
+        {/* ===== PAGINATION ===== */}
+        <div className="flex flex-wrap items-center justify-between gap-sm border-t border-outline-variant px-lg py-sm">
+          <p className="text-body-sm text-on-surface-variant">
+            {total > 0 ? (
+              <>
+                Menampilkan <span className="font-semibold tabular-nums text-on-surface">{dari}–{sampai}</span> dari{" "}
+                <span className="font-semibold tabular-nums text-on-surface">{total}</span> pedagang
+              </>
+            ) : (
+              "Tidak ada data"
+            )}
           </p>
-          <div className="flex items-center gap-1.5 text-sm">
+          <nav className="flex items-center gap-xs" aria-label="Halaman">
             <button
+              type="button"
               onClick={() => setPage((p) => Math.max(1, p - 1))}
               disabled={page <= 1}
-              className="flex h-8 w-8 items-center justify-center rounded-md text-slate-400 hover:bg-slate-100 disabled:opacity-40 disabled:hover:bg-transparent"
+              className="flex h-9 w-9 items-center justify-center rounded-lg text-on-surface-variant hover:bg-surface-container-high disabled:opacity-40 disabled:hover:bg-transparent"
               aria-label="Halaman sebelumnya"
             >
               <ChevronLeft className="h-4 w-4" />
             </button>
-            <span className="flex h-8 w-8 items-center justify-center rounded-md bg-blue-900 font-semibold text-white">{page}</span>
-            <span className="px-1 text-slate-400">/ {totalPages}</span>
+            {nomorHalaman.map((n, i) =>
+              n === "…" ? (
+                <span key={`e${i}`} className="px-1 text-on-surface-variant">
+                  …
+                </span>
+              ) : (
+                <button
+                  key={n}
+                  type="button"
+                  onClick={() => setPage(n)}
+                  aria-current={n === page ? "page" : undefined}
+                  className={`flex h-9 min-w-9 items-center justify-center rounded-lg px-2 text-label-md tabular-nums transition-colors ${
+                    n === page ? "bg-primary text-on-primary" : "text-on-surface-variant hover:bg-surface-container-high"
+                  }`}
+                >
+                  {n}
+                </button>
+              )
+            )}
             <button
+              type="button"
               onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
               disabled={page >= totalPages}
-              className="flex h-8 w-8 items-center justify-center rounded-md text-slate-400 hover:bg-slate-100 disabled:opacity-40 disabled:hover:bg-transparent"
+              className="flex h-9 w-9 items-center justify-center rounded-lg text-on-surface-variant hover:bg-surface-container-high disabled:opacity-40 disabled:hover:bg-transparent"
               aria-label="Halaman berikutnya"
             >
               <ChevronRight className="h-4 w-4" />
             </button>
-          </div>
+          </nav>
         </div>
-      </div>
+      </section>
 
       {showImport && <ImportPedagangModal onClose={() => setShowImport(false)} onSaved={() => reload(true)} />}
 
@@ -546,6 +648,11 @@ export default function ManajemenUserPedagangPage() {
       />
     </div>
   );
+}
+
+function inisial(nama: string) {
+  const b = nama.trim().split(/\s+/).filter(Boolean);
+  return b.length ? (b[0][0] + (b.length > 1 ? b[b.length - 1][0] : "")).toUpperCase() : "?";
 }
 
 // Modal import file CSV/JSON. Semua pedagang dari file otomatis jadi "Pedagang Lama".
@@ -583,53 +690,63 @@ function ImportPedagangModal({ onClose, onSaved }: { onClose: () => void; onSave
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4 backdrop-blur-sm">
-      <div className="w-full max-w-lg rounded-2xl bg-white shadow-xl">
-        <div className="flex items-center justify-between border-b border-slate-200 px-6 py-4">
-          <h2 className="text-lg font-semibold text-slate-900">Import Pedagang dari File</h2>
-          <button type="button" onClick={onClose} className="rounded-full p-1.5 text-slate-400 hover:bg-slate-100" aria-label="Tutup">
+    <div className="pt-modal-overlay" role="dialog" aria-modal="true" aria-labelledby="judul-import">
+      <div className="pt-modal-box !max-w-[34rem]">
+        <div className="flex items-center justify-between border-b border-outline-variant px-lg py-md">
+          <h2 id="judul-import" className="text-title-lg text-on-surface">
+            Import Pedagang dari File
+          </h2>
+          <button type="button" onClick={onClose} className="flex h-9 w-9 items-center justify-center rounded-full text-on-surface-variant hover:bg-surface-container-high" aria-label="Tutup">
             <X className="h-5 w-5" />
           </button>
         </div>
 
-        <form onSubmit={handleSubmit} className="space-y-4 px-6 py-5">
-          <p className="text-sm text-slate-600">
-            Upload file <strong>.csv</strong> atau <strong>.json</strong>. Semua pedagang dari file ini otomatis tercatat
-            sebagai <strong>Pedagang Lama</strong>.
+        <form onSubmit={handleSubmit} className="flex flex-col gap-md overflow-y-auto px-lg py-md">
+          <p className="text-body-sm text-on-surface-variant">
+            Upload file <strong>.csv</strong> atau <strong>.json</strong>. Semua pedagang dari file ini otomatis tercatat sebagai{" "}
+            <strong>Pedagang Lama</strong>.
           </p>
-          <div className="rounded-lg bg-slate-50 p-3 text-xs text-slate-500">
-            <p className="font-semibold text-slate-600">Format CSV (baris pertama header):</p>
-            <code className="mt-1 block break-all">
+          <div className="rounded-xl bg-surface-container-low p-md text-label-sm font-normal text-on-surface-variant">
+            <p className="font-semibold text-on-surface">Format CSV (baris pertama header):</p>
+            <code className="mt-1 block break-all font-mono">
               nama_lengkap,nik,email,nama_usaha,jenis_dagangan,phone,alamat,lokasi_lapak,tanggal_lahir,jenis_lapak
             </code>
-            <p className="mt-2">
-              Kolom nama_lengkap, nik, email, dan nama_usaha wajib diisi; sisanya boleh kosong. Dari Excel, simpan dulu
-              sebagai CSV (File → Save As → CSV).
+            <p className="mt-sm">
+              Kolom nama_lengkap, nik, email, dan nama_usaha wajib diisi; sisanya boleh kosong. Dari Excel, simpan dulu sebagai
+              CSV (File → Save As → CSV).
             </p>
           </div>
 
-          <input
-            type="file"
-            accept=".csv,.json"
-            onChange={(e) => setFile(e.target.files?.[0] ?? null)}
-            className="w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm"
-          />
+          <label
+            className={`flex cursor-pointer flex-col items-center gap-xs rounded-xl border-2 border-dashed px-md py-lg text-center transition-colors ${
+              file ? "border-primary bg-primary/5" : "border-outline-variant hover:border-primary/50 hover:bg-surface-container-low"
+            }`}
+          >
+            <Upload className={`h-6 w-6 ${file ? "text-primary" : "text-on-surface-variant"}`} />
+            <span className="text-body-sm font-semibold text-on-surface">{file ? file.name : "Pilih file CSV atau JSON"}</span>
+            <span className="text-label-sm font-normal text-on-surface-variant">
+              {file ? `${Math.max(1, Math.round(file.size / 1024))} KB · klik untuk ganti file` : "Klik untuk memilih dari komputer"}
+            </span>
+            <input type="file" accept=".csv,.json" onChange={(e) => setFile(e.target.files?.[0] ?? null)} className="sr-only" />
+          </label>
 
           {error && (
-            <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</div>
+            <div role="alert" className="rounded-xl border border-error-container bg-error-container/30 px-md py-sm text-body-sm text-on-error-container">
+              {error}
+            </div>
           )}
 
           {result && (
             <div
-              className={`rounded-lg border px-4 py-3 text-sm ${
-                result.gagal === 0 ? "border-emerald-200 bg-emerald-50 text-emerald-800" : "border-amber-200 bg-amber-50 text-amber-900"
+              className={`rounded-xl px-md py-sm text-body-sm ${
+                result.gagal === 0 ? "bg-secondary-container/40 text-on-secondary-container" : "bg-tertiary-fixed/60 text-on-tertiary-fixed"
               }`}
             >
               <p>
                 Berhasil: <strong>{result.berhasil}</strong> &middot; Gagal: <strong>{result.gagal}</strong>
               </p>
               {result.errors?.length > 0 && (
-                <ul className="mt-2 list-disc space-y-1 pl-5 text-xs">
+                <ul className="mt-sm max-h-40 list-disc space-y-1 overflow-y-auto pl-5 text-label-sm font-normal">
                   {result.errors.map((msg, i) => (
                     <li key={i}>{msg}</li>
                   ))}
@@ -638,16 +755,12 @@ function ImportPedagangModal({ onClose, onSaved }: { onClose: () => void; onSave
             </div>
           )}
 
-          <div className="flex justify-end gap-2 border-t border-slate-200 pt-4">
-            <button type="button" onClick={onClose} className="rounded-lg px-4 py-2.5 text-sm font-semibold text-slate-600 hover:bg-slate-100">
+          <div className="flex justify-end gap-sm border-t border-outline-variant pt-md">
+            <button type="button" onClick={onClose} className="pt-btn pt-btn-ghost">
               {result ? "Tutup" : "Batal"}
             </button>
-            <button
-              type="submit"
-              disabled={submitting}
-              className="flex items-center gap-2 rounded-lg bg-blue-900 px-5 py-2.5 text-sm font-semibold text-white hover:bg-blue-950 disabled:opacity-60"
-            >
-              <Upload className="h-4 w-4" />
+            <button type="submit" disabled={submitting || !file} className="pt-btn pt-btn-primary">
+              {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}
               {submitting ? "Mengimpor..." : "Import"}
             </button>
           </div>

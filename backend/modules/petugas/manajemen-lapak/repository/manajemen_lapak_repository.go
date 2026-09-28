@@ -604,7 +604,10 @@ func (r *Repository) GetPedagangLama(ctx context.Context, filter entity.Pedagang
 			COALESCE(u.phone, '') AS kontak,
 			COALESCE(mj.nama_jalan || ' / ' || lk.nomor_lapak, '-') AS lokasi,
 			p.status_verifikasi::text AS status,
-			CASE WHEN p.submitted_at IS NULL THEN 'lama' ELSE 'baru' END AS status_pedagang
+			CASE WHEN p.submitted_at IS NULL THEN 'lama' ELSE 'baru' END AS status_pedagang,
+			-- waktu masuk: pedagang baru = saat daftar sendiri, pedagang
+			-- lama = saat ditambahkan admin. Dipakai untuk urutan saja.
+			COALESCE(p.submitted_at, p.created_at) AS waktu_masuk
 		FROM pedagang_profiles p
 		JOIN users u ON p.user_id = u.id
 		LEFT JOIN lapak_klaim lk ON lk.pedagang_id = p.id
@@ -628,7 +631,15 @@ func (r *Repository) GetPedagangLama(ctx context.Context, filter entity.Pedagang
 		return nil, 0, err
 	}
 
-	pagedQuery := fmt.Sprintf(`SELECT * FROM (%s) t ORDER BY t.nama_usaha LIMIT $%d OFFSET $%d`, query, argIdx, argIdx+1)
+	// Urutan: pedagang baru dulu, lalu pedagang lama. Di dalam tiap kelompok
+	// yang paling baru masuk di atas. t.id sebagai penentu terakhir supaya
+	// urutannya selalu sama (penting untuk pagination -- tanpa ini pedagang
+	// dengan waktu yang sama bisa muncul dobel / hilang antar halaman).
+	pagedQuery := fmt.Sprintf(`
+		SELECT id, user_id, nik, nama_lengkap, email, nama_usaha, kategori, kontak, lokasi, status, status_pedagang
+		FROM (%s) t
+		ORDER BY (t.status_pedagang = 'baru') DESC, t.waktu_masuk DESC, t.id
+		LIMIT $%d OFFSET $%d`, query, argIdx, argIdx+1)
 	args = append(args, limit, offset)
 
 	rows, err := r.db.Query(ctx, pagedQuery, args...)

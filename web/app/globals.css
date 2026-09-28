@@ -12,8 +12,20 @@
   terpisah per folder lagi.
 */
 
-@import "tailwindcss";
+/* source(none): matikan pemindaian otomatis SELURUH folder project.
+   Tanpa ini Tailwind v4 ikut membaca file apa pun (zip, pdf, hasil build,
+   file biner) dan potongan teks acak di dalamnya bisa terbaca sebagai
+   class -> CSS rusak ("Parsing CSS source code failed").
+   Sebagai gantinya, folder kode didaftarkan satu per satu di bawah.
+   Kalau nanti ada folder kode baru di luar ini (mis. "hooks/"), tambahkan
+   satu baris @source lagi. */
+@import "tailwindcss" source(none);
 @source "./**/*.{ts,tsx}";
+@source "../components/**/*.{ts,tsx}";
+@source "../lib/**/*.{ts,tsx}";
+@source "../hooks/**/*.{ts,tsx}";
+@source "../context/**/*.{ts,tsx}";
+@source "../utils/**/*.{ts,tsx}";
 
 :root {
   --color-surface: #f8f9ff;
@@ -499,5 +511,253 @@ html {
   to {
     opacity: 1;
     transform: scale(1) translateY(0);
+  }
+}
+
+/* ================================================================
+   SUPERADMIN -- penyempurnaan tampilan khusus app/admin/**
+   Aktif lewat atribut data-admin-scope di app/admin/layout.tsx, jadi
+   halaman petugas & pedagang TIDAK terpengaruh. Tata letak tiap halaman
+   tetap sama; yang disempurnakan: warna, tabel, form, tombol, kartu,
+   modal, dan animasi.
+   ================================================================ */
+
+/* 1. Satukan warna.
+   Sebagian halaman admin masih pakai palet bawaan Tailwind (slate, blue,
+   emerald, red, amber, ...) sehingga warnanya beda-beda dengan halaman
+   yang sudah pakai token CFD. Di dalam scope admin, variabel palet itu
+   diarahkan ke token CFD -- class di JSX tidak perlu diubah satu pun. */
+[data-admin-scope] {
+  /* netral: slate & gray -> keluarga surface/outline */
+  --color-slate-50: #f4f7ff;
+  --color-slate-100: #eaf0fd;
+  --color-slate-200: #dde3f1;
+  --color-slate-300: var(--color-outline-variant);
+  --color-slate-400: #8e92a3;
+  --color-slate-500: var(--color-outline);
+  --color-slate-600: var(--color-on-surface-variant);
+  --color-slate-700: #323a4e;
+  --color-slate-800: #1b2b43;
+  --color-slate-900: var(--color-on-surface);
+  --color-slate-950: #06111f;
+  --color-gray-50: #f4f7ff;
+  --color-gray-100: #eaf0fd;
+  --color-gray-200: #dde3f1;
+  --color-gray-300: var(--color-outline-variant);
+  --color-gray-400: #8e92a3;
+  --color-gray-500: var(--color-outline);
+  --color-gray-600: var(--color-on-surface-variant);
+  --color-gray-700: #323a4e;
+  --color-gray-800: #1b2b43;
+  --color-gray-900: var(--color-on-surface);
+
+  /* utama: blue & indigo -> primary */
+  --color-blue-50: #f0f3ff;
+  --color-blue-100: var(--color-primary-fixed);
+  --color-blue-200: var(--color-primary-fixed-dim);
+  --color-blue-300: #8fa2f2;
+  --color-blue-400: #5a74d9;
+  --color-blue-500: var(--color-surface-tint);
+  --color-blue-600: var(--color-primary);
+  --color-blue-700: var(--color-primary-container);
+  --color-blue-800: var(--color-on-primary-fixed-variant);
+  --color-blue-900: var(--color-on-primary-fixed);
+  --color-blue-950: #000c36;
+  --color-indigo-50: #f0f3ff;
+  --color-indigo-100: var(--color-primary-fixed);
+  --color-indigo-600: var(--color-primary);
+  --color-indigo-700: var(--color-primary-container);
+
+  /* sukses: emerald & green -> secondary */
+  --color-emerald-50: #e8fbf2;
+  --color-emerald-100: #cdf6e4;
+  --color-emerald-200: #9deecb;
+  --color-emerald-400: var(--color-secondary-fixed-dim);
+  --color-emerald-500: #16a06c;
+  --color-emerald-600: var(--color-secondary);
+  --color-emerald-700: #005c3e;
+  --color-emerald-800: var(--color-on-secondary-fixed-variant);
+  --color-emerald-900: var(--color-on-secondary-fixed);
+  --color-green-50: #e8fbf2;
+  --color-green-100: #cdf6e4;
+  --color-green-600: var(--color-secondary);
+  --color-green-700: #005c3e;
+
+  /* bahaya: red & rose -> error */
+  --color-red-50: #fff5f3;
+  --color-red-100: #ffe6e2;
+  --color-red-200: var(--color-error-container);
+  --color-red-500: #d63b33;
+  --color-red-600: var(--color-error);
+  --color-red-700: var(--color-on-error-container);
+  --color-red-800: #770008;
+  --color-rose-50: #fff5f3;
+  --color-rose-100: #ffe6e2;
+  --color-rose-200: var(--color-error-container);
+  --color-rose-600: var(--color-error);
+  --color-rose-700: var(--color-on-error-container);
+  --color-rose-800: #770008;
+
+  /* peringatan: amber -> tertiary */
+  --color-amber-50: #fff7ec;
+  --color-amber-100: var(--color-tertiary-fixed);
+  --color-amber-200: #ffcd95;
+  --color-amber-600: #8f5600;
+  --color-amber-700: var(--color-on-tertiary-fixed-variant);
+  --color-amber-900: var(--color-on-tertiary-fixed);
+
+  --adm-bayangan: 0 1px 2px rgb(11 28 48 / 0.04), 0 2px 8px rgb(11 28 48 / 0.05);
+  --adm-bayangan-naik: 0 2px 4px rgb(11 28 48 / 0.05), 0 8px 24px rgb(11 28 48 / 0.08);
+  --adm-cincin-fokus: 0 0 0 3px rgb(0 40 142 / 0.16);
+}
+
+/* 2. Halaman masuk dengan halus setiap pindah menu.
+   PENTING: tanpa "both"/"forwards". Animasi transform yang tetap "menempel"
+   setelah selesai membuat browser menjadikan pembungkus halaman sebagai
+   containing block + stacking context, akibatnya modal (position: fixed)
+   cuma menutupi area konten -- sidebar & topbar tidak ikut tertutup. Tanpa
+   fill-mode, efeknya hilang total begitu animasi 0,32 detik ini selesai. */
+[data-admin-scope] > :first-child {
+  animation: adm-masuk 0.32s cubic-bezier(0.22, 1, 0.36, 1);
+}
+@keyframes adm-masuk {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+[data-admin-scope] ::selection {
+  background: var(--color-primary-fixed);
+  color: var(--color-on-primary-fixed);
+}
+
+/* 3. Kartu: bayangan lebih lembut & konsisten */
+[data-admin-scope] .pt-card,
+[data-admin-scope] .shadow-sm {
+  box-shadow: var(--adm-bayangan);
+}
+
+/* 4. Tabel: judul kolom lebih rapi, baris ter-highlight saat disorot,
+   angka rata lebar (tabular) supaya kolom angka lurus. */
+[data-admin-scope] table {
+  font-variant-numeric: tabular-nums;
+}
+[data-admin-scope] thead th {
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  white-space: nowrap;
+  color: var(--color-on-surface-variant);
+}
+[data-admin-scope] tbody tr {
+  transition: background-color 0.15s ease;
+}
+[data-admin-scope] tbody tr:hover {
+  background-color: var(--color-surface-container-low);
+}
+[data-admin-scope] td {
+  vertical-align: middle;
+}
+
+/* scrollbar tipis untuk tabel/daftar yang bisa digeser */
+[data-admin-scope] .overflow-x-auto,
+[data-admin-scope] .overflow-auto,
+[data-admin-scope] .overflow-y-auto {
+  scrollbar-width: thin;
+  scrollbar-color: var(--color-surface-dim) transparent;
+}
+
+/* 5. Form: satu gaya fokus untuk semua input/select/textarea, termasuk
+   yang belum pakai .pt-input. */
+[data-admin-scope] :is(input:not([type="checkbox"]):not([type="radio"]):not([type="range"]), select, textarea) {
+  transition: border-color 0.15s ease, box-shadow 0.15s ease, background-color 0.15s ease;
+}
+[data-admin-scope] :is(input:not([type="checkbox"]):not([type="radio"]):not([type="range"]), select, textarea):hover:not(:disabled):not(:focus) {
+  border-color: var(--color-outline);
+}
+[data-admin-scope] :is(input:not([type="checkbox"]):not([type="radio"]):not([type="range"]), select, textarea):focus-visible {
+  outline: none;
+  border-color: var(--color-primary);
+  box-shadow: var(--adm-cincin-fokus);
+}
+[data-admin-scope] :is(input, select, textarea):disabled {
+  cursor: not-allowed;
+  background-color: var(--color-surface-container-low);
+}
+[data-admin-scope] input::placeholder,
+[data-admin-scope] textarea::placeholder {
+  color: #8e92a3;
+}
+[data-admin-scope] :is(input[type="checkbox"], input[type="radio"], input[type="range"]) {
+  accent-color: var(--color-primary);
+}
+
+/* 6. Tombol & link: umpan balik tekan dan fokus keyboard yang jelas */
+[data-admin-scope] button:not(:disabled):active,
+[data-admin-scope] a.pt-btn:active {
+  transform: translateY(1px);
+}
+[data-admin-scope] :is(button, a):focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
+}
+[data-admin-scope] .pt-btn-primary {
+  box-shadow: 0 1px 2px rgb(0 40 142 / 0.25);
+}
+
+/* 7. Pill status: sedikit lebih ringkas & tegas */
+[data-admin-scope] .pt-pill {
+  font-weight: 600;
+  box-shadow: inset 0 0 0 1px rgb(0 0 0 / 0.04);
+}
+
+/* 8. Modal: latar lebih lembut, kotak dengan garis tipis */
+[data-admin-scope] .pt-modal-overlay {
+  background-color: rgb(11 28 48 / 0.45);
+  backdrop-filter: blur(4px);
+}
+[data-admin-scope] .pt-modal-box {
+  box-shadow: 0 24px 64px rgb(11 28 48 / 0.22);
+  outline: 1px solid rgb(11 28 48 / 0.06);
+}
+
+/* 9. Skeleton loading: kilau berjalan, bukan cuma berkedip */
+[data-admin-scope] .animate-pulse.bg-surface-container-high {
+  animation: none;
+  background: linear-gradient(
+    100deg,
+    var(--color-surface-container-high) 30%,
+    var(--color-surface-container-low) 50%,
+    var(--color-surface-container-high) 70%
+  );
+  background-size: 300% 100%;
+  animation: adm-kilau 1.4s ease-in-out infinite;
+}
+@keyframes adm-kilau {
+  from {
+    background-position: 100% 0;
+  }
+  to {
+    background-position: 0 0;
+  }
+}
+
+/* 10. Hormati pengaturan "kurangi animasi" */
+@media (prefers-reduced-motion: reduce) {
+  [data-admin-scope] > :first-child,
+  [data-admin-scope] .animate-pulse.bg-surface-container-high {
+    animation: none;
+  }
+  [data-admin-scope] tbody tr,
+  [data-admin-scope] :is(input, select, textarea) {
+    transition: none;
+  }
+  [data-admin-scope] button:not(:disabled):active,
+  [data-admin-scope] a.pt-btn:active {
+    transform: none;
   }
 }

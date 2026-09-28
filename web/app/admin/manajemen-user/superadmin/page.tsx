@@ -24,6 +24,14 @@ export default function ManajemenUserSuperadminPage() {
   const [deleteTarget, setDeleteTarget] = useState<User | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
   const [deleteError, setDeleteError] = useState("");
+  // Pesan kecil (bukan alert() browser) saat mencoba menghapus akun sendiri
+  const [infoSendiri, setInfoSendiri] = useState(false);
+
+  useEffect(() => {
+    if (!infoSendiri) return;
+    const t = setTimeout(() => setInfoSendiri(false), 3500);
+    return () => clearTimeout(t);
+  }, [infoSendiri]);
 
   useEffect(() => {
     async function fetchStats() {
@@ -67,22 +75,24 @@ export default function ManajemenUserSuperadminPage() {
     fetchMe();
   }, []);
 
+  // Warna ikon pakai token CFD (sebelumnya ungu bawaan Tailwind yang tidak
+  // ada di palet aplikasi).
   const statCards: StatCard[] = [
     {
-      label: "Total Superadmin",
+      label: "Total Admin",
       value: stats.total,
       icon: Users,
-      iconBg: "bg-blue-50",
-      iconColor: "text-blue-700",
-      sublabel: "",
+      iconBg: "bg-primary-fixed",
+      iconColor: "text-on-primary-fixed",
+      sublabel: "Semua akun admin",
     },
     {
-      label: "Superadmin Aktif",
+      label: "Admin Aktif",
       value: stats.active,
       icon: ShieldCheck,
-      iconBg: "bg-purple-50",
-      iconColor: "text-purple-700",
-      sublabel: "Punya Akses Penuh",
+      iconBg: "bg-secondary-container/60",
+      iconColor: "text-on-secondary-container",
+      sublabel: "Punya akses penuh",
     },
   ];
 
@@ -94,7 +104,8 @@ export default function ManajemenUserSuperadminPage() {
     // Guard sisi UI -- cegah dialog hapus kebuka buat akun sendiri.
     // Guard "beneran" tetap di backend.
     if (user.id === myId) {
-      alert("Kamu tidak bisa menghapus akunmu sendiri.");
+      setDeleteError("Kamu tidak bisa menghapus akunmu sendiri.");
+      setInfoSendiri(true);
       return;
     }
     setDeleteError("");
@@ -125,7 +136,7 @@ export default function ManajemenUserSuperadminPage() {
       setDeleteTarget(null);
       setReloadSignal((prev) => prev + 1);
     } catch (err) {
-      setDeleteError(err instanceof Error ? err.message : "Gagal menghapus superadmin");
+      setDeleteError(err instanceof Error ? err.message : "Gagal menghapus admin");
     } finally {
       setIsDeleting(false);
     }
@@ -134,10 +145,10 @@ export default function ManajemenUserSuperadminPage() {
   return (
     <>
       <UserManagementTable
-        title="Manajemen User Superadmin"
-        subtitle="Kelola akun superadmin yang punya akses penuh ke sistem CFD Hub."
-        addButtonLabel="Tambah Superadmin"
-        searchPlaceholder="Cari nama, email, atau kontak superadmin..."
+        title="Manajemen User Admin"
+        subtitle="Kelola akun admin yang punya akses penuh ke sistem E-Event CFD Surabaya."
+        addButtonLabel="Tambah Admin"
+        searchPlaceholder="Cari nama, email, atau kontak admin"
         statCards={statCards}
         apiEndpoint="/api/admin/users/superadmin"
         extraParams={{ role: "superadmin" }}
@@ -147,13 +158,20 @@ export default function ManajemenUserSuperadminPage() {
         onEditUser={handleEditUser}
       />
 
+      {infoSendiri && (
+        <div role="status" className="pt-toast pt-toast-error">
+          <Ban className="h-4 w-4 shrink-0" />
+          Kamu tidak bisa menghapus akunmu sendiri.
+        </div>
+      )}
+
       <ConfirmDialog
         open={!!deleteTarget}
         title="Konfirmasi Hapus"
         message={
           deleteError
             ? deleteError
-            : `Apakah Anda yakin ingin menghapus superadmin "${deleteTarget?.name}"? Tindakan ini tidak dapat dibatalkan.`
+            : `Apakah Anda yakin ingin menghapus admin "${deleteTarget?.name}"? Tindakan ini tidak dapat dibatalkan.`
         }
         onConfirm={handleConfirmDelete}
         onCancel={() => setDeleteTarget(null)}

@@ -2,38 +2,42 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { Loader2, ArrowLeft } from "lucide-react";
+import { AlertCircle, ArrowLeft, Eye, EyeOff, Loader2, ShieldAlert, UserPlus } from "lucide-react";
 
-type SuperadminFormValues = {
+type AdminFormValues = {
   name: string;
   email: string;
   phone: string;
   password: string;
 };
 
-const EMPTY_FORM: SuperadminFormValues = {
+const EMPTY_FORM: AdminFormValues = {
   name: "",
   email: "",
   phone: "",
   password: "",
 };
 
-export default function TambahSuperadminPage() {
+export default function TambahAdminPage() {
   const router = useRouter();
-  const [values, setValues] = useState<SuperadminFormValues>(EMPTY_FORM);
+  const [values, setValues] = useState<AdminFormValues>(EMPTY_FORM);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
+  const [lihatPassword, setLihatPassword] = useState(false);
 
-  function update<K extends keyof SuperadminFormValues>(
-    key: K,
-    value: SuperadminFormValues[K]
-  ) {
+  function update<K extends keyof AdminFormValues>(key: K, value: AdminFormValues[K]) {
     setValues((prev) => ({ ...prev, [key]: value }));
   }
+
+  const passwordPendek = values.password.length > 0 && values.password.length < 8;
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError("");
+    if (values.password.length < 8) {
+      setError("Password minimal 8 karakter.");
+      return;
+    }
     setSaving(true);
     try {
       const token = localStorage.getItem("cfd_token");
@@ -51,9 +55,9 @@ export default function TambahSuperadminPage() {
           Authorization: `Bearer ${token}`,
         },
         body: JSON.stringify({
-          name: values.name,
-          email: values.email,
-          phone: values.phone,
+          name: values.name.trim(),
+          email: values.email.trim(),
+          phone: values.phone.trim(),
           password: values.password,
         }),
       });
@@ -65,121 +69,140 @@ export default function TambahSuperadminPage() {
 
       router.push("/admin/manajemen-user/superadmin");
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Gagal menyimpan data superadmin.");
+      setError(err instanceof Error ? err.message : "Gagal menyimpan data admin.");
     } finally {
       setSaving(false);
     }
   }
 
   return (
-    <div className="p-6 max-w-4xl mx-auto">
-      <div className="flex items-center gap-3 mb-6">
+    <div className="mx-auto flex w-full max-w-3xl flex-col gap-lg pb-xl">
+      <div className="flex items-center gap-sm">
         <button
           type="button"
           onClick={() => router.back()}
-          className="rounded-lg p-2 text-slate-600 hover:bg-slate-100"
+          className="flex h-10 w-10 items-center justify-center rounded-xl text-on-surface-variant hover:bg-surface-container-high"
+          aria-label="Kembali"
         >
           <ArrowLeft className="h-5 w-5" />
         </button>
-        <h1 className="text-2xl font-bold text-slate-900">Tambah Superadmin Baru</h1>
+        <div>
+          <h2 className="text-headline-md text-on-surface">Tambah Admin Baru</h2>
+          <p className="text-body-sm text-on-surface-variant">Akun baru langsung aktif dan bisa dipakai login.</p>
+        </div>
       </div>
 
-      <div className="rounded-2xl bg-white p-6 shadow-sm border border-slate-200">
-        <div className="mb-5 rounded-lg border border-amber-200 bg-amber-50 px-3.5 py-2.5 text-sm text-amber-700">
-          Akun superadmin punya akses penuh ke seluruh sistem, termasuk
-          mengelola akun superadmin lain. Pastikan cuma orang yang benar-benar
-          perlu yang dikasih akses ini.
+      <section className="pt-card flex flex-col gap-lg">
+        <div className="flex items-start gap-sm rounded-xl bg-tertiary-fixed/50 px-md py-sm text-body-sm text-on-tertiary-fixed">
+          <ShieldAlert className="mt-0.5 h-4 w-4 shrink-0" />
+          <p>
+            Akun admin punya akses penuh ke seluruh sistem, termasuk mengelola akun admin lain. Pastikan hanya orang yang
+            benar-benar perlu yang diberi akses ini.
+          </p>
         </div>
 
-        <form onSubmit={handleSubmit} className="space-y-4">
+        <form onSubmit={handleSubmit} className="flex flex-col gap-lg">
           {error && (
-            <div className="rounded-lg border border-red-200 bg-red-50 px-3.5 py-2.5 text-sm text-red-600">
+            <div role="alert" className="flex items-start gap-sm rounded-xl bg-error-container/50 px-md py-sm text-body-sm text-on-error-container">
+              <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
               {error}
             </div>
           )}
 
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+          <div className="grid grid-cols-1 gap-md sm:grid-cols-2">
             <Field label="Nama Lengkap" required>
               <input
                 required
                 value={values.name}
                 onChange={(e) => update("name", e.target.value)}
-                className={inputClass}
+                className="pt-input"
                 placeholder="Sesuai KTP"
+                autoComplete="name"
               />
             </Field>
-            <Field label="Email" required>
+            <Field label="Email" required hint="Dipakai untuk login.">
               <input
                 required
                 type="email"
                 value={values.email}
                 onChange={(e) => update("email", e.target.value)}
-                className={inputClass}
+                className="pt-input"
                 placeholder="nama@email.com"
+                autoComplete="off"
               />
             </Field>
             <Field label="No. Telepon" required>
               <input
                 required
+                type="tel"
+                inputMode="tel"
                 value={values.phone}
                 onChange={(e) => update("phone", e.target.value)}
-                className={inputClass}
+                className="pt-input"
                 placeholder="08xxxxxxxxxx"
               />
             </Field>
-            <Field label="Password Awal" required>
-              <input
-                required
-                type="password"
-                value={values.password}
-                onChange={(e) => update("password", e.target.value)}
-                className={inputClass}
-                placeholder="Minimal 8 karakter"
-              />
+            <Field label="Password Awal" required hint={passwordPendek ? undefined : "Minimal 8 karakter. Minta admin baru menggantinya setelah login."}>
+              <div className="relative">
+                <input
+                  required
+                  type={lihatPassword ? "text" : "password"}
+                  value={values.password}
+                  onChange={(e) => update("password", e.target.value)}
+                  className={`pt-input pr-12 ${passwordPendek ? "!border-error" : ""}`}
+                  placeholder="Minimal 8 karakter"
+                  autoComplete="new-password"
+                />
+                <button
+                  type="button"
+                  onClick={() => setLihatPassword((v) => !v)}
+                  className="absolute right-1.5 top-1/2 flex h-9 w-9 -translate-y-1/2 items-center justify-center rounded-lg text-on-surface-variant hover:bg-surface-container-high"
+                  aria-label={lihatPassword ? "Sembunyikan password" : "Tampilkan password"}
+                >
+                  {lihatPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                </button>
+              </div>
+              {passwordPendek && (
+                <span className="text-label-sm font-normal text-error">
+                  Kurang {8 - values.password.length} karakter lagi.
+                </span>
+              )}
             </Field>
           </div>
 
-          <div className="flex justify-end gap-3 border-t border-slate-100 pt-6 mt-4">
-            <button
-              type="button"
-              onClick={() => router.back()}
-              className="rounded-lg border border-slate-200 px-6 py-2.5 text-sm font-medium text-slate-600 hover:bg-slate-50"
-            >
+          <div className="flex flex-col-reverse gap-sm border-t border-outline-variant pt-md sm:flex-row sm:justify-end">
+            <button type="button" onClick={() => router.back()} className="pt-btn pt-btn-ghost justify-center border border-outline-variant">
               Batal
             </button>
-            <button
-              type="submit"
-              disabled={saving}
-              className="flex items-center gap-2 rounded-lg bg-blue-700 px-6 py-2.5 text-sm font-semibold text-white hover:bg-blue-800 disabled:opacity-60"
-            >
-              {saving && <Loader2 className="h-4 w-4 animate-spin" />}
-              Simpan Superadmin
+            <button type="submit" disabled={saving} className="pt-btn pt-btn-primary justify-center">
+              {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <UserPlus className="h-4 w-4" />}
+              {saving ? "Menyimpan..." : "Simpan Admin"}
             </button>
           </div>
         </form>
-      </div>
+      </section>
     </div>
   );
 }
 
-const inputClass =
-  "w-full rounded-lg border border-slate-200 bg-slate-50 px-3.5 py-2.5 text-sm text-slate-900 outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-500/15";
-
 function Field({
   label,
   required,
+  hint,
   children,
 }: {
   label: string;
   required?: boolean;
+  hint?: string;
   children: React.ReactNode;
 }) {
   return (
-    <label className="block">
-      <span className="mb-1.5 block text-sm font-medium text-slate-700">
-        {label} {required && <span className="text-red-500">*</span>}
+    <label className="flex flex-col gap-xs">
+      <span className="text-label-md text-on-surface">
+        {label} {required && <span className="text-error">*</span>}
       </span>
       {children}
+      {hint && <span className="text-label-sm font-normal text-on-surface-variant">{hint}</span>}
     </label>
   );
 }
