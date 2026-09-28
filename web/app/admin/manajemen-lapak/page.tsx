@@ -2,7 +2,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { CalendarDays, Store, ClipboardList } from "lucide-react";
+import { CalendarDays, Store, ClipboardList, MapPin, Route, LayoutGrid } from "lucide-react";
 import type { KecamatanLengkapData } from "./types";
 import { getWilayah } from "./api";
 import EventTab from "./components/EventTab";
@@ -25,8 +25,8 @@ export default function ManajemenLapakPage() {
   const [wilayahLoading, setWilayahLoading] = useState(true);
   const [wilayahError, setWilayahError] = useState<string | null>(null);
 
-  async function loadWilayah() {
-    setWilayahLoading(true);
+  async function loadWilayah(diam = false) {
+    if (!diam) setWilayahLoading(true);
     setWilayahError(null);
     try {
       const res = await getWilayah();
@@ -43,6 +43,21 @@ export default function ManajemenLapakPage() {
     loadWilayah();
   }, []);
 
+  // Ringkasan dari data wilayah yang sudah dimuat (tanpa request tambahan).
+  // Grup "Tanpa Kecamatan" tidak dihitung sebagai kecamatan.
+  const semuaJalan = wilayah.flatMap((k) => k.jalan ?? []);
+  const ringkasan = [
+    { label: "Kecamatan", nilai: wilayah.filter((k) => k.kecamatanId).length, ikon: MapPin, warna: "bg-primary-fixed text-on-primary-fixed" },
+    { label: "Jalan", nilai: semuaJalan.length, ikon: Route, warna: "bg-secondary-container/60 text-on-secondary-container" },
+    { label: "Ruas", nilai: semuaJalan.reduce((n, j) => n + (j.ruas ?? []).length, 0), ikon: LayoutGrid, warna: "bg-tertiary-fixed text-on-tertiary-fixed" },
+    {
+      label: "Lapak terisi (event aktif)",
+      nilai: `${semuaJalan.reduce((n, j) => n + j.terisi, 0)} / ${semuaJalan.reduce((n, j) => n + j.kuotaEvent, 0)}`,
+      ikon: Store,
+      warna: "bg-surface-container-high text-on-surface-variant",
+    },
+  ];
+
   return (
     <div className="flex flex-col gap-lg pb-xl">
       <div>
@@ -53,7 +68,21 @@ export default function ManajemenLapakPage() {
         </p>
       </div>
 
-      <div className="flex flex-wrap gap-xs rounded-xl border border-outline-variant bg-surface-container-lowest p-1">
+      <div className="grid grid-cols-2 gap-sm lg:grid-cols-4">
+        {ringkasan.map((r) => (
+          <div key={r.label} className="flex items-center gap-md rounded-2xl border border-outline-variant bg-surface-container-lowest p-md">
+            <span className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${r.warna}`}>
+              <r.ikon className="h-5 w-5" strokeWidth={2} />
+            </span>
+            <div className="min-w-0">
+              <p className="truncate text-label-sm text-on-surface-variant">{r.label}</p>
+              <p className="text-title-lg tabular-nums text-on-surface">{wilayahLoading ? "–" : r.nilai}</p>
+            </div>
+          </div>
+        ))}
+      </div>
+
+      <div role="tablist" aria-label="Bagian manajemen lapak" className="flex flex-wrap gap-xs rounded-xl border border-outline-variant bg-surface-container-lowest p-1">
         {TABS.map((t) => {
           const Icon = t.icon;
           const isActive = activeTab === t.key;
@@ -61,6 +90,8 @@ export default function ManajemenLapakPage() {
             <button
               key={t.key}
               type="button"
+              role="tab"
+              aria-selected={isActive}
               onClick={() => setActiveTab(t.key)}
               className={`flex items-center gap-xs rounded-lg px-md py-sm text-label-md transition-all ${
                 isActive ? "bg-primary text-on-primary shadow-sm" : "text-on-surface-variant hover:bg-surface-container-high"
@@ -74,9 +105,9 @@ export default function ManajemenLapakPage() {
       </div>
 
       <div className="pt-card">
-        {activeTab === "event" && <EventTab wilayah={wilayah} />}
+        {activeTab === "event" && <EventTab wilayah={wilayah} onEventBerubah={() => loadWilayah(true)} />}
         {activeTab === "ruas-kuota" && (
-          <RuasKuotaTab wilayah={wilayah} loading={wilayahLoading} error={wilayahError} onRefresh={loadWilayah} />
+          <RuasKuotaTab wilayah={wilayah} loading={wilayahLoading} error={wilayahError} onRefresh={() => loadWilayah(true)} />
         )}
         {activeTab === "laporan" && <LaporanTab />}
       </div>

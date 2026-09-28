@@ -173,9 +173,10 @@ export default function RuasKuotaTab({ wilayah, loading, error, onRefresh }: Pro
                   <button
                     onClick={() => handleDeleteKecamatan(k)}
                     title="Hapus kecamatan"
-                    className="pt-btn pt-btn-ghost-danger min-h-0 px-sm py-1 text-label-sm"
+                    aria-label="Hapus kecamatan"
+                    className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-on-surface-variant transition-colors hover:bg-error-container/50 hover:text-error"
                   >
-                    <Trash2 className="h-3.5 w-3.5" />
+                    <Trash2 className="h-4 w-4" />
                   </button>
                 ),
               }))}
@@ -199,29 +200,39 @@ export default function RuasKuotaTab({ wilayah, loading, error, onRefresh }: Pro
                 key: j.id,
                 selected: j.id === selectedJalanId,
                 onClick: () => pilihJalan(j.id),
-                cells: [`${j.namaJalan} (${j.kodeJalan})`, String(j.kapasitas), `${j.terisi}/${j.kuotaEvent}`],
+                cells: [
+                  <span key="n">
+                    <span className="font-medium">{j.namaJalan}</span>{" "}
+                    <span className="text-label-sm text-on-surface-variant">{j.kodeJalan}</span>
+                  </span>,
+                  String(j.kapasitas),
+                  `${j.terisi} / ${j.kuotaEvent}`,
+                ],
                 actions: (
                   <>
                     <button
                       onClick={() => setEditJalan(j)}
                       title="Edit kode/nama/kapasitas jalan"
-                      className="pt-btn pt-btn-ghost min-h-0 px-sm py-1 text-label-sm"
+                      aria-label="Edit kode/nama/kapasitas jalan"
+                      className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-on-surface-variant transition-colors hover:bg-primary/10 hover:text-primary"
                     >
-                      <Pencil className="h-3.5 w-3.5" />
+                      <Pencil className="h-4 w-4" />
                     </button>
                     <button
                       onClick={() => setAssignKuotaJalan(j)}
                       title="Atur kuota ke event aktif"
-                      className="pt-btn pt-btn-ghost min-h-0 px-sm py-1 text-label-sm"
+                      aria-label="Atur kuota ke event aktif"
+                      className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-on-surface-variant transition-colors hover:bg-primary/10 hover:text-primary"
                     >
-                      <Settings2 className="h-3.5 w-3.5" />
+                      <Settings2 className="h-4 w-4" />
                     </button>
                     <button
                       onClick={() => handleDeleteJalan(j)}
                       title="Hapus jalan"
-                      className="pt-btn pt-btn-ghost-danger min-h-0 px-sm py-1 text-label-sm"
+                      aria-label="Hapus jalan"
+                      className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-on-surface-variant transition-colors hover:bg-error-container/50 hover:text-error"
                     >
-                      <Trash2 className="h-3.5 w-3.5" />
+                      <Trash2 className="h-4 w-4" />
                     </button>
                   </>
                 ),
@@ -265,7 +276,7 @@ export default function RuasKuotaTab({ wilayah, loading, error, onRefresh }: Pro
                       key={r.id}
                       onClick={() => setSelectedRuasId(r.id)}
                       className={`cursor-pointer hover:bg-surface-container-low ${
-                        r.id === selectedRuasId ? "bg-primary/10" : ""
+                        r.id === selectedRuasId ? "bg-primary/10 shadow-[inset_3px_0_0_var(--color-primary)]" : ""
                       }`}
                     >
                       <td className="px-md py-sm text-on-surface-variant">{r.urutan}</td>
@@ -286,15 +297,19 @@ export default function RuasKuotaTab({ wilayah, loading, error, onRefresh }: Pro
                       <td className="px-md py-sm text-right" onClick={(e) => e.stopPropagation()}>
                         <button
                           onClick={() => setRuasModalState({ ruas: r })}
-                          className="pt-btn pt-btn-ghost min-h-0 px-sm py-1 text-label-sm"
+                          title="Edit ruas"
+                          aria-label={`Edit ruas ${r.namaRuas}`}
+                          className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-on-surface-variant transition-colors hover:bg-primary/10 hover:text-primary"
                         >
-                          <Pencil className="h-3.5 w-3.5" />
+                          <Pencil className="h-4 w-4" />
                         </button>
                         <button
                           onClick={() => handleDeleteRuas(r)}
-                          className="pt-btn pt-btn-ghost-danger min-h-0 px-sm py-1 text-label-sm"
+                          title="Hapus ruas"
+                          aria-label={`Hapus ruas ${r.namaRuas}`}
+                          className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-on-surface-variant transition-colors hover:bg-error-container/50 hover:text-error"
                         >
-                          <Trash2 className="h-3.5 w-3.5" />
+                          <Trash2 className="h-4 w-4" />
                         </button>
                       </td>
                     </tr>
@@ -310,36 +325,19 @@ export default function RuasKuotaTab({ wilayah, loading, error, onRefresh }: Pro
           {!jalanTerpilih ? (
             <EmptyHint icon={MapPin} text="Klik salah satu jalan (atau ruas) buat lihat sisa lapaknya." />
           ) : ruasTerpilih ? (
-            <SimpleTable
-              headers={["Ruas", "Nomor", "Kuota Ruas", "Status"]}
-              rows={[
-                {
-                  key: ruasTerpilih.id,
-                  cells: [
-                    ruasTerpilih.namaRuas,
-                    `${ruasTerpilih.nomorMulai}–${ruasTerpilih.nomorSelesai}`,
-                    String(ruasTerpilih.kuota),
-                    `${ruasTerpilih.terisiLama} Lama · ${ruasTerpilih.terisiBaru} Baru`,
-                  ],
-                },
-              ]}
-              empty=""
+            <RingkasanSisa
+              judul={ruasTerpilih.namaRuas}
+              keterangan={`Nomor lapak ${ruasTerpilih.nomorMulai}–${ruasTerpilih.nomorSelesai}`}
+              kuota={ruasTerpilih.kuota}
+              lama={ruasTerpilih.terisiLama}
+              baru={ruasTerpilih.terisiBaru}
             />
           ) : (
-            <SimpleTable
-              headers={["Jalan", "Kuota Event", "Terisi", "Sisa"]}
-              rows={[
-                {
-                  key: jalanTerpilih.id,
-                  cells: [
-                    jalanTerpilih.namaJalan,
-                    String(jalanTerpilih.kuotaEvent),
-                    String(jalanTerpilih.terisi),
-                    String(Math.max(0, jalanTerpilih.kuotaEvent - jalanTerpilih.terisi)),
-                  ],
-                },
-              ]}
-              empty=""
+            <RingkasanSisa
+              judul={jalanTerpilih.namaJalan}
+              keterangan={`Kapasitas jalan ${jalanTerpilih.kapasitas} lapak · pilih ruas untuk rincian lama/baru`}
+              kuota={jalanTerpilih.kuotaEvent}
+              terisi={jalanTerpilih.terisi}
             />
           )}
         </Panel>
@@ -494,10 +492,17 @@ function Panel({
   children: React.ReactNode;
 }) {
   return (
-    <div className="rounded-xl border border-outline-variant bg-surface-container-lowest p-md">
-      <div className="mb-sm flex items-center justify-between">
+    <div className="rounded-2xl border border-outline-variant bg-surface-container-lowest p-md">
+      <div className="mb-md flex items-start justify-between gap-sm">
         <div>
-          <h3 className="text-title-sm text-on-surface">{title}</h3>
+          <h3 className="flex items-center gap-sm text-title-md text-on-surface">
+            {/^\d+\./.test(title) && (
+              <span className="flex h-6 w-6 items-center justify-center rounded-full bg-primary text-label-sm text-on-primary">
+                {title.split(".")[0]}
+              </span>
+            )}
+            {title.replace(/^\d+\.\s*/, "")}
+          </h3>
           {subtitle && <p className="text-label-sm text-on-surface-variant">{subtitle}</p>}
         </div>
         {tambahLabel && (
@@ -506,9 +511,9 @@ function Panel({
             onClick={onTambah}
             disabled={!onTambah}
             title={tambahDisabledHint}
-            className="pt-btn pt-btn-secondary min-h-0 px-sm py-1 text-label-sm"
+            className="pt-btn pt-btn-secondary min-h-9 px-sm py-1 text-label-sm disabled:opacity-40"
           >
-            <Plus className="h-3.5 w-3.5" />
+            <Plus className="h-4 w-4" />
             {tambahLabel}
           </button>
         )}
@@ -521,7 +526,9 @@ function Panel({
 function EmptyHint({ icon: Icon, text }: { icon: typeof MapPin; text: string }) {
   return (
     <div className="flex flex-col items-center gap-sm rounded-xl border border-dashed border-outline-variant py-xl text-center">
-      <Icon className="h-6 w-6 text-on-surface-variant" />
+      <span className="pt-empty-icon !h-11 !w-11">
+        <Icon className="h-5 w-5" />
+      </span>
       <p className="text-body-sm text-on-surface-variant">{text}</p>
     </div>
   );
@@ -561,7 +568,7 @@ function SimpleTable({
               key={row.key}
               onClick={row.onClick}
               className={`${row.onClick ? "cursor-pointer" : ""} hover:bg-surface-container-low ${
-                row.selected ? "bg-primary/10" : ""
+                row.selected ? "bg-primary/10 shadow-[inset_3px_0_0_var(--color-primary)]" : ""
               }`}
             >
               {row.cells.map((c, i) => (
@@ -584,8 +591,75 @@ function SimpleTable({
 
 function Th({ children, className = "" }: { children: React.ReactNode; className?: string }) {
   return (
-    <th className={`px-md py-sm text-left text-label-sm uppercase tracking-wide text-on-surface-variant ${className}`}>
+    <th className={`px-md py-sm text-left text-label-md font-medium text-on-surface-variant ${className}`}>
       {children}
     </th>
+  );
+}
+
+// Ringkasan sisa lapak (panel 4): kuota, terisi, sisa + batang progres.
+// Kalau lama/baru diisi (level ruas), batangnya dipecah dua warna.
+function RingkasanSisa({
+  judul,
+  keterangan,
+  kuota,
+  terisi,
+  lama,
+  baru,
+}: {
+  judul: string;
+  keterangan: string;
+  kuota: number;
+  terisi?: number;
+  lama?: number;
+  baru?: number;
+}) {
+  const jumlahTerisi = terisi ?? (lama ?? 0) + (baru ?? 0);
+  const sisa = Math.max(0, kuota - jumlahTerisi);
+  const persen = (n: number) => (kuota > 0 ? Math.min(100, (n / kuota) * 100) : 0);
+  const adaRincian = lama !== undefined && baru !== undefined;
+  return (
+    <div className="flex flex-col gap-md rounded-xl bg-surface-container-low p-md">
+      <div>
+        <p className="text-body-md font-semibold text-on-surface">{judul}</p>
+        <p className="text-label-sm font-normal text-on-surface-variant">{keterangan}</p>
+      </div>
+      <dl className="grid grid-cols-3 gap-sm text-center">
+        {(
+          [
+            ["Kuota", kuota, "text-on-surface"],
+            ["Terisi", jumlahTerisi, "text-primary"],
+            ["Sisa", sisa, sisa === 0 && kuota > 0 ? "text-error" : "text-secondary"],
+          ] as const
+        ).map(([label, nilai, warna]) => (
+          <div key={label} className="rounded-xl bg-surface-container-lowest px-sm py-sm">
+            <dt className="text-label-sm text-on-surface-variant">{label}</dt>
+            <dd className={`text-headline-md font-semibold tabular-nums ${warna}`}>{nilai}</dd>
+          </div>
+        ))}
+      </dl>
+      <div>
+        <div className="flex h-2.5 overflow-hidden rounded-full bg-surface-container-high">
+          {adaRincian ? (
+            <>
+              <div className="bg-secondary" style={{ width: `${persen(lama ?? 0)}%` }} title={`${lama} pedagang lama`} />
+              <div className="bg-primary" style={{ width: `${persen(baru ?? 0)}%` }} title={`${baru} pedagang baru`} />
+            </>
+          ) : (
+            <div className="bg-primary" style={{ width: `${persen(jumlahTerisi)}%` }} />
+          )}
+        </div>
+        {adaRincian && (
+          <div className="mt-xs flex flex-wrap gap-md text-label-sm font-normal text-on-surface-variant">
+            <span className="inline-flex items-center gap-1">
+              <span className="h-2 w-2 rounded-full bg-secondary" /> {lama} pedagang lama
+            </span>
+            <span className="inline-flex items-center gap-1">
+              <span className="h-2 w-2 rounded-full bg-primary" /> {baru} pedagang baru
+            </span>
+          </div>
+        )}
+      </div>
+    </div>
   );
 }

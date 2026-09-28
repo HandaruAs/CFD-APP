@@ -684,6 +684,7 @@ export default function LaporanAdminPage() {
         <div className={`grid grid-cols-1 gap-md sm:grid-cols-2 xl:grid-cols-5 ${memuat ? "opacity-60" : ""}`}>
           <KartuRingkas
             ikon={Store}
+            warna="bg-primary-fixed text-on-primary-fixed"
             judul="Pedagang"
             utama={angka(r.pedagang.total)}
             sub={`${angka(r.pedagang.aktif)} aktif · ${angka(r.pedagang.daftarPeriode)} daftar di periode ini`}
@@ -695,6 +696,7 @@ export default function LaporanAdminPage() {
           />
           <KartuRingkas
             ikon={ShieldCheck}
+            warna="bg-surface-container-high text-on-surface-variant"
             judul="Petugas"
             utama={angka(r.petugas.total)}
             sub={`${angka(r.petugas.aktif)} aktif · ${angka(r.petugas.online)} sedang online`}
@@ -705,6 +707,7 @@ export default function LaporanAdminPage() {
           />
           <KartuRingkas
             ikon={Users}
+            warna="bg-secondary-container/60 text-on-secondary-container"
             judul="Kehadiran"
             utama={angka(r.kehadiran.total)}
             sub={`${angka(r.kehadiran.pedagangUnik)} pedagang berbeda · ${angka(r.kehadiran.jumlahSesi)} hari CFD`}
@@ -715,6 +718,7 @@ export default function LaporanAdminPage() {
           />
           <KartuRingkas
             ikon={Wallet}
+            warna="bg-tertiary-fixed text-on-tertiary-fixed"
             judul="Omset"
             utama={rupiah(r.kehadiran.totalOmset)}
             sub="total dari pedagang yang check-out"
@@ -725,6 +729,7 @@ export default function LaporanAdminPage() {
           />
           <KartuRingkas
             ikon={MapPin}
+            warna="bg-primary-fixed text-on-primary-fixed"
             judul="Klaim lapak"
             utama={angka(r.klaim.total)}
             sub={`${persen(r.klaim.total - r.klaim.tanpaCheckin, r.klaim.total)}% diikuti check-in`}
@@ -739,7 +744,7 @@ export default function LaporanAdminPage() {
 
       {/* ===== TAB DATA ===== */}
       {data && (
-        <section className="pt-card !p-0 overflow-hidden sm:!p-0">
+        <section className={`pt-card !p-0 overflow-hidden transition-opacity sm:!p-0 ${memuat ? "opacity-60" : ""}`} aria-busy={memuat}>
           <div className="flex flex-wrap items-center gap-sm border-b border-outline-variant p-md sm:px-lg">
             <div role="tablist" aria-label="Jenis data" className="inline-flex flex-wrap rounded-xl bg-surface-container-low p-1">
               {(
@@ -775,7 +780,13 @@ export default function LaporanAdminPage() {
                   setCari(e.target.value);
                   setHalaman(1);
                 }}
-                placeholder={tab === "petugas" ? "Cari nama atau email" : "Cari nama usaha, pemilik, lokasi"}
+                placeholder={
+                  tab === "pedagang"
+                    ? "Cari usaha, pemilik, email, atau telepon"
+                    : tab === "petugas"
+                      ? "Cari nama, email, atau telepon"
+                      : "Cari usaha, pemilik, jalan, atau petugas"
+                }
                 className="pt-input !py-2 pl-9"
               />
             </label>
@@ -790,7 +801,9 @@ export default function LaporanAdminPage() {
           <div className="overflow-x-auto">
             {jumlahBaris === 0 ? (
               <div className="flex flex-col items-center gap-sm px-lg py-xl text-center text-on-surface-variant">
-                <ClipboardList className="h-8 w-8" strokeWidth={1.5} />
+                <span className="pt-empty-icon">
+                  <ClipboardList className="h-6 w-6" strokeWidth={1.8} />
+                </span>
                 <p className="text-body-md">{q ? "Tidak ada data yang cocok dengan pencarian." : "Belum ada data di periode ini."}</p>
               </div>
             ) : tab === "pedagang" ? (
@@ -802,34 +815,56 @@ export default function LaporanAdminPage() {
             )}
           </div>
 
-          {jumlahBaris > PER_HALAMAN && (
+          {jumlahBaris > 0 && (
             <div className="flex flex-wrap items-center justify-between gap-sm border-t border-outline-variant px-lg py-sm text-body-sm text-on-surface-variant">
               <span>
-                {angka((hal - 1) * PER_HALAMAN + 1)}–{angka(Math.min(hal * PER_HALAMAN, jumlahBaris))} dari {angka(jumlahBaris)}
+                Menampilkan{" "}
+                <span className="font-semibold tabular-nums text-on-surface">
+                  {angka((hal - 1) * PER_HALAMAN + 1)}–{angka(Math.min(hal * PER_HALAMAN, jumlahBaris))}
+                </span>{" "}
+                dari <span className="font-semibold tabular-nums text-on-surface">{angka(jumlahBaris)}</span>
               </span>
-              <div className="flex items-center gap-xs">
-                <button
-                  type="button"
-                  onClick={() => setHalaman(hal - 1)}
-                  disabled={hal <= 1}
-                  aria-label="Halaman sebelumnya"
-                  className="pt-btn pt-btn-ghost pt-btn-icon"
-                >
-                  <ChevronLeft className="h-4 w-4" />
-                </button>
-                <span className="tabular-nums">
-                  {hal} / {totalHalaman}
-                </span>
-                <button
-                  type="button"
-                  onClick={() => setHalaman(hal + 1)}
-                  disabled={hal >= totalHalaman}
-                  aria-label="Halaman berikutnya"
-                  className="pt-btn pt-btn-ghost pt-btn-icon"
-                >
-                  <ChevronRight className="h-4 w-4" />
-                </button>
-              </div>
+              {totalHalaman > 1 && (
+                <nav className="flex items-center gap-xs" aria-label="Halaman">
+                  <button
+                    type="button"
+                    onClick={() => setHalaman(hal - 1)}
+                    disabled={hal <= 1}
+                    aria-label="Halaman sebelumnya"
+                    className="flex h-9 w-9 items-center justify-center rounded-lg hover:bg-surface-container-high disabled:opacity-40 disabled:hover:bg-transparent"
+                  >
+                    <ChevronLeft className="h-4 w-4" />
+                  </button>
+                  {nomorHalaman(hal, totalHalaman).map((n, i) =>
+                    n === "…" ? (
+                      <span key={`e${i}`} className="px-1">
+                        …
+                      </span>
+                    ) : (
+                      <button
+                        key={n}
+                        type="button"
+                        onClick={() => setHalaman(n)}
+                        aria-current={n === hal ? "page" : undefined}
+                        className={`flex h-9 min-w-9 items-center justify-center rounded-lg px-2 text-label-md tabular-nums transition-colors ${
+                          n === hal ? "bg-primary text-on-primary" : "hover:bg-surface-container-high"
+                        }`}
+                      >
+                        {n}
+                      </button>
+                    )
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => setHalaman(hal + 1)}
+                    disabled={hal >= totalHalaman}
+                    aria-label="Halaman berikutnya"
+                    className="flex h-9 w-9 items-center justify-center rounded-lg hover:bg-surface-container-high disabled:opacity-40 disabled:hover:bg-transparent"
+                  >
+                    <ChevronRight className="h-4 w-4" />
+                  </button>
+                </nav>
+              )}
             </div>
           )}
         </section>
@@ -842,14 +877,27 @@ export default function LaporanAdminPage() {
 // KOMPONEN
 // ============================================================
 
+// Nomor halaman ringkas: 1 … 4 5 6 … 12
+function nomorHalaman(hal: number, total: number): (number | "…")[] {
+  const urut = [...new Set([1, total, hal - 1, hal, hal + 1])].filter((n) => n >= 1 && n <= total).sort((a, b) => a - b);
+  const hasil: (number | "…")[] = [];
+  urut.forEach((n, i) => {
+    if (i > 0 && n - urut[i - 1] > 1) hasil.push("…");
+    hasil.push(n);
+  });
+  return hasil;
+}
+
 function KartuRingkas({
   ikon: Ikon,
+  warna,
   judul,
   utama,
   sub,
   rincian,
 }: {
   ikon: LucideIcon;
+  warna: string;
   judul: string;
   utama: string;
   sub: string;
@@ -857,9 +905,11 @@ function KartuRingkas({
 }) {
   return (
     <section className="flex flex-col rounded-2xl border border-outline-variant bg-surface-container-lowest p-lg">
-      <div className="flex items-center gap-sm text-on-surface-variant">
-        <Ikon className="h-4 w-4" />
-        <h3 className="text-label-md">{judul}</h3>
+      <div className="flex items-center justify-between gap-sm">
+        <h3 className="text-label-md text-on-surface-variant">{judul}</h3>
+        <span className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-xl ${warna}`}>
+          <Ikon className="h-[18px] w-[18px]" strokeWidth={2} />
+        </span>
       </div>
       <p className="mt-sm break-words text-headline-md font-semibold tabular-nums text-on-surface">{utama}</p>
       <p className="mt-0.5 text-label-sm text-on-surface-variant">{sub}</p>
@@ -916,14 +966,33 @@ function TabelPedagang({ baris }: { baris: PedagangRow[] }) {
               <p className="text-on-surface-variant">{p.phone || "–"}</p>
             </td>
             <td className={TD}>
-              <p className="text-on-surface">{LABEL_KATEGORI[p.kategori] ?? (p.kategori || "–")}</p>
-              <p className="text-on-surface-variant">
-                {LABEL_LAPAK[p.jenisLapak] ?? (p.jenisLapak || "–")} · {LABEL_JENIS[p.jenis]}
+              {p.kategori ? (
+                <p className="text-on-surface">{LABEL_KATEGORI[p.kategori] ?? p.kategori}</p>
+              ) : (
+                <p className="text-on-surface-variant">Belum isi data usaha</p>
+              )}
+              <p className="mt-1 flex flex-wrap gap-1">
+                {p.jenisLapak && (
+                  <span className="rounded-full bg-surface-container-low px-sm py-0.5 text-label-sm text-on-surface-variant">
+                    {LABEL_LAPAK[p.jenisLapak] ?? p.jenisLapak}
+                  </span>
+                )}
+                <span
+                  className={`rounded-full px-sm py-0.5 text-label-sm ${
+                    p.jenis === "baru"
+                      ? "bg-tertiary-fixed/70 text-on-tertiary-fixed"
+                      : p.jenis === "lama"
+                        ? "bg-secondary-container/40 text-on-secondary-container"
+                        : "bg-surface-container-high text-on-surface-variant"
+                  }`}
+                >
+                  {LABEL_JENIS[p.jenis]}
+                </span>
               </p>
             </td>
             <td className={TD}>
               <PillAkun status={p.statusAkun} />
-              <p className="mt-1 text-label-sm text-on-surface-variant">sejak {tanggal(p.terdaftar)}</p>
+              <p className="mt-1 whitespace-nowrap text-label-sm text-on-surface-variant">sejak {tanggal(p.terdaftar)}</p>
             </td>
             <td className={`${TD} text-right tabular-nums`}>{angka(p.jumlahKlaim)}</td>
             <td className={`${TD} text-right tabular-nums`}>{angka(p.jumlahHadir)}</td>
@@ -976,7 +1045,7 @@ function TabelPetugas({ baris }: { baris: PetugasRow[] }) {
             </td>
             <td className={TD}>
               <PillAkun status={p.statusAkun} />
-              <p className="mt-1 text-label-sm text-on-surface-variant">sejak {tanggal(p.terdaftar)}</p>
+              <p className="mt-1 whitespace-nowrap text-label-sm text-on-surface-variant">sejak {tanggal(p.terdaftar)}</p>
             </td>
             <td className={`${TD} text-right font-medium tabular-nums text-on-surface`}>{angka(p.jumlahScan)}</td>
             <td className={`${TD} text-right tabular-nums`}>{angka(p.pedagangUnik)}</td>

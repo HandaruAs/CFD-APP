@@ -20,7 +20,10 @@ export default function AdminLayout({
   children: React.ReactNode;
 }) {
   return (
-    <div data-petugas-scope>
+    // data-admin-scope: mengaktifkan penyempurnaan tampilan khusus
+    // superadmin di app/globals.css (bagian "SUPERADMIN"). Halaman
+    // petugas & pedagang tidak terpengaruh.
+    <div data-petugas-scope data-admin-scope>
       <ConfirmDialogProvider>{children}</ConfirmDialogProvider>
     </div>
   );

@@ -93,6 +93,7 @@ function formatRupiahRingkas(n: number) {
 }
 
 function formatPersen(n: number) {
+  if (n > 0 && n < 1) return "<1%";
   return `${n.toLocaleString("id-ID", { maximumFractionDigits: 1 })}%`;
 }
 
@@ -173,7 +174,11 @@ export default function AdminDashboardPage() {
         </div>
         <div className="flex items-center gap-sm">
           {diperbarui && (
-            <span className="text-label-sm text-on-surface-variant">
+            <span className="inline-flex items-center gap-xs rounded-full bg-surface-container-low px-sm py-1 text-label-sm text-on-surface-variant">
+              <span className="relative flex h-2 w-2" aria-hidden="true">
+                <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-secondary opacity-60 motion-reduce:hidden" />
+                <span className="relative inline-flex h-2 w-2 rounded-full bg-secondary" />
+              </span>
               Diperbarui {diperbarui.toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit" })}
             </span>
           )}
@@ -331,6 +336,11 @@ const TAMPILAN_SESI: Record<StatusSesi, { label: string; kartu: string; ikon: Lu
 
 function BagianHariIni({ data }: { data: DashboardData["hariIni"] }) {
   const { sesi, lapak, hadir } = data;
+  // Klaim bisa berubah jadi "batal" kalau sesi sempat ditutup, sementara
+  // pedagangnya sudah check-in -- penyebut minimal = jumlah check-in supaya
+  // tidak tampil "1 / 0".
+  const penyebutHadir = Math.max(hadir.klaim, hadir.checkIn);
+  const belumCheckout = Math.max(0, hadir.checkIn - hadir.checkOut);
   const tampilan = TAMPILAN_SESI[sesi.status] ?? TAMPILAN_SESI.belum_ada;
   const IkonSesi = tampilan.ikon;
   const gelap = sesi.status === "berjalan";
@@ -369,7 +379,10 @@ function BagianHariIni({ data }: { data: DashboardData["hariIni"] }) {
         <div className="flex items-start justify-between gap-sm">
           <div>
             <p className="text-label-md text-on-surface-variant">Lapak Terisi</p>
-            <p className="mt-1 text-display-lg leading-none tabular-nums text-on-surface">{formatPersen(lapak.persen)}</p>
+            <p className="mt-1 text-display-lg leading-none tabular-nums text-on-surface">
+              {lapak.terisi}
+              <span className="text-headline-md text-on-surface-variant"> / {lapak.kapasitas}</span>
+            </p>
           </div>
           <span className="flex h-11 w-11 items-center justify-center rounded-full bg-primary-fixed text-on-primary-fixed">
             <Store className="h-5 w-5" strokeWidth={2} />
@@ -377,10 +390,13 @@ function BagianHariIni({ data }: { data: DashboardData["hariIni"] }) {
         </div>
         <div>
           <BatangProgres persen={lapak.persen} />
-          <p className="mt-sm text-body-sm text-on-surface-variant">
-            <span className="font-semibold tabular-nums text-on-surface">{lapak.terisi}</span> dari{" "}
-            <span className="tabular-nums">{lapak.kapasitas}</span> lapak ·{" "}
-            <span className="tabular-nums">{Math.max(0, lapak.kapasitas - lapak.terisi)}</span> tersisa
+          <p className="mt-sm flex flex-wrap items-center gap-x-sm gap-y-xs text-body-sm text-on-surface-variant">
+            <span className="rounded-full bg-primary-fixed px-sm py-0.5 text-label-sm font-semibold tabular-nums text-on-primary-fixed">
+              {formatPersen(lapak.persen)}
+            </span>
+            <span>
+              <span className="tabular-nums">{Math.max(0, lapak.kapasitas - lapak.terisi)}</span> lapak masih kosong
+            </span>
           </p>
         </div>
       </Kartu>
@@ -392,7 +408,7 @@ function BagianHariIni({ data }: { data: DashboardData["hariIni"] }) {
             <p className="text-label-md text-on-surface-variant">Pedagang Hadir</p>
             <p className="mt-1 text-display-lg leading-none tabular-nums text-on-surface">
               {hadir.checkIn}
-              <span className="text-headline-md text-on-surface-variant"> / {hadir.klaim}</span>
+              <span className="text-headline-md text-on-surface-variant"> / {penyebutHadir}</span>
             </p>
           </div>
           <span className="flex h-11 w-11 items-center justify-center rounded-full bg-secondary-container text-on-secondary-container">
@@ -400,17 +416,19 @@ function BagianHariIni({ data }: { data: DashboardData["hariIni"] }) {
           </span>
         </div>
         <div>
-          <BatangProgres persen={persenAman(hadir.checkIn, hadir.klaim)} warna="bg-secondary" />
+          <BatangProgres persen={persenAman(hadir.checkIn, penyebutHadir)} warna="bg-secondary" />
           <p className="mt-sm text-body-sm text-on-surface-variant">
-            {hadir.klaim === 0
+            {penyebutHadir === 0
               ? "Belum ada pedagang yang klaim lapak hari ini."
-              : `${hadir.checkIn} check-in dari ${hadir.klaim} yang klaim · ${hadir.checkOut} sudah check-out`}
+              : `${hadir.checkOut} sudah check-out${belumCheckout > 0 ? ` · ${belumCheckout} masih di lapak` : ""}`}
           </p>
         </div>
       </Kartu>
+
     </div>
   );
 }
+
 
 function BatangProgres({ persen, warna = "bg-primary" }: { persen: number; warna?: string }) {
   return (
@@ -898,8 +916,8 @@ function GrafikPertumbuhan({ minggu }: { minggu: DashboardData["tren"]["minggu"]
         keterangan={`${totalSekarang} pedagang terdaftar · +${tambahan} dalam ${minggu.length} minggu`}
       />
       <div className="mb-sm flex flex-wrap gap-md text-label-sm text-on-surface-variant">
-        <Legenda warna="bg-secondary" label="Pedagang Baru" />
-        <Legenda warna="bg-primary-fixed-dim" label="Pedagang Lama" />
+        <Legenda warna="bg-secondary" label="Pedagang Baru (daftar sendiri)" />
+        <Legenda warna="bg-primary-fixed-dim" label="Pedagang Lama (ditambahkan admin)" />
       </div>
       <div className="flex h-[160px] items-end gap-sm border-b border-outline-variant">
         {minggu.map((m) => {
