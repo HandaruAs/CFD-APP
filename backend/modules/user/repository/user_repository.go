@@ -115,6 +115,34 @@ func (r *UserRepository) GetUserRole(ctx context.Context, userID string) (string
 	return slug, nil
 }
 
+// GetPedagangStage: "verified" kalau user ini sudah punya profil pedagang
+// (pedagang_profiles, belum dihapus, status 'approved'), selain itu
+// "unverified" (akun sudah dibuat tapi data usaha belum diisi).
+//
+// Aturannya SAMA dengan menu sidebar pedagang (lihat
+// modules/menu/usecase GetMyMenus), supaya badge topbar, halaman
+// Jadwal & Lokasi, dan menu selalu kompak. Sejak tahap verifikasi
+// dihapus, profil yang tersimpan otomatis 'approved'.
+func (r *UserRepository) GetPedagangStage(ctx context.Context, userID string) (string, error) {
+	var approved bool
+	err := r.db.QueryRow(ctx,
+		`SELECT status_verifikasi = 'approved'
+		 FROM pedagang_profiles
+		 WHERE user_id = $1 AND deleted_at IS NULL`,
+		userID,
+	).Scan(&approved)
+	if err != nil {
+		if err == pgx.ErrNoRows {
+			return "unverified", nil
+		}
+		return "", err
+	}
+	if approved {
+		return "verified", nil
+	}
+	return "unverified", nil
+}
+
 // CountByRole hitung berapa user (yang belum dihapus) punya role tertentu.
 // Dipakai buat guard "jangan sampai superadmin terakhir kehapus".
 func (r *UserRepository) CountByRole(ctx context.Context, roleSlug string) (int, error) {

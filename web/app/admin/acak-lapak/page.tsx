@@ -1,4 +1,4 @@
-// app/petugas/acak-lapak/page.tsx
+// app/admin/acak-lapak/page.tsx
 "use client";
 
 import { useEffect, useMemo, useState } from "react";

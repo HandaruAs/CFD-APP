@@ -51,6 +51,7 @@ type StatsResponse struct {
 	TotalOmset     int64   `json:"totalOmset"`
 	RataOmset      int64   `json:"rataOmset"`
 	PersenHadir    float64 `json:"persenHadir"`
+	LapakTerisi    int     `json:"lapakTerisi"` // kehadiran yang punya klaim lapak di sesinya
 }
 
 // ============================================================

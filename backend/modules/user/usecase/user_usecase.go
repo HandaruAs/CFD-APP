@@ -20,11 +20,13 @@ type UserRepository interface {
 	UpdateUserBasic(ctx context.Context, id, name, phone string) error
 	DeleteUser(ctx context.Context, id string) error
 	CountByRole(ctx context.Context, roleSlug string) (int, error)
+	GetPedagangStage(ctx context.Context, userID string) (string, error)
 }
 
 type UserUsecase interface {
 	GetUserProfile(ctx context.Context, userID string) (*entity.UserProfile, error)
 	GetUserRole(ctx context.Context, userID string) (string, error)
+	GetPedagangStage(ctx context.Context, userID string) (string, error)
 	RegisterPedagangByAdmin(ctx context.Context, name, email, phone, password string) (string, error)
 	GetUserStatsByRole(ctx context.Context, roleSlug string) (entity.UserStats, error)
 	ListUsersByRole(ctx context.Context, roleSlug, search, status string, page, limit int) ([]entity.UserManagementDTO, int, error)
@@ -48,6 +50,10 @@ func (u *userUsecase) GetUserProfile(ctx context.Context, userID string) (*entit
 
 func (u *userUsecase) GetUserRole(ctx context.Context, userID string) (string, error) {
 	return u.userRepo.GetUserRole(ctx, userID)
+}
+
+func (u *userUsecase) GetPedagangStage(ctx context.Context, userID string) (string, error) {
+	return u.userRepo.GetPedagangStage(ctx, userID)
 }
 
 func (u *userUsecase) RegisterPedagangByAdmin(ctx context.Context, name, email, phone, password string) (string, error) {

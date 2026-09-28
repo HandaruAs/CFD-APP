@@ -47,3 +47,15 @@ type StatusLapakResponse struct {
 	NamaRuas      *string    `json:"nama_ruas,omitempty"`
 	ClaimedAt     *time.Time `json:"claimed_at,omitempty"`
 }
+
+// KetersediaanLapakResponse -- GET /api/pedagang/lapak/ketersediaan.
+// Dipakai halaman Daftar Lapak buat ngecek DULU apakah masih ada lapak
+// yang bisa diklaim, sebelum data usaha pedagang disimpan.
+//
+// Status: "tersedia" | "belum_diacak" | "penuh" | "sudah_klaim"
+type KetersediaanLapakResponse struct {
+	Tersedia bool   `json:"tersedia"`
+	Status   string `json:"status"`
+	Sisa     int    `json:"sisa"`
+	Pesan    string `json:"pesan"`
+}
