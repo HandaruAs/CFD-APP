@@ -1,9 +1,10 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import {
   AlertCircle,
+  Camera,
   Check,
   Eye,
   EyeOff,
@@ -27,9 +28,10 @@ import {
 // Pedagang bisa ubah biodata sendiri (kecuali NIK & email).
 //
 // Endpoint:
-//   GET /api/me                  nama & email akun
+//   GET /api/me                  nama, email & foto akun
 //   GET /api/pedagang/pengajuan  data usaha & data diri
-//   PUT /api/pedagang/profil     simpan biodata (JSON)   <- baru
+//   PUT /api/pedagang/profil     simpan biodata (JSON)
+//   POST /api/me/foto            ganti foto profil (multipart)   <- baru
 // ============================================================
 
 const API = process.env.NEXT_PUBLIC_API_URL ?? "";
@@ -56,7 +58,7 @@ type Profil = {
   alamat: string | null;
 };
 
-type Data = { nama: string; email: string; profil: Profil | null };
+type Data = { nama: string; email: string; foto: string | null; profil: Profil | null };
 
 type FormProfil = {
   nama_lengkap: string;
@@ -119,7 +121,7 @@ export default function ProfilPage() {
   const muat = useCallback(async () => {
     setGagal(false);
     const [me, profil] = await Promise.allSettled([
-      api<{ user: { name: string; email: string } }>("/api/me"),
+      api<{ user: { name: string; email: string; avatar_url?: string | null } }>("/api/me"),
       api<Profil & { has_pengajuan: boolean }>("/api/pedagang/pengajuan"),
     ]);
     if (me.status === "rejected" && profil.status === "rejected") {
@@ -129,6 +131,7 @@ export default function ProfilPage() {
     setData({
       nama: me.status === "fulfilled" ? me.value.user?.name ?? "" : "",
       email: me.status === "fulfilled" ? me.value.user?.email ?? "" : "",
+      foto: me.status === "fulfilled" ? me.value.user?.avatar_url ?? null : null,
       profil: profil.status === "fulfilled" && profil.value.has_pengajuan ? profil.value : null,
     });
   }, []);
@@ -143,6 +146,28 @@ export default function ProfilPage() {
     const t = setTimeout(() => setNotif(null), 3000);
     return () => clearTimeout(t);
   }, [notif]);
+
+  // Ganti foto profil: validasi di sisi klien, lalu kirim ke backend.
+  const gantiFoto = async (file: File) => {
+    if (!["image/jpeg", "image/png", "image/webp"].includes(file.type)) {
+      setNotif("Format foto harus JPG, PNG, atau WebP");
+      return;
+    }
+    if (file.size > 2 * 1024 * 1024) {
+      setNotif("Ukuran foto maksimal 2 MB");
+      return;
+    }
+    const fd = new FormData();
+    fd.append("foto", file);
+    try {
+      const r = await api<{ avatar_url: string }>("/api/me/foto", { method: "POST", body: fd });
+      setData((d) => (d ? { ...d, foto: r.avatar_url } : d));
+      window.dispatchEvent(new CustomEvent("cfd:avatar", { detail: r.avatar_url })); 
+      setNotif("Foto profil diganti");
+    } catch (err) {
+      setNotif(err instanceof Error ? err.message : "Foto gagal diunggah");
+    }
+  };
 
   if (gagal) {
     return (
@@ -172,7 +197,7 @@ export default function ProfilPage() {
 
   return (
     <div className="mx-auto flex w-full max-w-2xl flex-col gap-lg pb-xl">
-      <KartuNama profil={profil} namaAkun={data.nama} />
+      <KartuNama profil={profil} namaAkun={data.nama} foto={data.foto} onGantiFoto={gantiFoto} />
 
       {modeUbah ? (
         <FormBiodata
@@ -204,16 +229,59 @@ export default function ProfilPage() {
 }
 
 // ============================================================
-// KARTU NAMA
+// KARTU NAMA (avatar + tombol ganti foto)
 // ============================================================
 
-function KartuNama({ profil, namaAkun }: { profil: Profil; namaAkun: string }) {
+function KartuNama({
+  profil,
+  namaAkun,
+  foto,
+  onGantiFoto,
+}: {
+  profil: Profil;
+  namaAkun: string;
+  foto: string | null;
+  onGantiFoto: (file: File) => Promise<void>;
+}) {
   const nama = profil.nama_lengkap || namaAkun;
+  const inputRef = useRef<HTMLInputElement>(null);
+  const [mengunggah, setMengunggah] = useState(false);
+
   return (
     <section className="flex flex-col items-center gap-md rounded-2xl border border-outline-variant bg-surface-container-lowest p-lg text-center sm:flex-row sm:text-left">
-      <span className="flex h-20 w-20 shrink-0 items-center justify-center rounded-full bg-primary font-display text-headline-md font-bold text-on-primary">
-        {inisial(nama)}
-      </span>
+      <div className="relative shrink-0">
+        <span className="flex h-20 w-20 items-center justify-center overflow-hidden rounded-full bg-primary font-display text-headline-md font-bold text-on-primary">
+          {foto ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img src={`${API}${foto}`} alt={`Foto ${nama}`} className="h-full w-full object-cover" />
+          ) : (
+            inisial(nama)
+          )}
+        </span>
+        <button
+          type="button"
+          aria-label="Ganti foto profil"
+          disabled={mengunggah}
+          onClick={() => inputRef.current?.click()}
+          className="absolute -bottom-1 -right-1 flex h-9 w-9 items-center justify-center rounded-full border-2 border-surface-container-lowest bg-primary text-on-primary shadow hover:opacity-90 disabled:opacity-60"
+        >
+          {mengunggah ? <Loader2 className="h-4 w-4 animate-spin" /> : <Camera className="h-4 w-4" />}
+        </button>
+        <input
+          ref={inputRef}
+          type="file"
+          accept="image/jpeg,image/png,image/webp"
+          hidden
+          onChange={async (e) => {
+            const f = e.target.files?.[0];
+            e.target.value = ""; // supaya bisa pilih file yang sama lagi
+            if (!f) return;
+            setMengunggah(true);
+            await onGantiFoto(f);
+            setMengunggah(false);
+          }}
+        />
+      </div>
       <div className="min-w-0">
         <h1 className="font-display text-headline-md font-bold text-on-surface">{nama}</h1>
         <p className="mt-xs inline-flex items-center gap-xs text-body-lg text-on-surface-variant">

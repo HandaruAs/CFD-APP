@@ -30,6 +30,7 @@ type UserProfile struct {
 	Email  string
 	Phone  string
 	Status string
+	AvatarURL string
 }
 
 // UserManagementDTO dipakai buat list user role apapun (petugas, dll) di

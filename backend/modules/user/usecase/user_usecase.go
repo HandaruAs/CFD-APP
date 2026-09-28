@@ -21,6 +21,7 @@ type UserRepository interface {
 	DeleteUser(ctx context.Context, id string) error
 	CountByRole(ctx context.Context, roleSlug string) (int, error)
 	GetPedagangStage(ctx context.Context, userID string) (string, error)
+	UpdateAvatar(ctx context.Context, id, avatarURL string) (string, error)
 }
 
 type UserUsecase interface {
@@ -34,6 +35,7 @@ type UserUsecase interface {
 	UpdateUserBasic(ctx context.Context, id, name, phone string) error
 	DeleteUser(ctx context.Context, id string) error
 	DeleteSuperadmin(ctx context.Context, requesterID, targetID string) error
+	UpdateAvatar(ctx context.Context, userID, avatarURL string) (string, error)
 }
 
 type userUsecase struct {
@@ -109,6 +111,14 @@ func (u *userUsecase) UpdateUserBasic(ctx context.Context, id, name, phone strin
 		return errors.New("id wajib diisi")
 	}
 	return u.userRepo.UpdateUserBasic(ctx, id, name, phone)
+}
+
+// UpdateAvatar simpan path foto profil dan mengembalikan path foto lama.
+func (u *userUsecase) UpdateAvatar(ctx context.Context, userID, avatarURL string) (string, error) {
+	if userID == "" {
+		return "", errors.New("id wajib diisi")
+	}
+	return u.userRepo.UpdateAvatar(ctx, userID, avatarURL)
 }
 
 // DeleteUser soft-delete user (dipakai admin buat hapus petugas, dkk).

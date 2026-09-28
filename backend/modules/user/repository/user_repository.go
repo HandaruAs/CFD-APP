@@ -86,11 +86,11 @@ func (r *UserRepository) GetUserForLogin(ctx context.Context, email string) (*Us
 func (r *UserRepository) GetByID(ctx context.Context, id string) (*entity.UserProfile, error) {
 	var u entity.UserProfile
 	err := r.db.QueryRow(ctx,
-		`SELECT id, name, email, phone, status
+		`SELECT id, name, email, phone, status, COALESCE(avatar_url, '')
 		 FROM users
 		 WHERE id = $1 AND deleted_at IS NULL`,
 		id,
-	).Scan(&u.ID, &u.Name, &u.Email, &u.Phone, &u.Status)
+	).Scan(&u.ID, &u.Name, &u.Email, &u.Phone, &u.Status, &u.AvatarURL)
 	if err != nil {
 		return nil, err
 	}
@@ -168,6 +168,24 @@ func (r *UserRepository) UpdateUserBasic(ctx context.Context, id, name, phone st
 		name, phone, id,
 	)
 	return err
+}
+
+// UpdateAvatar simpan path foto baru dan mengembalikan path foto lama
+// (kosong kalau belum pernah upload), supaya file lamanya bisa dihapus.
+func (r *UserRepository) UpdateAvatar(ctx context.Context, id, avatarURL string) (string, error) {
+	var old string
+	err := r.db.QueryRow(ctx,
+		`UPDATE users u
+		 SET avatar_url = $1, updated_at = now()
+		 FROM (SELECT id, avatar_url FROM users WHERE id = $2 AND deleted_at IS NULL) prev
+		 WHERE u.id = prev.id
+		 RETURNING COALESCE(prev.avatar_url, '')`,
+		avatarURL, id,
+	).Scan(&old)
+	if err != nil {
+		return "", err
+	}
+	return old, nil
 }
 
 // DeleteUser soft-delete user (dipakai buat hapus petugas dari Manajemen User).
