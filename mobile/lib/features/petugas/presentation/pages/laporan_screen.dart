@@ -15,7 +15,6 @@ const _brandColor = Color(0xFF1C3F7C);
 ///   - filter tanggal + pencarian,
 ///   - ringkasan (Total Pedagang, Check-in, Check-out, Lapak Terisi,
 ///     Rata-rata Omset),
-///   - refresh otomatis tiap 30 detik (Live / Paused),
 ///   - tap baris -> detail kehadiran,
 ///   - Unduh Laporan (PDF / Excel) -> share sheet HP.
 class LaporanScreen extends ConsumerStatefulWidget {
@@ -25,17 +24,17 @@ class LaporanScreen extends ConsumerStatefulWidget {
   ConsumerState<LaporanScreen> createState() => _LaporanScreenState();
 }
 
-class _LaporanScreenState extends ConsumerState<LaporanScreen> {
+class _LaporanScreenState extends ConsumerState<LaporanScreen> with WidgetsBindingObserver {
   final _searchController = TextEditingController();
   final _scrollController = ScrollController();
 
   Timer? _pollTimer;
-  bool _live = true;
   bool _exporting = false;
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     Future.microtask(() => ref.read(laporanProvider.notifier).load());
     _scrollController.addListener(() {
       if (_scrollController.position.pixels >=
@@ -43,14 +42,31 @@ class _LaporanScreenState extends ConsumerState<LaporanScreen> {
         ref.read(laporanProvider.notifier).loadMore();
       }
     });
-    // Sama kayak web: polling tiap 30 detik tanpa spinner.
+    _startPolling();
+  }
+
+  // Refresh otomatis tiap 30 detik tanpa spinner. Berhenti otomatis saat
+  // app di background, dan langsung refresh begitu app dibuka lagi.
+  void _startPolling() {
+    _pollTimer?.cancel();
     _pollTimer = Timer.periodic(const Duration(seconds: 30), (_) {
-      if (_live && mounted) ref.read(laporanProvider.notifier).refreshSilent();
+      if (mounted) ref.read(laporanProvider.notifier).refreshSilent();
     });
   }
 
   @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      ref.read(laporanProvider.notifier).refreshSilent();
+      _startPolling();
+    } else {
+      _pollTimer?.cancel();
+    }
+  }
+
+  @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _pollTimer?.cancel();
     _searchController.dispose();
     _scrollController.dispose();
@@ -162,53 +178,76 @@ class _LaporanScreenState extends ConsumerState<LaporanScreen> {
 
     return RefreshIndicator(
       onRefresh: () => ref.read(laporanProvider.notifier).load(),
-      child: Column(
-        children: [
-          _buildFilterBar(state),
-          Expanded(child: _buildBody(state)),
-        ],
-      ),
+      child: _buildBody(state),
     );
   }
 
   Widget _buildFilterBar(LaporanState state) {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
-      child: Column(
-        children: [
-          TextField(
-            controller: _searchController,
-            textInputAction: TextInputAction.search,
-            decoration: InputDecoration(
-              hintText: 'Cari nama usaha / pemilik...',
-              prefixIcon: const Icon(Icons.search),
-              border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
-              isDense: true,
+    final adaTanggal = state.startDate != null && state.endDate != null;
+    return Column(
+      children: [
+        TextField(
+          controller: _searchController,
+          textInputAction: TextInputAction.search,
+          decoration: InputDecoration(
+            hintText: 'Cari nama usaha / pemilik',
+            prefixIcon: const Icon(Icons.search_rounded),
+            filled: true,
+            fillColor: Colors.white,
+            contentPadding: const EdgeInsets.symmetric(vertical: 14),
+            border: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(14),
+              borderSide: BorderSide.none,
             ),
-            onSubmitted: (v) => ref.read(laporanProvider.notifier).setSearch(v.trim()),
           ),
-          const SizedBox(height: 8),
-          Row(
-            children: [
-              Expanded(
-                child: OutlinedButton.icon(
-                  onPressed: _pickDateRange,
-                  icon: const Icon(Icons.calendar_today, size: 16),
-                  label: Text(
-                    (state.startDate != null && state.endDate != null)
-                        ? '${_fmtTanggal(state.startDate!)} - ${_fmtTanggal(state.endDate!)}'
-                        : 'Pilih tanggal',
-                    overflow: TextOverflow.ellipsis,
+          onSubmitted: (v) => ref.read(laporanProvider.notifier).setSearch(v.trim()),
+        ),
+        const SizedBox(height: 10),
+        Row(
+          children: [
+            Expanded(
+              child: Material(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(14),
+                child: InkWell(
+                  borderRadius: BorderRadius.circular(14),
+                  onTap: _pickDateRange,
+                  child: Container(
+                    height: 48,
+                    padding: const EdgeInsets.symmetric(horizontal: 12),
+                    child: Row(
+                      children: [
+                        const Icon(Icons.calendar_month_rounded, size: 20, color: _brandColor),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            adaTanggal
+                                ? (state.startDate == state.endDate
+                                    ? _fmtTanggal(state.startDate!)
+                                    : '${_fmtTanggal(state.startDate!)} - ${_fmtTanggal(state.endDate!)}')
+                                : 'Pilih tanggal',
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13.5),
+                          ),
+                        ),
+                        const Icon(Icons.keyboard_arrow_down_rounded, color: Colors.black45),
+                      ],
+                    ),
                   ),
                 ),
               ),
-              const SizedBox(width: 8),
-              _liveChip(),
-              const SizedBox(width: 8),
-              IconButton.filled(
+            ),
+            const SizedBox(width: 8),
+            SizedBox(
+              width: 48,
+              height: 48,
+              child: IconButton.filled(
                 tooltip: 'Unduh Laporan',
                 onPressed: _exporting ? null : _pilihFormatExport,
-                style: IconButton.styleFrom(backgroundColor: _brandColor),
+                style: IconButton.styleFrom(
+                  backgroundColor: _brandColor,
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                ),
                 icon: _exporting
                     ? const SizedBox(
                         width: 18,
@@ -217,43 +256,10 @@ class _LaporanScreenState extends ConsumerState<LaporanScreen> {
                       )
                     : const Icon(Icons.download_rounded, color: Colors.white),
               ),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _liveChip() {
-    return InkWell(
-      borderRadius: BorderRadius.circular(20),
-      onTap: () {
-        setState(() => _live = !_live);
-        if (_live) ref.read(laporanProvider.notifier).refreshSilent();
-      },
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-        decoration: BoxDecoration(
-          color: _live ? const Color(0xFFDCFCE7) : const Color(0xFFF1F5F9),
-          borderRadius: BorderRadius.circular(20),
-        ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(Icons.circle,
-                size: 8, color: _live ? const Color(0xFF16A34A) : Colors.black26),
-            const SizedBox(width: 6),
-            Text(
-              _live ? 'Live' : 'Paused',
-              style: TextStyle(
-                fontSize: 12,
-                fontWeight: FontWeight.w600,
-                color: _live ? const Color(0xFF166534) : Colors.black54,
-              ),
             ),
           ],
         ),
-      ),
+      ],
     );
   }
 
@@ -288,10 +294,17 @@ class _LaporanScreenState extends ConsumerState<LaporanScreen> {
     return ListView(
       controller: _scrollController,
       physics: const AlwaysScrollableScrollPhysics(),
-      padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
       children: [
+        _buildFilterBar(state),
+        const SizedBox(height: 14),
         _buildSummary(laporan),
-        const SizedBox(height: 12),
+        const SizedBox(height: 20),
+        const Padding(
+          padding: EdgeInsets.only(bottom: 10),
+          child: Text('Kehadiran Pedagang',
+              style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800)),
+        ),
         if (laporan.data.isEmpty)
           const Padding(
             padding: EdgeInsets.symmetric(vertical: 40),
@@ -314,66 +327,99 @@ class _LaporanScreenState extends ConsumerState<LaporanScreen> {
     final hadir = laporan.data.where((d) => d.status != 'belum-hadir').toList();
     final lapakTerisi =
         hadir.where((d) => d.lokasiLapak.isNotEmpty && d.lokasiLapak != '-').length;
+    final rasio = laporan.totalTerdaftar == 0
+        ? 0.0
+        : (laporan.totalCheckin / laporan.totalTerdaftar).clamp(0.0, 1.0);
 
-    final items = [
-      _SummaryItem(Icons.groups_outlined, 'Total Pedagang', '${laporan.totalTerdaftar}', null),
-      _SummaryItem(Icons.how_to_reg_outlined, 'Check-in', '${laporan.totalCheckin}',
-          '${laporan.persenHadir.round()}% hadir'),
-      _SummaryItem(Icons.logout, 'Check-out', '${laporan.totalCheckout}', null),
-      _SummaryItem(Icons.storefront_outlined, 'Lapak Terisi', '$lapakTerisi',
-          'dari ${hadir.length} pedagang check-in'),
-      _SummaryItem(Icons.payments_outlined, 'Rata-rata Omset',
-          formatRupiahRingkas(laporan.rataOmset), 'Dari ${laporan.totalCheckout} pedagang'),
-      _SummaryItem(Icons.account_balance_wallet_outlined, 'Total Omset',
-          formatRupiahRingkas(laporan.totalOmset), null),
-    ];
-
-    return GridView.count(
-      crossAxisCount: 2,
-      shrinkWrap: true,
-      physics: const NeverScrollableScrollPhysics(),
-      mainAxisSpacing: 8,
-      crossAxisSpacing: 8,
-      childAspectRatio: 1.9,
-      children: items.map(_summaryCard).toList(),
-    );
-  }
-
-  Widget _summaryCard(_SummaryItem item) {
     return Container(
-      padding: const EdgeInsets.all(12),
+      padding: const EdgeInsets.all(18),
       decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: const Color(0xFFE5E7EB)),
+        gradient: const LinearGradient(
+          colors: [_brandColor, Color(0xFF3A5FA0)],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        borderRadius: BorderRadius.circular(22),
+        boxShadow: [
+          BoxShadow(
+            color: _brandColor.withValues(alpha: 0.25),
+            blurRadius: 18,
+            offset: const Offset(0, 8),
+          ),
+        ],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
-        mainAxisAlignment: MainAxisAlignment.center,
         children: [
+          const Text('Total Omset',
+              style: TextStyle(color: Colors.white70, fontSize: 13, fontWeight: FontWeight.w600)),
+          const SizedBox(height: 4),
+          Text(formatRupiah(laporan.totalOmset),
+              style: const TextStyle(
+                  color: Colors.white, fontSize: 28, fontWeight: FontWeight.w800, height: 1.1)),
+          const SizedBox(height: 4),
+          Text(
+            'Rata-rata ${formatRupiah(laporan.rataOmset)} · dari ${laporan.totalCheckout} pedagang',
+            style: const TextStyle(color: Colors.white70, fontSize: 12),
+          ),
+          const SizedBox(height: 18),
           Row(
             children: [
-              Icon(item.icon, size: 16, color: _brandColor),
-              const SizedBox(width: 6),
-              Expanded(
-                child: Text(item.label.toUpperCase(),
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                        fontSize: 10.5, color: Colors.black54, letterSpacing: 0.3)),
-              ),
+              const Text('Kehadiran',
+                  style: TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w600)),
+              const Spacer(),
+              Text('${laporan.totalCheckin} / ${laporan.totalTerdaftar} pedagang · ${laporan.persenHadir.round()}%',
+                  style: const TextStyle(color: Colors.white70, fontSize: 12)),
             ],
           ),
-          const SizedBox(height: 4),
-          Text(item.value, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-          if (item.sub != null)
-            Text(item.sub!,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: const TextStyle(fontSize: 11, color: Colors.black54)),
+          const SizedBox(height: 8),
+          ClipRRect(
+            borderRadius: BorderRadius.circular(8),
+            child: LinearProgressIndicator(
+              value: rasio,
+              minHeight: 8,
+              backgroundColor: Colors.white.withValues(alpha: 0.25),
+              color: Colors.white,
+            ),
+          ),
+          const SizedBox(height: 16),
+          Container(
+            padding: const EdgeInsets.symmetric(vertical: 12),
+            decoration: BoxDecoration(
+              color: Colors.white.withValues(alpha: 0.14),
+              borderRadius: BorderRadius.circular(16),
+            ),
+            child: Row(
+              children: [
+                _heroStat(Icons.login_rounded, 'Check-in', laporan.totalCheckin),
+                _heroDivider(),
+                _heroStat(Icons.logout_rounded, 'Check-out', laporan.totalCheckout),
+                _heroDivider(),
+                _heroStat(Icons.storefront_rounded, 'Lapak terisi', lapakTerisi),
+              ],
+            ),
+          ),
         ],
       ),
     );
   }
+
+  Widget _heroStat(IconData icon, String label, int value) {
+    return Expanded(
+      child: Column(
+        children: [
+          Icon(icon, size: 18, color: Colors.white70),
+          const SizedBox(height: 4),
+          Text('$value',
+              style: const TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.w800)),
+          Text(label, style: const TextStyle(color: Colors.white70, fontSize: 11.5)),
+        ],
+      ),
+    );
+  }
+
+  Widget _heroDivider() =>
+      Container(width: 1, height: 44, color: Colors.white.withValues(alpha: 0.2));
 
   Color _statusColor(String status) {
     switch (status) {
@@ -565,12 +611,4 @@ class _LaporanScreenState extends ConsumerState<LaporanScreen> {
       ),
     );
   }
-}
-
-class _SummaryItem {
-  final IconData icon;
-  final String label;
-  final String value;
-  final String? sub;
-  const _SummaryItem(this.icon, this.label, this.value, this.sub);
 }

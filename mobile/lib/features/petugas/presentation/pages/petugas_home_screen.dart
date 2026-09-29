@@ -1,12 +1,14 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:mobile/core/providers/nav_provider.dart';
+import 'package:mobile/core/themes/app_theme.dart';
+import 'package:mobile/core/widgets/menu_icon.dart';
+import 'package:mobile/features/auth/presentation/providers/auth_provider.dart';
 import 'package:mobile/features/petugas/domain/entities/laporan.dart';
 import 'package:mobile/features/petugas/domain/entities/status_operasional.dart';
 import 'package:mobile/features/petugas/presentation/providers/petugas_dashboard_provider.dart';
 import 'package:mobile/features/petugas/presentation/providers/petugas_dashboard_state.dart';
 import 'package:mobile/features/petugas/presentation/utils/laporan_format.dart';
-
-const _brandColor = Color(0xFF1C3F7C);
 
 enum _SesiTone { live, upcoming, ended, none }
 
@@ -43,10 +45,9 @@ String _sapaan() {
   return 'Selamat Malam';
 }
 
-/// TAB "Dashboard" petugas -- mirror web/app/petugas/page.tsx: status
-/// sesi, kehadiran, jendela ambil nomor stan, grafik Omset Hari Ini, dan
-/// daftar Pedagang Hari Ini. Shortcut menu lama (Jam Operasional, Sisa
-/// Lapak, dst) dihapus -- sama kayak web, navigasi cukup lewat menu.
+/// TAB "Dashboard" petugas -- susunan sama kayak dashboard superadmin:
+/// hero (salam + status sesi) -> Layanan (horizontal) -> ringkasan hari ini
+/// (kehadiran, ambil nomor stan, omset, daftar pedagang).
 class PetugasHomeScreen extends ConsumerStatefulWidget {
   const PetugasHomeScreen({super.key});
 
@@ -66,128 +67,184 @@ class _PetugasHomeScreenState extends ConsumerState<PetugasHomeScreen> {
   @override
   Widget build(BuildContext context) {
     final state = ref.watch(petugasDashboardProvider);
+    final nama = ref.watch(userProvider)?.name ?? 'Petugas';
+    final status = state.statusOperasional;
+    final laporan = state.laporan;
+    final adaData = status != null;
 
     return RefreshIndicator(
       onRefresh: () => ref.read(petugasDashboardProvider.notifier).loadDashboard(),
-      child: _buildBody(state),
+      child: ListView(
+        physics: const AlwaysScrollableScrollPhysics(),
+        padding: const EdgeInsets.only(bottom: 24),
+        children: [
+          _Hero(nama: nama, sesi: status?.sesi, adaData: adaData),
+          const Padding(
+            padding: EdgeInsets.fromLTRB(20, 20, 20, 10),
+            child: _SectionTitle('Layanan'),
+          ),
+          const _LayananRow(),
+          const Padding(
+            padding: EdgeInsets.fromLTRB(20, 20, 20, 10),
+            child: _SectionTitle('Ringkasan Hari Ini'),
+          ),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            child: _buildRingkasan(state, status, laporan),
+          ),
+        ],
+      ),
     );
   }
 
-  Widget _buildBody(PetugasDashboardState state) {
-    if (state.isLoading && state.statusOperasional == null) {
-      return const Center(child: CircularProgressIndicator());
+  Widget _buildRingkasan(
+      PetugasDashboardState state, StatusOperasional? status, LaporanResponse? laporan) {
+    if (state.isLoading && status == null) {
+      return const Padding(
+        padding: EdgeInsets.symmetric(vertical: 40),
+        child: Center(child: CircularProgressIndicator()),
+      );
     }
 
-    if (state.error != null && state.statusOperasional == null) {
-      return ListView(
-        physics: const AlwaysScrollableScrollPhysics(),
-        padding: const EdgeInsets.all(24),
+    if (state.error != null && status == null) {
+      return Column(
         children: [
-          const SizedBox(height: 80),
-          const Icon(Icons.error_outline, color: Colors.red, size: 48),
-          const SizedBox(height: 12),
+          const Icon(Icons.error_outline, color: Colors.red, size: 40),
+          const SizedBox(height: 8),
           Text(state.error!, textAlign: TextAlign.center),
-          const SizedBox(height: 16),
-          Center(
-            child: ElevatedButton(
-              onPressed: () => ref.read(petugasDashboardProvider.notifier).loadDashboard(),
-              style: ElevatedButton.styleFrom(backgroundColor: _brandColor),
-              child: const Text('Coba Lagi', style: TextStyle(color: Colors.white)),
-            ),
+          const SizedBox(height: 8),
+          TextButton(
+            onPressed: () => ref.read(petugasDashboardProvider.notifier).loadDashboard(),
+            child: const Text('Coba Lagi'),
           ),
         ],
       );
     }
 
-    final status = state.statusOperasional;
-    final laporan = state.laporan;
     final pedagangHariIni = laporan?.data ?? const <KehadiranItem>[];
 
-    return ListView(
-      physics: const AlwaysScrollableScrollPhysics(),
-      padding: const EdgeInsets.all(16),
+    return Column(
       children: [
-        Text('${_sapaan()}, Petugas! 👋',
-            style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
-        const SizedBox(height: 2),
-        Text(formatHariTanggal(DateTime.now()),
-            style: const TextStyle(color: Colors.black54, fontSize: 13)),
-        if (state.error != null) ...[
-          const SizedBox(height: 12),
-          Text('Gagal mengambil data terbaru: ${state.error}',
-              style: const TextStyle(color: Color(0xFFB91C1C), fontSize: 12.5)),
-        ],
-        const SizedBox(height: 16),
-        _buildSesiCard(status?.sesi),
+        if (state.error != null)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 12),
+            child: Text('Gagal mengambil data terbaru: ${state.error}',
+                style: const TextStyle(color: Color(0xFFB91C1C), fontSize: 12.5)),
+          ),
+        _KehadiranCard(laporan: laporan),
         const SizedBox(height: 12),
-        Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Expanded(child: _buildKehadiranCard(laporan)),
-            const SizedBox(width: 12),
-            Expanded(child: _buildAmbilStanCard(status?.pendaftaran)),
-          ],
-        ),
-        const SizedBox(height: 20),
-        _buildOmsetSection(laporan, pedagangHariIni),
-        const SizedBox(height: 20),
-        _buildPedagangHariIni(pedagangHariIni),
+        _AmbilStanCard(pendaftaran: status?.pendaftaran),
+        const SizedBox(height: 12),
+        _OmsetCard(laporan: laporan, data: pedagangHariIni),
+        const SizedBox(height: 12),
+        _PedagangCard(data: pedagangHariIni),
       ],
     );
   }
+}
 
-  // ---------- Status sesi ----------
+// ───────────────────────── Hero + status sesi ─────────────────────────
 
-  Widget _buildSesiCard(SesiAktif? sesi) {
+class _Hero extends StatelessWidget {
+  final String nama;
+  final SesiAktif? sesi;
+  final bool adaData;
+  const _Hero({required this.nama, required this.sesi, required this.adaData});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.fromLTRB(20, 20, 20, 24),
+      decoration: const BoxDecoration(
+        gradient: LinearGradient(
+          colors: [kBrandColor, kBrandColorLight],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        borderRadius: BorderRadius.vertical(bottom: Radius.circular(28)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text('${_sapaan()},',
+              style: const TextStyle(color: Colors.white70, fontSize: 14)),
+          const SizedBox(height: 2),
+          Text(nama,
+              style: const TextStyle(
+                  color: Colors.white, fontSize: 24, fontWeight: FontWeight.w800)),
+          const SizedBox(height: 4),
+          Text(formatHariTanggal(DateTime.now()),
+              style: const TextStyle(color: Colors.white70, fontSize: 13)),
+          if (adaData) ...[
+            const SizedBox(height: 18),
+            _SesiPanel(sesi: sesi),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+class _SesiPanel extends StatelessWidget {
+  final SesiAktif? sesi;
+  const _SesiPanel({required this.sesi});
+
+  @override
+  Widget build(BuildContext context) {
     final (:label, :tone) = _turunkanStatusSesi(sesi);
     final live = tone == _SesiTone.live;
-    final fg = live ? Colors.white : Colors.black87;
-    final fgMuted = live ? Colors.white70 : Colors.black54;
-
-    final elapsed = (sesi != null && sesi.aktif && sesi.totalMenit > 0)
-        ? ((sesi.totalMenit - sesi.sisaMenit) / sesi.totalMenit).clamp(0.0, 1.0)
+    final dot = switch (tone) {
+      _SesiTone.live => const Color(0xFF4ADE80),
+      _SesiTone.upcoming => const Color(0xFFFBBF24),
+      _ => Colors.white54,
+    };
+    final elapsed = (sesi != null && sesi!.aktif && sesi!.totalMenit > 0)
+        ? ((sesi!.totalMenit - sesi!.sisaMenit) / sesi!.totalMenit).clamp(0.0, 1.0)
         : 0.0;
 
     return Container(
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: live ? _brandColor : Colors.white,
-        borderRadius: BorderRadius.circular(14),
-        border: live ? null : Border.all(color: const Color(0xFFE5E7EB)),
+        color: Colors.white.withValues(alpha: 0.14),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.18)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
             children: [
-              Icon(
-                live ? Icons.radio_button_checked : Icons.access_time,
-                size: 16,
-                color: live ? Colors.white : _brandColor,
-              ),
-              const SizedBox(width: 6),
-              Text('Status Sesi CFD', style: TextStyle(color: fgMuted, fontSize: 12.5)),
+              Icon(Icons.circle, size: 10, color: dot),
+              const SizedBox(width: 8),
+              const Text('Status Sesi CFD',
+                  style: TextStyle(color: Colors.white70, fontSize: 12.5)),
             ],
           ),
           const SizedBox(height: 6),
-          Text(label, style: TextStyle(color: fg, fontSize: 20, fontWeight: FontWeight.bold)),
+          Text(label,
+              style: const TextStyle(
+                  color: Colors.white, fontSize: 18, fontWeight: FontWeight.w800)),
           if (sesi != null)
-            Text(
-              '${_formatJam(sesi.jamMulai)} – ${_formatJam(sesi.jamSelesaiRencana)} WIB',
-              style: TextStyle(color: fgMuted, fontSize: 13),
+            Padding(
+              padding: const EdgeInsets.only(top: 2),
+              child: Text(
+                '${_formatJam(sesi!.jamMulai)} – ${_formatJam(sesi!.jamSelesaiRencana)} WIB',
+                style: const TextStyle(color: Colors.white70, fontSize: 13),
+              ),
             ),
           if (live && sesi != null) ...[
             const SizedBox(height: 12),
             Row(
               children: [
-                Text('Sisa Waktu', style: TextStyle(color: fgMuted, fontSize: 12)),
+                const Text('Sisa waktu',
+                    style: TextStyle(color: Colors.white70, fontSize: 12)),
                 const Spacer(),
                 Text(
-                  _formatSisaWaktu(sesi.sisaMenit),
+                  _formatSisaWaktu(sesi!.sisaMenit),
                   style: const TextStyle(
                     color: Colors.white,
                     fontSize: 18,
-                    fontWeight: FontWeight.bold,
+                    fontWeight: FontWeight.w800,
                     fontFeatures: [FontFeature.tabularFigures()],
                   ),
                 ),
@@ -208,283 +265,374 @@ class _PetugasHomeScreenState extends ConsumerState<PetugasHomeScreen> {
       ),
     );
   }
+}
 
-  // ---------- Kartu kecil ----------
+class _SectionTitle extends StatelessWidget {
+  final String text;
+  const _SectionTitle(this.text);
 
-  Widget _buildKehadiranCard(LaporanResponse? laporan) {
-    final checkin = laporan?.totalCheckin ?? 0;
-    final terdaftar = laporan?.totalTerdaftar ?? 0;
-    final persen = (laporan?.persenHadir ?? 0).clamp(0, 100).toDouble();
+  @override
+  Widget build(BuildContext context) => Text(text,
+      style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700));
+}
 
-    return _miniCard(
-      icon: Icons.fact_check_outlined,
-      children: [
-        Text.rich(
-          TextSpan(
-            text: '$checkin',
-            style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
-            children: [
-              TextSpan(
-                text: ' / $terdaftar',
-                style: const TextStyle(
-                    fontSize: 14, fontWeight: FontWeight.normal, color: Colors.black54),
-              ),
-            ],
-          ),
-        ),
-        const Text('Kehadiran Hari Ini', style: TextStyle(color: Colors.black54, fontSize: 12.5)),
-        const SizedBox(height: 8),
-        ClipRRect(
-          borderRadius: BorderRadius.circular(8),
-          child: LinearProgressIndicator(
-            value: persen / 100,
-            minHeight: 5,
-            backgroundColor: const Color(0xFFE5E7EB),
-            color: _brandColor,
-          ),
-        ),
-        const SizedBox(height: 4),
-        Text('${persen.round()}% sudah check-in',
-            style: const TextStyle(color: Colors.black54, fontSize: 11.5)),
-      ],
-    );
-  }
+// ───────────────────────── Layanan (horizontal) ─────────────────────────
 
-  /// Field `pendaftaran` di API sekarang ngatur jendela waktu pedagang
-  /// AMBIL NOMOR STAN (bukan pendaftaran akun) -- lihat catatan di web
-  /// admin/jam-operasional. Label di sini ngikutin fungsi aslinya.
-  Widget _buildAmbilStanCard(PendaftaranStatus? pendaftaran) {
-    final buka = pendaftaran?.isOpen ?? false;
-    return _miniCard(
-      icon: Icons.confirmation_number_outlined,
-      children: [
-        Text(
-          buka ? 'Dibuka' : 'Ditutup',
-          style: TextStyle(
-            fontSize: 22,
-            fontWeight: FontWeight.bold,
-            color: buka ? const Color(0xFF16A34A) : Colors.black87,
-          ),
-        ),
-        const Text('Ambil Nomor Stan', style: TextStyle(color: Colors.black54, fontSize: 12.5)),
-        if (buka && pendaftaran?.jamBuka != null && pendaftaran?.jamTutup != null) ...[
-          const SizedBox(height: 8),
-          Text(
-            '${_formatJam(pendaftaran!.jamBuka!)} – ${_formatJam(pendaftaran!.jamTutup!)} WIB',
-            style: const TextStyle(color: Colors.black54, fontSize: 11.5),
-          ),
-        ],
-      ],
-    );
-  }
+class _LayananRow extends ConsumerWidget {
+  const _LayananRow();
 
-  Widget _miniCard({required IconData icon, required List<Widget> children}) {
-    return Container(
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: const Color(0xFFE5E7EB)),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Container(
-            width: 36,
-            height: 36,
-            decoration: BoxDecoration(
-              color: const Color(0xFFEFF4FF),
-              borderRadius: BorderRadius.circular(10),
-            ),
-            child: Icon(icon, color: _brandColor, size: 20),
-          ),
-          const SizedBox(height: 10),
-          ...children,
-        ],
-      ),
-    );
-  }
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final all = ref.watch(menuListProvider).valueOrNull ?? const [];
+    final layanan = visibleTabMenus(all).where((m) => m.path != '/petugas').toList();
+    if (layanan.isEmpty) return const SizedBox.shrink();
 
-  // ---------- Omset Hari Ini ----------
-
-  Widget _buildOmsetSection(LaporanResponse? laporan, List<KehadiranItem> data) {
-    // Sama kayak OmsetChart di web: yang punya omset > 0, urut terbesar, maks 8.
-    final ranking = data.where((d) => (d.omset ?? 0) > 0).toList()
-      ..sort((a, b) => (b.omset ?? 0).compareTo(a.omset ?? 0));
-    final top = ranking.take(8).toList();
-    final maks = top.isEmpty ? 1 : (top.first.omset ?? 1);
-    final totalOmset = laporan?.totalOmset ?? 0;
-
-    return _section(
-      icon: Icons.bar_chart_rounded,
-      title: 'Omset Hari Ini',
-      subtitle: 'Ranking pedagang berdasarkan omset check-out',
-      trailing: totalOmset > 0 ? 'Total ${formatRupiah(totalOmset)}' : null,
-      child: top.isEmpty
-          ? const Padding(
-              padding: EdgeInsets.symmetric(vertical: 16),
-              child: Text(
-                'Belum ada data omset (omset diisi pedagang saat check-out).',
-                style: TextStyle(color: Colors.black54),
-              ),
-            )
-          : Column(
-              children: top.map((item) {
-                final omset = item.omset ?? 0;
-                return Padding(
-                  padding: const EdgeInsets.only(bottom: 10),
-                  child: Row(
-                    children: [
-                      SizedBox(
-                        width: 96,
-                        child: Text(item.namaUsaha,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: const TextStyle(fontSize: 12.5)),
-                      ),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: ClipRRect(
-                          borderRadius: BorderRadius.circular(6),
-                          child: LinearProgressIndicator(
-                            value: omset / maks,
-                            minHeight: 14,
-                            backgroundColor: const Color(0xFFF1F5F9),
-                            color: _brandColor,
-                          ),
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                      SizedBox(
-                        width: 70,
-                        child: Text(
-                          formatRupiahRingkas(omset),
-                          textAlign: TextAlign.right,
-                          style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
-                        ),
-                      ),
-                    ],
+    return SizedBox(
+      height: 100,
+      child: ListView.separated(
+        scrollDirection: Axis.horizontal,
+        padding: const EdgeInsets.symmetric(horizontal: 16),
+        itemCount: layanan.length,
+        separatorBuilder: (_, __) => const SizedBox(width: 12),
+        itemBuilder: (_, i) {
+          final m = layanan[i];
+          return InkWell(
+            borderRadius: BorderRadius.circular(16),
+            onTap: () {
+              final idx = tabIndexForPath(all, m.path ?? '');
+              if (idx != -1) ref.read(bottomNavIndexProvider.notifier).state = idx;
+            },
+            child: SizedBox(
+              width: 76,
+              child: Column(
+                children: [
+                  Container(
+                    width: 56,
+                    height: 56,
+                    decoration: BoxDecoration(
+                      color: kBrandColor.withValues(alpha: 0.10),
+                      borderRadius: BorderRadius.circular(16),
+                    ),
+                    child: Icon(menuIcon(m.iconName), color: kBrandColor),
                   ),
-                );
-              }).toList(),
+                  const SizedBox(height: 6),
+                  Text(
+                    m.label,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(fontSize: 11.5, height: 1.2),
+                  ),
+                ],
+              ),
             ),
-    );
-  }
-
-  // ---------- Pedagang Hari Ini ----------
-
-  Widget _buildPedagangHariIni(List<KehadiranItem> data) {
-    return _section(
-      icon: Icons.storefront_outlined,
-      title: 'Pedagang Hari Ini',
-      trailing: '${data.length} lapak terisi',
-      child: data.isEmpty
-          ? const Padding(
-              padding: EdgeInsets.symmetric(vertical: 16),
-              child: Text('Belum ada pedagang yang check-in hari ini.',
-                  style: TextStyle(color: Colors.black54)),
-            )
-          : Column(children: data.map(_buildPedagangTile).toList()),
-    );
-  }
-
-  Widget _buildPedagangTile(KehadiranItem item) {
-    final (bg, fg) = switch (item.status) {
-      'check-out' => (const Color(0xFFE0E7FF), const Color(0xFF3730A3)),
-      'check-in' => (const Color(0xFFDCFCE7), const Color(0xFF166534)),
-      _ => (const Color(0xFFF1F5F9), const Color(0xFF475569)),
-    };
-
-    return Container(
-      margin: const EdgeInsets.only(bottom: 8),
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        border: Border.all(color: const Color(0xFFEEF0F4)),
-        borderRadius: BorderRadius.circular(10),
-      ),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          CircleAvatar(
-            radius: 18,
-            backgroundColor: _brandColor,
-            child: Text(
-              item.inisial.isNotEmpty ? item.inisial : '??',
-              style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold),
-            ),
-          ),
-          const SizedBox(width: 10),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(item.namaUsaha, style: const TextStyle(fontWeight: FontWeight.w600)),
-                Text(item.pemilik, style: const TextStyle(color: Colors.black54, fontSize: 12)),
-                const SizedBox(height: 4),
-                Text(
-                  item.lokasiLapak.isEmpty || item.lokasiLapak == '-' ? '-' : item.lokasiLapak,
-                  style: const TextStyle(fontSize: 12, color: Colors.black87),
-                ),
-                const SizedBox(height: 2),
-                Text(
-                  'Masuk ${item.waktuCheckin} · Keluar ${item.waktuCheckout ?? '-'}'
-                  '${item.omset != null ? ' · ${formatRupiah(item.omset!)}' : ''}',
-                  style: const TextStyle(fontSize: 11.5, color: Colors.black54),
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(width: 8),
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-            decoration: BoxDecoration(color: bg, borderRadius: BorderRadius.circular(20)),
-            child: Text(
-              labelStatusDashboard(item.status),
-              style: TextStyle(fontSize: 10.5, color: fg, fontWeight: FontWeight.w600),
-            ),
-          ),
-        ],
+          );
+        },
       ),
     );
   }
+}
 
-  Widget _section({
-    required IconData icon,
-    required String title,
-    String? subtitle,
-    String? trailing,
-    required Widget child,
-  }) {
+// ───────────────────────── Kartu ringkasan ─────────────────────────
+
+class _Card extends StatelessWidget {
+  final IconData icon;
+  final String title;
+  final String? trailing;
+  final Widget child;
+  const _Card({required this.icon, required this.title, this.trailing, required this.child});
+
+  @override
+  Widget build(BuildContext context) {
     return Container(
+      width: double.infinity,
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: const Color(0xFFE5E7EB)),
+        borderRadius: BorderRadius.circular(18),
+        boxShadow: [
+          BoxShadow(
+            color: kBrandColor.withValues(alpha: 0.06),
+            blurRadius: 16,
+            offset: const Offset(0, 6),
+          ),
+        ],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
             children: [
-              Icon(icon, color: _brandColor, size: 20),
+              Icon(icon, size: 18, color: kBrandColor),
               const SizedBox(width: 8),
               Expanded(
                 child: Text(title,
-                    style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                    style: const TextStyle(
+                        fontSize: 13, color: Colors.black54, fontWeight: FontWeight.w600)),
               ),
               if (trailing != null)
-                Text(trailing, style: const TextStyle(fontSize: 12, color: Colors.black54)),
+                Text(trailing!,
+                    style: const TextStyle(
+                        fontSize: 12, color: kBrandColor, fontWeight: FontWeight.w700)),
             ],
           ),
-          if (subtitle != null) ...[
-            const SizedBox(height: 2),
-            Text(subtitle, style: const TextStyle(fontSize: 12, color: Colors.black54)),
-          ],
           const SizedBox(height: 12),
           child,
         ],
       ),
+    );
+  }
+}
+
+class _KehadiranCard extends StatelessWidget {
+  final LaporanResponse? laporan;
+  const _KehadiranCard({required this.laporan});
+
+  @override
+  Widget build(BuildContext context) {
+    final checkin = laporan?.totalCheckin ?? 0;
+    final checkout = laporan?.totalCheckout ?? 0;
+    final terdaftar = laporan?.totalTerdaftar ?? 0;
+    final persen = (laporan?.persenHadir ?? 0).clamp(0, 100).toDouble();
+
+    return _Card(
+      icon: Icons.fact_check_rounded,
+      title: 'Kehadiran Hari Ini',
+      trailing: '${persen.round()}%',
+      child: Column(
+        children: [
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              Text('$checkin',
+                  style: const TextStyle(fontSize: 30, fontWeight: FontWeight.w800, height: 1)),
+              Text(' / $terdaftar pedagang',
+                  style: const TextStyle(fontSize: 15, color: Colors.black54)),
+              const Spacer(),
+              Text('$checkout sudah check-out',
+                  style: const TextStyle(fontSize: 12, color: Colors.black54)),
+            ],
+          ),
+          const SizedBox(height: 12),
+          ClipRRect(
+            borderRadius: BorderRadius.circular(8),
+            child: LinearProgressIndicator(
+              value: persen / 100,
+              minHeight: 10,
+              backgroundColor: kBrandColor.withValues(alpha: 0.10),
+              color: kBrandColor,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Field `pendaftaran` di API ngatur jendela waktu pedagang AMBIL NOMOR STAN
+/// (bukan pendaftaran akun) -- label ngikutin fungsi aslinya.
+class _AmbilStanCard extends StatelessWidget {
+  final PendaftaranStatus? pendaftaran;
+  const _AmbilStanCard({required this.pendaftaran});
+
+  @override
+  Widget build(BuildContext context) {
+    final buka = pendaftaran?.isOpen ?? false;
+    final warna = buka ? const Color(0xFF15803D) : Colors.black54;
+    final adaJam = pendaftaran?.jamBuka != null && pendaftaran?.jamTutup != null;
+
+    return _Card(
+      icon: Icons.confirmation_number_rounded,
+      title: 'Ambil Nomor Stan',
+      child: Row(
+        children: [
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
+            decoration: BoxDecoration(
+              color: warna.withValues(alpha: 0.12),
+              borderRadius: BorderRadius.circular(20),
+            ),
+            child: Text(buka ? 'Dibuka' : 'Ditutup',
+                style: TextStyle(color: warna, fontWeight: FontWeight.w800, fontSize: 14)),
+          ),
+          const Spacer(),
+          if (adaJam)
+            Text(
+              '${_formatJam(pendaftaran!.jamBuka!)} – ${_formatJam(pendaftaran!.jamTutup!)} WIB',
+              style: const TextStyle(color: Colors.black54, fontSize: 13),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+class _OmsetCard extends StatelessWidget {
+  final LaporanResponse? laporan;
+  final List<KehadiranItem> data;
+  const _OmsetCard({required this.laporan, required this.data});
+
+  @override
+  Widget build(BuildContext context) {
+    // Sama kayak OmsetChart di web: yang punya omset > 0, urut terbesar, maks 8.
+    final ranking = data.where((d) => (d.omset ?? 0) > 0).toList()
+      ..sort((a, b) => (b.omset ?? 0).compareTo(a.omset ?? 0));
+    final top = ranking.take(8).toList();
+    final maks = top.isEmpty ? 1 : (top.first.omset ?? 1);
+    final total = laporan?.totalOmset ?? 0;
+
+    return _Card(
+      icon: Icons.bar_chart_rounded,
+      title: 'Omset Hari Ini',
+      trailing: total > 0 ? formatRupiah(total) : null,
+      child: top.isEmpty
+          ? const Padding(
+              padding: EdgeInsets.symmetric(vertical: 8),
+              child: Text(
+                'Belum ada data omset (omset diisi pedagang saat check-out).',
+                style: TextStyle(color: Colors.black54, fontSize: 13),
+              ),
+            )
+          : Column(
+              children: [
+                for (var i = 0; i < top.length; i++)
+                  Padding(
+                    padding: EdgeInsets.only(bottom: i == top.length - 1 ? 0 : 12),
+                    child: Column(
+                      children: [
+                        Row(
+                          children: [
+                            Container(
+                              width: 22,
+                              height: 22,
+                              alignment: Alignment.center,
+                              decoration: BoxDecoration(
+                                color: kBrandColor.withValues(alpha: i == 0 ? 0.9 : 0.10),
+                                shape: BoxShape.circle,
+                              ),
+                              child: Text('${i + 1}',
+                                  style: TextStyle(
+                                      fontSize: 11,
+                                      fontWeight: FontWeight.w800,
+                                      color: i == 0 ? Colors.white : kBrandColor)),
+                            ),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: Text(top[i].namaUsaha,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: const TextStyle(
+                                      fontSize: 13.5, fontWeight: FontWeight.w600)),
+                            ),
+                            Text(formatRupiahRingkas(top[i].omset ?? 0),
+                                style: const TextStyle(
+                                    fontSize: 13, fontWeight: FontWeight.w800)),
+                          ],
+                        ),
+                        const SizedBox(height: 6),
+                        ClipRRect(
+                          borderRadius: BorderRadius.circular(6),
+                          child: LinearProgressIndicator(
+                            value: (top[i].omset ?? 0) / maks,
+                            minHeight: 8,
+                            backgroundColor: kBrandColor.withValues(alpha: 0.08),
+                            color: kBrandColor,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+              ],
+            ),
+    );
+  }
+}
+
+class _PedagangCard extends StatelessWidget {
+  final List<KehadiranItem> data;
+  const _PedagangCard({required this.data});
+
+  @override
+  Widget build(BuildContext context) {
+    return _Card(
+      icon: Icons.storefront_rounded,
+      title: 'Pedagang Hari Ini',
+      trailing: '${data.length} lapak terisi',
+      child: data.isEmpty
+          ? const Padding(
+              padding: EdgeInsets.symmetric(vertical: 8),
+              child: Text('Belum ada pedagang yang check-in hari ini.',
+                  style: TextStyle(color: Colors.black54, fontSize: 13)),
+            )
+          : Column(
+              children: [
+                for (var i = 0; i < data.length; i++) ...[
+                  if (i > 0) const Divider(height: 20, color: Color(0xFFF1F3F7)),
+                  _PedagangTile(item: data[i]),
+                ],
+              ],
+            ),
+    );
+  }
+}
+
+class _PedagangTile extends StatelessWidget {
+  final KehadiranItem item;
+  const _PedagangTile({required this.item});
+
+  @override
+  Widget build(BuildContext context) {
+    final (bg, fg) = switch (item.status) {
+      'check-out' => (const Color(0xFFE0E7FF), const Color(0xFF3730A3)),
+      'check-in' => (const Color(0xFFDCFCE7), const Color(0xFF166534)),
+      _ => (const Color(0xFFF1F5F9), const Color(0xFF475569)),
+    };
+    final lokasi = item.lokasiLapak.isEmpty || item.lokasiLapak == '-' ? '-' : item.lokasiLapak;
+
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        CircleAvatar(
+          radius: 20,
+          backgroundColor: kBrandColor.withValues(alpha: 0.12),
+          child: Text(
+            item.inisial.isNotEmpty ? item.inisial : '??',
+            style: const TextStyle(
+                color: kBrandColor, fontSize: 12, fontWeight: FontWeight.w800),
+          ),
+        ),
+        const SizedBox(width: 12),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(item.namaUsaha,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 14)),
+              Text('${item.pemilik} · $lokasi',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(color: Colors.black54, fontSize: 12.5)),
+              const SizedBox(height: 2),
+              Text(
+                'Masuk ${item.waktuCheckin} · Keluar ${item.waktuCheckout ?? '-'}'
+                '${item.omset != null ? ' · ${formatRupiah(item.omset!)}' : ''}',
+                style: const TextStyle(fontSize: 11.5, color: Colors.black54),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(width: 8),
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+          decoration: BoxDecoration(color: bg, borderRadius: BorderRadius.circular(20)),
+          child: Text(
+            labelStatusDashboard(item.status),
+            style: TextStyle(fontSize: 10.5, color: fg, fontWeight: FontWeight.w700),
+          ),
+        ),
+      ],
     );
   }
 }

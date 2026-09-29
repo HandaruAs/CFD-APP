@@ -13,6 +13,10 @@ import 'package:mobile/features/auth/presentation/providers/auth_provider.dart';
 /// daripada maksain muat di bawah.
 const _kMaxBottomNavItems = 5;
 
+/// Tinggi AppBar gradasi -- lebih tinggi dari default (56) karena
+/// nampung 2 baris teks (sapaan + judul menu).
+const _kAppBarHeight = 92.0;
+
 /// Shell utama tiap role: satu Scaffold yang isi tab-nya (IndexedStack)
 /// dirakit dari menu dinamis backend lewat [screenRegistry], PLUS satu
 /// tab tambahan "Profil" (klien-only, bukan dari backend) yang isinya
@@ -42,6 +46,23 @@ const Map<String, String> _kNavLabelOverride = {
 };
 
 String _navLabel(MenuModel m) => _kNavLabelOverride[m.path] ?? m.label;
+
+/// Sapaan berdasarkan jam device -- niru pola umum app konsumer
+/// (Sapawarga, dsb): "Selamat Pagi/Siang/Sore/Malam".
+String _sapaanWaktu() {
+  final jam = DateTime.now().hour;
+  if (jam < 10) return 'Selamat Pagi';
+  if (jam < 15) return 'Selamat Siang';
+  if (jam < 18) return 'Selamat Sore';
+  return 'Selamat Malam';
+}
+
+/// Nama depan aja, biar gak kepanjangan di AppBar (nama lengkap ada di
+/// drawer/Profil).
+String _namaDepan(String? nama) {
+  if (nama == null || nama.trim().isEmpty) return 'Pengguna';
+  return nama.trim().split(RegExp(r'\s+')).first;
+}
 
 class MainLayout extends ConsumerStatefulWidget {
   final String? initialPath;
@@ -131,6 +152,7 @@ class _MainLayoutState extends ConsumerState<MainLayout> {
 
     final selectedIndex = ref.watch(bottomNavIndexProvider).clamp(0, items.length - 1);
     final currentItem = items[selectedIndex];
+    final user = ref.watch(userProvider);
 
     void onSelect(int index) {
       ref.read(bottomNavIndexProvider.notifier).state = index;
@@ -139,15 +161,7 @@ class _MainLayoutState extends ConsumerState<MainLayout> {
 
     return Scaffold(
       key: _drawerKey,
-      appBar: AppBar(
-        title: Text(currentItem.label),
-        leading: useSidebar
-            ? IconButton(
-                icon: const Icon(Icons.menu),
-                onPressed: () => _drawerKey.currentState?.openDrawer(),
-              )
-            : null,
-      ),
+      appBar: _buildAppBar(currentItem, user?.name, useSidebar),
       drawer: useSidebar ? _buildDrawer(items, selectedIndex, onSelect) : null,
       body: IndexedStack(
         index: selectedIndex,
@@ -155,6 +169,83 @@ class _MainLayoutState extends ConsumerState<MainLayout> {
       ),
       bottomNavigationBar:
           useSidebar ? null : _buildBottomNav(items, selectedIndex, onSelect),
+    );
+  }
+
+  /// AppBar gradasi brand color, sudut bawah melengkung, isi sapaan +
+  /// judul menu aktif -- ganti AppBar polos lama yang cuma judul doang.
+  PreferredSizeWidget _buildAppBar(
+    MenuModel currentItem,
+    String? userName,
+    bool useSidebar,
+  ) {
+    return AppBar(
+      toolbarHeight: _kAppBarHeight,
+      backgroundColor: Colors.transparent,
+      elevation: 0,
+      centerTitle: false,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(bottom: Radius.circular(28)),
+      ),
+      flexibleSpace: Container(
+        decoration: const BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: [kBrandColor, kBrandColorLight],
+          ),
+        ),
+      ),
+      leading: useSidebar
+          ? IconButton(
+              icon: const Icon(Icons.menu),
+              onPressed: () => _drawerKey.currentState?.openDrawer(),
+            )
+          : Padding(
+              padding: const EdgeInsets.all(16),
+              child: CircleAvatar(
+                radius: 18,
+                backgroundColor: Colors.white,
+                child: ClipOval(
+                  child: Padding(
+                    padding: const EdgeInsets.all(5),
+                    child: Image.asset(
+                      'assets/images/logo.png',
+                      fit: BoxFit.contain,
+                      errorBuilder: (_, __, ___) =>
+                          const Icon(Icons.storefront, color: kBrandColor, size: 18),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+      title: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            '${_sapaanWaktu()}, ${_namaDepan(userName)}',
+            style: const TextStyle(
+              color: Colors.white70,
+              fontSize: 12.5,
+              fontWeight: FontWeight.w500,
+            ),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+          ),
+          const SizedBox(height: 2),
+          Text(
+            currentItem.label,
+            style: const TextStyle(
+              color: Colors.white,
+              fontSize: 19,
+              fontWeight: FontWeight.w700,
+            ),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+          ),
+        ],
+      ),
     );
   }
 

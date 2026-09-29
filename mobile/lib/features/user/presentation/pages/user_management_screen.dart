@@ -18,8 +18,8 @@ const _jenisLapakLabel = {
 };
 
 /// BODY Manajemen User buat satu role (bukan halaman penuh -- Scaffold
-/// dan AppBar udah dipegang MainLayout). Mirror web: statistik,
-/// pencarian, filter status, daftar dengan infinite scroll, tambah, edit,
+/// dan AppBar udah dipegang MainLayout). Mirror web: pencarian,
+/// (pedagang) filter Baru/Lama, daftar dengan infinite scroll, tambah, edit,
 /// dan hapus.
 ///
 /// Tambah user tersedia buat semua role. Buat pedagang, formnya ikut
@@ -93,6 +93,7 @@ class _UserManagementScreenState extends ConsumerState<UserManagementScreen>
     return Scaffold(
       backgroundColor: Colors.transparent,
       floatingActionButton: FloatingActionButton.extended(
+        heroTag: null, // 3 tab (pedagang/petugas/superadmin) hidup bareng -> hindari error "multiple heroes"
         onPressed: () => _bukaForm(),
         backgroundColor: kBrandColor,
         foregroundColor: Colors.white,
@@ -101,9 +102,8 @@ class _UserManagementScreenState extends ConsumerState<UserManagementScreen>
       ),
       body: Column(
         children: [
-          if (state.stats != null) _StatsRow(stats: state.stats!),
           Padding(
-            padding: const EdgeInsets.fromLTRB(16, 4, 16, 8),
+            padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
             child: TextField(
               controller: _searchController,
               onChanged: _notifier.setSearch,
@@ -132,31 +132,32 @@ class _UserManagementScreenState extends ConsumerState<UserManagementScreen>
               ),
             ),
           ),
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
-            child: Row(
-              children: [
-                for (final f in const [
-                  ('', 'Semua'),
-                  ('active', 'Aktif'),
-                  ('suspended', 'Ditangguhkan'),
-                ])
-                  Padding(
-                    padding: const EdgeInsets.only(right: 8),
-                    child: ChoiceChip(
-                      label: Text(f.$2),
-                      selected: state.status == f.$1,
-                      onSelected: (_) => _notifier.setStatus(f.$1),
-                      selectedColor: kBrandColor.withValues(alpha: 0.14),
-                      labelStyle: TextStyle(
-                        fontWeight: FontWeight.w600,
-                        color: state.status == f.$1 ? kBrandColor : Colors.black87,
+          if (widget.role == UserRole.pedagang)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+              child: Row(
+                children: [
+                  for (final f in const [
+                    ('', 'Semua'),
+                    ('baru', 'Pedagang Baru'),
+                    ('lama', 'Pedagang Lama'),
+                  ])
+                    Padding(
+                      padding: const EdgeInsets.only(right: 8),
+                      child: ChoiceChip(
+                        label: Text(f.$2),
+                        selected: state.status == f.$1,
+                        onSelected: (_) => _notifier.setStatus(f.$1),
+                        selectedColor: kBrandColor.withValues(alpha: 0.14),
+                        labelStyle: TextStyle(
+                          fontWeight: FontWeight.w600,
+                          color: state.status == f.$1 ? kBrandColor : Colors.black87,
+                        ),
                       ),
                     ),
-                  ),
-              ],
+                ],
+              ),
             ),
-          ),
           Expanded(child: _buildList(state)),
         ],
       ),
@@ -225,68 +226,6 @@ class _UserManagementScreenState extends ConsumerState<UserManagementScreen>
 }
 
 // ---------------------------------------------------------------- widgets
-
-class _StatsRow extends StatelessWidget {
-  final UserStats stats;
-
-  const _StatsRow({required this.stats});
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
-      child: Row(
-        children: [
-          _StatCard(label: 'Total', value: stats.total, color: kBrandColor),
-          const SizedBox(width: 8),
-          _StatCard(label: 'Aktif', value: stats.active, color: Colors.green.shade700),
-          const SizedBox(width: 8),
-          _StatCard(
-            label: 'Ditangguhkan',
-            value: stats.suspended,
-            color: Colors.orange.shade800,
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _StatCard extends StatelessWidget {
-  final String label;
-  final int value;
-  final Color color;
-
-  const _StatCard({required this.label, required this.value, required this.color});
-
-  @override
-  Widget build(BuildContext context) {
-    return Expanded(
-      child: Container(
-        padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 12),
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(12),
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              '$value',
-              style: TextStyle(fontSize: 20, fontWeight: FontWeight.w800, color: color),
-            ),
-            Text(
-              label,
-              style: const TextStyle(fontSize: 12, color: Colors.black54),
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
 
 class _UserTile extends StatelessWidget {
   final ManagedUser user;
@@ -360,10 +299,36 @@ class _UserTile extends StatelessWidget {
                 ),
               ),
               const SizedBox(width: 8),
-              _StatusBadge(active: user.active),
+              if (isPedagang && user.statusPedagang != null)
+                _TipeBadge(baru: user.statusPedagang == 'baru')
+              else
+                _StatusBadge(active: user.active),
             ],
           ),
         ),
+      ),
+    );
+  }
+}
+
+/// Pill Baru / Lama buat pedagang (sama kayak web: baru = oranye, lama = hijau).
+class _TipeBadge extends StatelessWidget {
+  final bool baru;
+
+  const _TipeBadge({required this.baru});
+
+  @override
+  Widget build(BuildContext context) {
+    final color = baru ? Colors.orange.shade800 : Colors.green.shade700;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.12),
+        borderRadius: BorderRadius.circular(20),
+      ),
+      child: Text(
+        baru ? 'Baru' : 'Lama',
+        style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: color),
       ),
     );
   }
