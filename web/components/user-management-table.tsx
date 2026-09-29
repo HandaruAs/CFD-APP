@@ -52,7 +52,10 @@ const STATUS_OPTIONS = [
   { value: "banned", label: "Diblokir" },
 ];
 
-const LIMIT = 10;
+// Jumlah baris per halaman untuk SEMUA tabel manajemen user. Ubah di sini
+// saja -- halaman (Petugas, Admin, dst) tidak perlu menulis angkanya sendiri.
+// Kalau ada halaman yang butuh jumlah berbeda, kirim prop `pageSize`.
+export const DEFAULT_PAGE_SIZE = 5;
 
 export function UserManagementTable({
   title,
@@ -67,12 +70,14 @@ export function UserManagementTable({
   onEditUser,
   onDeleteUser,
   onToggleActive,
+  pageSize = DEFAULT_PAGE_SIZE,
 }: {
   title: string;
   subtitle: string;
   addButtonLabel: string;
   searchPlaceholder: string;
-  statCards: StatCard[];
+  /** Opsional -- kalau tidak dikirim (atau kosong), kartu statistik tidak ditampilkan. */
+  statCards?: StatCard[];
   apiEndpoint: string;
   extraParams?: Record<string, string>;
   reloadSignal?: number;
@@ -80,6 +85,7 @@ export function UserManagementTable({
   onEditUser?: (user: User) => void;
   onDeleteUser?: (user: User) => void;
   onToggleActive?: (user: User) => Promise<void>;
+  pageSize?: number;
 }) {
   const [users, setUsers] = useState<User[]>([]);
   const [searchInput, setSearchInput] = useState("");
@@ -111,7 +117,7 @@ export function UserManagementTable({
           search,
           status,
           page: String(page),
-          limit: String(LIMIT),
+          limit: String(pageSize),
           ...extraParams,
         });
         const res = await fetch(
@@ -139,7 +145,7 @@ export function UserManagementTable({
       cancelled = true;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [search, status, page, apiEndpoint, reloadSignal, JSON.stringify(extraParams)]);
+  }, [search, status, page, pageSize, apiEndpoint, reloadSignal, JSON.stringify(extraParams)]);
 
   const toggleActive = async (u: User) => {
     setUsers((prev) =>
@@ -159,7 +165,7 @@ export function UserManagementTable({
 
   const hasRowActions = Boolean(onEditUser || onDeleteUser);
   const columnCount = hasRowActions ? 4 : 3;
-  const totalPages = Math.max(1, Math.ceil(totalData / LIMIT));
+  const totalPages = Math.max(1, Math.ceil(totalData / pageSize));
 
   return (
     <div>
@@ -181,6 +187,7 @@ export function UserManagementTable({
       </div>
 
       {/* Stat cards */}
+      {statCards && statCards.length > 0 && (
       <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
         {statCards.map((card) => (
           <div
@@ -227,6 +234,7 @@ export function UserManagementTable({
           </div>
         ))}
       </div>
+      )}
 
       {/* Search + filter */}
       <div className="bg-white border border-slate-200 rounded-xl p-4 flex flex-wrap items-center gap-3 mb-4 shadow-sm relative">
