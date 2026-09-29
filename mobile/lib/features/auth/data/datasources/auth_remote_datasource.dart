@@ -109,6 +109,79 @@ class AuthRemoteDatasource {
     return await _storage.read(key: _roleKey);
   }
 
+  // ============================================================
+  // LUPA KATA SANDI (khusus pedagang, dipanggil dari LoginScreen)
+  // Alurnya 3 langkah, sama seperti web /auth/forgot-password:
+  //   1. forgotPassword -> backend kirim OTP 6 digit ke email
+  //   2. verifyOtp      -> OTP ditukar jadi resetToken
+  //   3. resetPassword  -> simpan kata sandi baru pakai resetToken
+  // Semua ini TIDAK menyimpan apa pun ke secure storage -- user tetap
+  // harus login lagi setelah kata sandinya diganti.
+  // ============================================================
+
+  /// Langkah 1: minta kode OTP dikirim ke [email].
+  static Future<void> forgotPassword({required String email}) async {
+    final String url = '${ApiConfig.baseUrl}/api/forgot-password';
+
+    final res = await http.post(
+      Uri.parse(url),
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode({'email': email}),
+    );
+
+    final data = jsonDecode(res.body) as Map<String, dynamic>;
+
+    if (res.statusCode != 200) {
+      final errorMsg = data['error'] as String? ?? 'Gagal mengirim kode OTP.';
+      throw ApiException(errorMsg, statusCode: res.statusCode);
+    }
+  }
+
+  /// Langkah 2: cocokkan [otp]. Kalau benar, backend mengembalikan
+  /// reset token yang dipakai di langkah 3.
+  static Future<String> verifyOtp({
+    required String email,
+    required String otp,
+  }) async {
+    final String url = '${ApiConfig.baseUrl}/api/verify-otp';
+
+    final res = await http.post(
+      Uri.parse(url),
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode({'email': email, 'otp': otp}),
+    );
+
+    final data = jsonDecode(res.body) as Map<String, dynamic>;
+
+    if (res.statusCode != 200) {
+      final errorMsg = data['error'] as String? ?? 'Kode OTP tidak valid.';
+      throw ApiException(errorMsg, statusCode: res.statusCode);
+    }
+
+    return data['reset_token'] as String;
+  }
+
+  /// Langkah 3: simpan [password] baru pakai [resetToken] dari verifyOtp.
+  static Future<void> resetPassword({
+    required String resetToken,
+    required String password,
+  }) async {
+    final String url = '${ApiConfig.baseUrl}/api/reset-password';
+
+    final res = await http.post(
+      Uri.parse(url),
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode({'reset_token': resetToken, 'password': password}),
+    );
+
+    final data = jsonDecode(res.body) as Map<String, dynamic>;
+
+    if (res.statusCode != 200) {
+      final errorMsg = data['error'] as String? ?? 'Gagal mengganti kata sandi.';
+      throw ApiException(errorMsg, statusCode: res.statusCode);
+    }
+  }
+
   static Future<void> logout() async {
     await _storage.delete(key: _tokenKey);
     await _storage.delete(key: _roleKey);

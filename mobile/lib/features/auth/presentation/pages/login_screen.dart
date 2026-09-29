@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:mobile/features/auth/presentation/providers/auth_provider.dart';
 import 'package:mobile/features/auth/presentation/navigation/role_navigation.dart';
 import 'package:mobile/features/auth/presentation/pages/register_screen.dart';
+import 'package:mobile/features/auth/presentation/pages/forgot_password_screen.dart';
 import 'package:mobile/features/auth/presentation/widgets/auth_gradient_header.dart';
 import 'package:mobile/features/auth/presentation/widgets/auth_text_field.dart';
 import 'package:mobile/core/themes/app_theme.dart';
@@ -163,7 +164,36 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                               return null;
                             },
                           ),
-                          const SizedBox(height: 28),
+                          // Lupa kata sandi (khusus pedagang) -> alur 3
+                          // langkah di forgot_password_screen.dart.
+                          Align(
+                            alignment: Alignment.centerRight,
+                            child: TextButton(
+                              onPressed: isLoading
+                                  ? null
+                                  : () {
+                                      ref
+                                          .read(authProvider.notifier)
+                                          .clearError();
+                                      Navigator.of(context).push(
+                                        MaterialPageRoute(
+                                          builder: (_) => ForgotPasswordScreen(
+                                            initialEmail:
+                                                _emailController.text.trim(),
+                                          ),
+                                        ),
+                                      );
+                                    },
+                              child: const Text(
+                                'Lupa Kata Sandi?',
+                                style: TextStyle(
+                                  color: kBrandColor,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                            ),
+                          ),
+                          const SizedBox(height: 12),
                           ElevatedButton(
                             onPressed: isLoading ? null : _handleLogin,
                             style: ElevatedButton.styleFrom(
