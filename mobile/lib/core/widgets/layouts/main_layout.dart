@@ -7,7 +7,41 @@ import 'package:mobile/core/widgets/profile_tab.dart';
 import 'package:mobile/core/widgets/screen_registry.dart';
 import 'package:mobile/features/auth/presentation/providers/auth_provider.dart';
 
+/// Batas jumlah tab yang masih nyaman ditaruh di bottom nav. Di atas
+/// ini, label mulai kepotong/kepepet (kasus lama: "Jam Operasional"
+/// kepotong separo) -- jadi otomatis pindah ke sidebar (drawer)
+/// daripada maksain muat di bawah.
 const _kMaxBottomNavItems = 5;
+
+/// Shell utama tiap role: satu Scaffold yang isi tab-nya (IndexedStack)
+/// dirakit dari menu dinamis backend lewat [screenRegistry], PLUS satu
+/// tab tambahan "Profil" (klien-only, bukan dari backend) yang isinya
+/// info akun + tombol Logout -- logout gak lagi nempel di AppBar.
+///
+/// Navigasinya adaptif:
+///  - <= 5 tab total (termasuk Profil)  -> NavigationBar modern di bawah
+///  - >  5 tab total                    -> NavigationDrawer (sidebar),
+///    dibuka lewat ikon hamburger di AppBar, biar label tetap kebaca
+///    penuh tanpa dipotong.
+///
+/// [initialPath] opsional -- buat kasus kayak pedagang yang perlu milih
+/// tab awal beda tergantung kondisi (misal udah/belum ngajuin usaha),
+/// tanpa nunggu render pertama nunjukin tab index 0 dulu.
+// Alias label KHUSUS buat bottom nav (NavigationBar Material 3 gak bisa
+// dipaksa 1 baris / auto-shrink font per label kayak Tab), supaya gak
+// wrap ke 2 baris dan bikin tinggi antar tab beda-beda kayak yang kejadian
+// di menu "Scan QR Pedagang". AppBar title & item drawer TETAP pakai nama
+// asli dari database (_buildDrawer & currentItem.label di AppBar) --
+// yang diringkas cuma teks di kartu nav bar bawah.
+//
+// Di-key pakai `route`, bukan teks label, biar gak "diam-diam basi" kalau
+// besok nama menunya diedit dari halaman Manajemen Menu (web) -- kalau
+// route-nya gak ketemu di sini, fallback ke label asli apa adanya.
+const Map<String, String> _kNavLabelOverride = {
+  '/petugas/scan-qr': 'Scan QR',
+};
+
+String _navLabel(MenuModel m) => _kNavLabelOverride[m.path] ?? m.label;
 
 class MainLayout extends ConsumerStatefulWidget {
   final String? initialPath;
@@ -53,10 +87,21 @@ class _MainLayoutState extends ConsumerState<MainLayout> {
   }
 
   Widget _buildShell(List<MenuModel> backendMenus) {
-    // Aturan menu mana yang jadi tab (flag mobile & Pendaftaran yang
-    // digabung ke Nomor Stand) ada di visibleTabMenus -- lihat
-    // nav_provider.dart.
-    final visibleBackendMenus = visibleTabMenus(backendMenus);
+    // "Pendaftaran" udah digabung ke "Nomor Stand" (LapakScreen), sama
+    // kayak web. Kalau dua-duanya masih ada di tabel menus, sembunyiin
+    // Pendaftaran biar gak ada 2 tab yang isinya sama. Kalau ternyata
+    // cuma Pendaftaran yang ada, dia tetap tampil (di-mapping ke
+    // LapakScreen juga di screenRegistry).
+    final adaNomerStand = backendMenus.any((m) => m.path == '/pedagang/nomer-stand');
+    // Menu web-only ditandai lewat menus.flags {"mobile": false} di DB
+    // (lihat migrasi 000027), bukan lagi daftar path hardcoded di sini.
+    // Cuma aturan "Pendaftaran digabung ke Nomor Stand" yang masih
+    // dihitung di klien, karena itu soal dua menu yang isinya sama,
+    // bukan soal menu web-only.
+    final visibleBackendMenus = backendMenus
+        .where((m) => m.showOnMobile)
+        .where((m) => !(adaNomerStand && m.path == '/pedagang/pendaftaran'))
+        .toList();
 
     if (visibleBackendMenus.isEmpty) {
       return const Center(child: Text('Tidak ada menu untuk role Anda.'));
@@ -126,7 +171,7 @@ class _MainLayoutState extends ConsumerState<MainLayout> {
             (m) => NavigationDestination(
               icon: Icon(_getIcon(m.iconName)),
               selectedIcon: Icon(_getIcon(m.iconName), color: kBrandColor),
-              label: m.label,
+              label: _navLabel(m),
               tooltip: m.label,
             ),
           )
