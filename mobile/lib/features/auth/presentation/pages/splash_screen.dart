@@ -48,8 +48,13 @@ class _SplashScreenState extends ConsumerState<SplashScreen> {
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
+            Image(
+              image: AssetImage('assets/images/logo.png'),
+              width: 96,
+            ),
+            SizedBox(height: 12),
             Text(
-              'CFD Hub',
+              'E-Event Surabaya',
               style: TextStyle(
                 fontSize: 22,
                 fontWeight: FontWeight.bold,

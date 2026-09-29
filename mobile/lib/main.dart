@@ -16,7 +16,7 @@ class MyApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'CFD Hub',
+      title: 'E-Event Surabaya',
       debugShowCheckedModeBanner: false,
       theme: AppTheme.light,
       // SplashScreen yang decide tujuan awal (LoginScreen atau home

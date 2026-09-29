@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
-import 'package:mobile/features/auth/domain/entities/user.dart'; // ✅ AuthUser sekarang dari sini
-import 'package:mobile/features/auth/data/datasources/auth_remote_datasource.dart'; // tetap dipakai buat logout()
+import 'package:mobile/features/auth/domain/entities/user.dart'; 
+import 'package:mobile/features/auth/data/datasources/auth_remote_datasource.dart';
 
 class HomeScreen extends StatelessWidget {
   final AuthUser user;
@@ -11,7 +11,7 @@ class HomeScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('CFD Hub'),
+        title: const Text('E-Event Surabaya'),
         backgroundColor: const Color(0xFF1C3F7C),
         foregroundColor: Colors.white,
       ),
