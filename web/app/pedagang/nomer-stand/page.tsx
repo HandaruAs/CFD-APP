@@ -94,10 +94,45 @@ export default function DaftarDanCheckInPage() {
   const [category, setCategory] = useState("");
   const [stallType, setStallType] = useState<StallType>("");
 
+  // --- Cek "harus ke halaman checkout dulu?" -- sama seperti mobile
+  // (LapakScreen._cekDanPindah). true selama pengecekan awal berjalan. ---
+  const [checkingCheckout, setCheckingCheckout] = useState(true);
+
   const [showConfirm, setShowConfirm] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [hasil, setHasil] = useState<HasilAlokasi | null>(null);
+
+  // Cek SEKALI saat halaman dibuka, walau belum klaim lapak: kalau pedagang
+  // masih punya sesi lama yang belum checkout (omset belum diisi), atau
+  // sudah check-in/checkout di sesi hari ini, langsung ke halaman CekOut.
+  // Sebelumnya cek ini cuma jalan SETELAH klaim berhasil -- jadi saat ada
+  // event baru, pedagang yang nunggak checkout sesi lama malah disuruh
+  // klaim lapak, ditolak backend (BELUM_CHECKOUT), lalu stuck di sini.
+  useEffect(() => {
+    let cancelled = false;
+    async function cekHarusCheckout() {
+      try {
+        const res = await fetch(apiUrl("/api/pedagang/check-in/status"), {
+          headers: authHeaders(),
+        });
+        if (res.ok) {
+          const data = await res.json();
+          if (!cancelled && data.sudah_check_in) {
+            router.replace("/pedagang/CekOut");
+            return; // biarkan loading tampil sampai pindah halaman
+          }
+        }
+      } catch {
+        // gagal cek -- tampilkan halaman seperti biasa
+      }
+      if (!cancelled) setCheckingCheckout(false);
+    }
+    cekHarusCheckout();
+    return () => {
+      cancelled = true;
+    };
+  }, [router]);
 
   useEffect(() => {
     async function fetchDataPendaftar() {
@@ -276,8 +311,14 @@ export default function DaftarDanCheckInPage() {
         method: "POST",
         headers: { "Content-Type": "application/json", ...authHeaders() },
       });
-      const data = await res.json();
+      const data = await res.json().catch(() => ({}));
       if (!res.ok) {
+        // Masih nunggak checkout sesi sebelumnya -> langsung ke halaman
+        // CekOut untuk isi omset (backend kirim code "BELUM_CHECKOUT").
+        if (data.code === "BELUM_CHECKOUT") {
+          router.replace("/pedagang/CekOut");
+          return;
+        }
         throw new Error(data.error ?? "Gagal mengklaim lapak");
       }
       setHasil({
@@ -295,7 +336,7 @@ export default function DaftarDanCheckInPage() {
   }
 
   const handleBack = () => router.back();
-  const isLoadingAwal = checkingPendaftar || checkingStatus;
+  const isLoadingAwal = checkingPendaftar || checkingStatus || checkingCheckout;
 
   return (
     <main className="w-full min-h-screen flex items-start justify-center px-4 py-10 bg-[#f6f7fb]">
@@ -327,7 +368,7 @@ export default function DaftarDanCheckInPage() {
           </p>
         </div>
 
-        {isLoadingAwal && !hasil && (
+        {isLoadingAwal && (
           <div className="w-full bg-white rounded-2xl border border-[#e7e8f1] p-8 text-center text-[13px] text-[#767884]">
             Memuat data...
           </div>
