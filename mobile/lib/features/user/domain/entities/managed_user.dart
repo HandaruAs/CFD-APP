@@ -37,6 +37,10 @@ class ManagedUser {
   final String? jenisDagangan;
   final String? jenisLapak;
 
+  /// "lama" (ditambahkan admin/import) | "baru" (daftar sendiri). Null kalau
+  /// backend belum ngirim field-nya.
+  final String? statusPedagang;
+
   const ManagedUser({
     required this.id,
     required this.name,
@@ -49,6 +53,7 @@ class ManagedUser {
     this.namaUsaha,
     this.jenisDagangan,
     this.jenisLapak,
+    this.statusPedagang,
   });
 
   factory ManagedUser.fromJson(Map<String, dynamic> json) {
@@ -68,6 +73,7 @@ class ManagedUser {
       namaUsaha: _kosongJadiNull(json['namaUsaha']),
       jenisDagangan: _kosongJadiNull(json['jenisDagangan']),
       jenisLapak: _kosongJadiNull(json['jenisLapak']),
+      statusPedagang: _kosongJadiNull(json['statusPedagang']),
     );
   }
 }

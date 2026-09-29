@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:mobile/core/themes/app_theme.dart';
 import 'package:mobile/features/petugas/presentation/pages/laporan_screen.dart';
@@ -20,14 +21,26 @@ class ManajemenLapakScreen extends StatelessWidget {
       length: 2,
       child: Column(
         children: [
-          Material(
-            color: Theme.of(context).colorScheme.surface,
+          Container(
+            margin: const EdgeInsets.fromLTRB(16, 12, 16, 4),
+            padding: const EdgeInsets.all(4),
+            decoration: BoxDecoration(
+              color: kBrandColor.withValues(alpha: 0.08),
+              borderRadius: BorderRadius.circular(14),
+            ),
             child: TabBar(
-              labelColor: kBrandColor,
-              indicatorColor: kBrandColor,
+              dividerColor: Colors.transparent,
+              indicatorSize: TabBarIndicatorSize.tab,
+              indicator: BoxDecoration(
+                color: kBrandColor,
+                borderRadius: BorderRadius.circular(11),
+              ),
+              labelColor: Colors.white,
+              unselectedLabelColor: kBrandColor,
+              labelStyle: const TextStyle(fontWeight: FontWeight.w700, fontSize: 14),
               tabs: const [
-                Tab(text: 'Ruas & Kuota'),
-                Tab(text: 'Laporan'),
+                Tab(height: 40, text: 'Ruas & Kuota'),
+                Tab(height: 40, text: 'Laporan'),
               ],
             ),
           ),
@@ -132,87 +145,85 @@ class _RuasKuotaTabState extends ConsumerState<_RuasKuotaTab>
       physics: const AlwaysScrollableScrollPhysics(),
       padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
       children: [
-        Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Expanded(
-              child: _Dropdown<String>(
-                label: 'Kecamatan',
-                value: state.kecamatanKey,
-                items: [
-                  for (final e in state.kecamatanOpsi)
-                    DropdownMenuItem(value: e.key, child: Text(e.value.nama)),
-                ],
-                onChanged: notifier.setKecamatan,
-              ),
-            ),
-            _ActionMenu(
-              items: [
-                _ActionItem('tambah', 'Tambah Kecamatan', Icons.add),
-                if (state.kecamatanBisaDihapus)
-                  _ActionItem('hapus', 'Hapus Kecamatan Ini', Icons.delete_outline, merah: true),
-              ],
-              onSelected: (value) {
-                if (value == 'tambah') _openKecamatanDialog(context, ref);
-                if (value == 'hapus' && state.kecamatanDipilih != null) {
-                  _confirmDeleteKecamatan(context, ref, state.kecamatanDipilih!);
-                }
-              },
-            ),
-          ],
+        _SectionLabel(
+          'Kecamatan',
+          trailing: state.kecamatanBisaDihapus && state.kecamatanDipilih != null
+              ? TextButton.icon(
+                  onPressed: () => _confirmDeleteKecamatan(context, ref, state.kecamatanDipilih!),
+                  icon: const Icon(Icons.delete_outline_rounded, size: 16),
+                  label: const Text('Hapus'),
+                  style: TextButton.styleFrom(
+                    foregroundColor: Colors.red,
+                    visualDensity: VisualDensity.compact,
+                  ),
+                )
+              : null,
         ),
-        const SizedBox(height: 12),
-        Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Expanded(
-              child: _Dropdown<String>(
-                label: 'Jalan',
-                value: state.jalanOpsi.any((j) => j.id == state.jalanId) ? state.jalanId : null,
-                enabled: state.jalanOpsi.isNotEmpty,
-                helper: state.jalanOpsi.isEmpty ? 'Kecamatan ini belum punya jalan' : null,
-                items: [
-                  for (final j in state.jalanOpsi)
-                    DropdownMenuItem(value: j.id, child: Text('${j.kodeJalan} - ${j.namaJalan}')),
-                ],
-                onChanged: notifier.setJalan,
-              ),
+        _ChipRow(children: [
+          for (final e in state.kecamatanOpsi)
+            _SelectChip(
+              label: e.value.nama,
+              selected: e.key == state.kecamatanKey,
+              onTap: () => notifier.setKecamatan(e.key),
             ),
-            _ActionMenu(
-              items: [
-                if (state.bisaTambahJalan) _ActionItem('tambah', 'Tambah Jalan', Icons.add),
-                if (jalan != null) _ActionItem('edit', 'Edit Jalan Ini', Icons.edit_outlined),
-                if (jalan != null)
-                  _ActionItem('hapus', 'Hapus Jalan Ini', Icons.delete_outline, merah: true),
-              ],
-              onSelected: (value) {
+          _AddChip(label: 'Kecamatan', onTap: () => _openKecamatanDialog(context, ref)),
+        ]),
+        const SizedBox(height: 14),
+        const _SectionLabel('Jalan'),
+        _ChipRow(children: [
+          for (final j in state.jalanOpsi)
+            _SelectChip(
+              label: '${j.kodeJalan} · ${j.namaJalan}',
+              selected: j.id == state.jalanId,
+              onTap: () => notifier.setJalan(j.id),
+            ),
+          if (state.bisaTambahJalan)
+            _AddChip(
+              label: 'Jalan',
+              onTap: () {
                 final kecId = state.kecamatanDipilih?.id;
-                if (value == 'tambah' && kecId != null) {
-                  _openJalanFormDialog(context, ref, kecamatanId: kecId);
-                }
-                if (value == 'edit' && jalan != null) {
-                  _openJalanFormDialog(context, ref, kecamatanId: null, jalan: jalan);
-                }
-                if (value == 'hapus' && jalan != null) {
-                  _confirmDeleteJalan(context, ref, jalan);
-                }
+                if (kecId != null) _openJalanFormDialog(context, ref, kecamatanId: kecId);
               },
             ),
-          ],
-        ),
+        ]),
+        if (state.jalanOpsi.isEmpty)
+          const Padding(
+            padding: EdgeInsets.only(top: 6),
+            child: Text('Kecamatan ini belum punya jalan',
+                style: TextStyle(fontSize: 12.5, color: Colors.black54)),
+          ),
         const SizedBox(height: 16),
         if (jalan != null) ...[
-          _JalanSummaryCard(jalan: jalan),
+          _JalanSummaryCard(
+            jalan: jalan,
+            onEdit: () => _openJalanFormDialog(context, ref, kecamatanId: null, jalan: jalan),
+            onDelete: () => _confirmDeleteJalan(context, ref, jalan),
+          ),
           const SizedBox(height: 16),
           Row(
             children: [
-              const Text('Daftar Ruas', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 15)),
+              const Text('Daftar Ruas', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 16)),
+              const SizedBox(width: 8),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                decoration: BoxDecoration(
+                  color: kBrandColor.withValues(alpha: 0.1),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: Text('${jalan.ruas.length}',
+                    style: const TextStyle(
+                        fontSize: 12, fontWeight: FontWeight.w700, color: kBrandColor)),
+              ),
               const Spacer(),
-              TextButton.icon(
+              FilledButton.tonalIcon(
                 onPressed: () => _openRuasDialog(context, ref, jalan: jalan),
-                icon: const Icon(Icons.add, size: 18),
+                icon: const Icon(Icons.add_rounded, size: 18),
                 label: const Text('Tambah'),
-                style: TextButton.styleFrom(foregroundColor: kBrandColor),
+                style: FilledButton.styleFrom(
+                  foregroundColor: kBrandColor,
+                  backgroundColor: kBrandColor.withValues(alpha: 0.10),
+                  visualDensity: VisualDensity.compact,
+                ),
               ),
             ],
           ),
@@ -246,81 +257,122 @@ class _RuasKuotaTabState extends ConsumerState<_RuasKuotaTab>
 
 // ---------------------------------------------------------------- widgets
 
-class _Dropdown<T> extends StatelessWidget {
-  final String label;
-  final T? value;
-  final bool enabled;
-  final String? helper;
-  final List<DropdownMenuItem<T>> items;
-  final ValueChanged<T?> onChanged;
-
-  const _Dropdown({
-    required this.label,
-    required this.value,
-    required this.items,
-    required this.onChanged,
-    this.enabled = true,
-    this.helper,
-  });
+class _SectionLabel extends StatelessWidget {
+  final String text;
+  final Widget? trailing;
+  const _SectionLabel(this.text, {this.trailing});
 
   @override
   Widget build(BuildContext context) {
-    return DropdownButtonFormField<T>(
-      // ignore: deprecated_member_use
-      value: value,
-      isExpanded: true,
-      items: items,
-      onChanged: enabled ? onChanged : null,
-      decoration: InputDecoration(
-        labelText: label,
-        helperText: helper,
-        border: const OutlineInputBorder(),
-        filled: !enabled,
-        fillColor: enabled ? null : Colors.black.withValues(alpha: 0.04),
+    return SizedBox(
+      height: 36,
+      child: Row(
+        children: [
+          Text(text,
+              style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: Colors.black54)),
+          const Spacer(),
+          if (trailing != null) trailing!,
+        ],
       ),
     );
   }
 }
 
-/// Menu titik-tiga kecil di samping dropdown Kecamatan/Jalan, isinya
-/// aksi tambah/edit/hapus buat item yang lagi dipilih. Dipilih daripada
-/// deretan IconButton biar gak sesak di layar sempit.
-class _ActionItem {
-  final String value;
-  final String label;
-  final IconData icon;
-  final bool merah;
-
-  const _ActionItem(this.value, this.label, this.icon, {this.merah = false});
-}
-
-class _ActionMenu extends StatelessWidget {
-  final List<_ActionItem> items;
-  final ValueChanged<String> onSelected;
-
-  const _ActionMenu({required this.items, required this.onSelected});
+/// Baris chip yang bisa digeser horizontal (tinggi 48 = area sentuh nyaman).
+class _ChipRow extends StatelessWidget {
+  final List<Widget> children;
+  const _ChipRow({required this.children});
 
   @override
   Widget build(BuildContext context) {
-    if (items.isEmpty) return const SizedBox(width: 48);
-    return Padding(
-      padding: const EdgeInsets.only(top: 4),
-      child: PopupMenuButton<String>(
-        icon: const Icon(Icons.more_vert),
-        onSelected: onSelected,
-        itemBuilder: (_) => [
-          for (final it in items)
-            PopupMenuItem(
-              value: it.value,
-              child: Row(
-                children: [
-                  Icon(it.icon, size: 18, color: it.merah ? Colors.red : Colors.black87),
-                  const SizedBox(width: 10),
-                  Text(it.label, style: TextStyle(color: it.merah ? Colors.red : Colors.black87)),
-                ],
-              ),
-            ),
-        ],
+    return SizedBox(
+      height: 48,
+      child: ListView.separated(
+        scrollDirection: Axis.horizontal,
+        itemCount: children.length,
+        separatorBuilder: (_, __) => const SizedBox(width: 8),
+        itemBuilder: (_, i) => Center(child: children[i]),
+      ),
+    );
+  }
+}
+
+class _SelectChip extends StatelessWidget {
+  final String label;
+  final bool selected;
+  final VoidCallback onTap;
+  const _SelectChip({required this.label, required this.selected, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: selected ? kBrandColor : Colors.white,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(14),
+        side: BorderSide(color: selected ? kBrandColor : kBrandColor.withValues(alpha: 0.15)),
+      ),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(14),
+        onTap: () {
+          HapticFeedback.selectionClick();
+          onTap();
+        },
+        child: Container(
+          height: 44,
+          padding: const EdgeInsets.symmetric(horizontal: 16),
+          alignment: Alignment.center,
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              if (selected) ...[
+                const Icon(Icons.check_rounded, size: 16, color: Colors.white),
+                const SizedBox(width: 6),
+              ],
+              Text(label,
+                  style: TextStyle(
+                    fontSize: 13.5,
+                    fontWeight: FontWeight.w700,
+                    color: selected ? Colors.white : kBrandColor,
+                  )),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _AddChip extends StatelessWidget {
+  final String label;
+  final VoidCallback onTap;
+  const _AddChip({required this.label, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: kBrandColor.withValues(alpha: 0.08),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(14),
+        side: BorderSide(color: kBrandColor.withValues(alpha: 0.35)),
+      ),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(14),
+        onTap: onTap,
+        child: Container(
+          height: 44,
+          padding: const EdgeInsets.symmetric(horizontal: 14),
+          alignment: Alignment.center,
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Icon(Icons.add_rounded, size: 18, color: kBrandColor),
+              const SizedBox(width: 4),
+              Text(label,
+                  style: const TextStyle(
+                      fontSize: 13.5, fontWeight: FontWeight.w700, color: kBrandColor)),
+            ],
+          ),
+        ),
       ),
     );
   }
@@ -330,87 +382,108 @@ class _ActionMenu extends StatelessWidget {
 /// ruas yang sudah dibagi, plus kuota event aktif kalau ada.
 class _JalanSummaryCard extends StatelessWidget {
   final JalanLengkap jalan;
+  final VoidCallback onEdit;
+  final VoidCallback onDelete;
 
-  const _JalanSummaryCard({required this.jalan});
+  const _JalanSummaryCard({required this.jalan, required this.onEdit, required this.onDelete});
 
   @override
   Widget build(BuildContext context) {
     final totalRuas = jalan.totalKuotaRuas;
-    final overKapasitas = totalRuas > jalan.kapasitas;
+    final over = totalRuas > jalan.kapasitas;
     final persen = jalan.kapasitas == 0 ? 0.0 : totalRuas / jalan.kapasitas;
+    final warna = over ? const Color(0xFFB91C1C) : kBrandColor;
 
     return Container(
       width: double.infinity,
-      padding: const EdgeInsets.all(14),
+      padding: const EdgeInsets.all(18),
       decoration: BoxDecoration(
-        color: kBrandColor.withValues(alpha: 0.06),
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: kBrandColor.withValues(alpha: 0.15)),
+        gradient: LinearGradient(
+          colors: over ? [const Color(0xFFB91C1C), const Color(0xFFDC2626)] : [kBrandColor, kBrandColorLight],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        borderRadius: BorderRadius.circular(20),
+        boxShadow: [BoxShadow(color: warna.withValues(alpha: 0.25), blurRadius: 18, offset: const Offset(0, 8))],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            '${jalan.kodeJalan} - ${jalan.namaJalan}',
-            style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 15),
-          ),
-          const SizedBox(height: 10),
-          ClipRRect(
-            borderRadius: BorderRadius.circular(6),
-            child: LinearProgressIndicator(
-              value: persen.clamp(0, 1),
-              minHeight: 7,
-              backgroundColor: const Color(0xFFE5E7EB),
-              color: overKapasitas ? Colors.red : kBrandColor,
-            ),
-          ),
-          const SizedBox(height: 8),
           Row(
             children: [
               Expanded(
-                child: _StatKecil(
-                  label: 'Kapasitas jalan',
-                  value: '$totalRuas / ${jalan.kapasitas}',
-                  warna: overKapasitas ? Colors.red : Colors.black87,
-                ),
+                child: Text('${jalan.kodeJalan} - ${jalan.namaJalan}',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w700, fontSize: 14)),
               ),
-              if (jalan.kuotaEvent > 0)
-                Expanded(
-                  child: _StatKecil(
-                    label: 'Kuota event aktif',
-                    value: '${jalan.terisi} / ${jalan.kuotaEvent}',
-                  ),
-                ),
+              IconButton(
+                tooltip: 'Edit jalan',
+                onPressed: onEdit,
+                icon: const Icon(Icons.edit_outlined, size: 20, color: Colors.white),
+                visualDensity: VisualDensity.compact,
+              ),
+              IconButton(
+                tooltip: 'Hapus jalan',
+                onPressed: onDelete,
+                icon: const Icon(Icons.delete_outline_rounded, size: 20, color: Colors.white),
+                visualDensity: VisualDensity.compact,
+              ),
             ],
           ),
-          if (overKapasitas) ...[
-            const SizedBox(height: 6),
-            const Text(
-              'Total kuota ruas melebihi kapasitas jalan.',
-              style: TextStyle(fontSize: 12, color: Colors.red, fontWeight: FontWeight.w600),
+          const SizedBox(height: 6),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              Text('$totalRuas',
+                  style: const TextStyle(color: Colors.white, fontSize: 34, fontWeight: FontWeight.w800, height: 1)),
+              Text(' / ${jalan.kapasitas}',
+                  style: const TextStyle(color: Colors.white70, fontSize: 16, fontWeight: FontWeight.w600)),
+              const Spacer(),
+              Text('${(persen * 100).round()}%',
+                  style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.w700)),
+            ],
+          ),
+          const SizedBox(height: 4),
+          const Text('Kapasitas jalan terbagi ke ruas',
+              style: TextStyle(color: Colors.white70, fontSize: 12)),
+          const SizedBox(height: 12),
+          ClipRRect(
+            borderRadius: BorderRadius.circular(8),
+            child: LinearProgressIndicator(
+              value: persen.clamp(0, 1),
+              minHeight: 8,
+              backgroundColor: Colors.white.withValues(alpha: 0.25),
+              color: Colors.white,
+            ),
+          ),
+          if (jalan.kuotaEvent > 0) ...[
+            const SizedBox(height: 12),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+              decoration: BoxDecoration(
+                color: Colors.white.withValues(alpha: 0.16),
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: Text('Kuota event aktif  ${jalan.terisi} / ${jalan.kuotaEvent}',
+                  style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.w600)),
+            ),
+          ],
+          if (over) ...[
+            const SizedBox(height: 10),
+            const Row(
+              children: [
+                Icon(Icons.warning_amber_rounded, color: Colors.white, size: 16),
+                SizedBox(width: 6),
+                Expanded(
+                  child: Text('Total kuota ruas melebihi kapasitas jalan.',
+                      style: TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.w600)),
+                ),
+              ],
             ),
           ],
         ],
       ),
-    );
-  }
-}
-
-class _StatKecil extends StatelessWidget {
-  final String label;
-  final String value;
-  final Color warna;
-
-  const _StatKecil({required this.label, required this.value, this.warna = Colors.black87});
-
-  @override
-  Widget build(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(label, style: const TextStyle(fontSize: 11, color: Colors.black54)),
-        Text(value, style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: warna)),
-      ],
     );
   }
 }
@@ -425,66 +498,133 @@ class _RuasCard extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final persen = ruas.kuota == 0 ? 0.0 : ruas.terisi / ruas.kuota;
     final penuh = ruas.sisa == 0;
+    final warna = penuh ? const Color(0xFFDC2626) : kBrandColor;
 
-    return Container(
-      padding: const EdgeInsets.all(14),
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: () => _showRuasSheet(context, ref, jalan, ruas),
+      child: Container(
+      padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: Colors.black.withValues(alpha: 0.08)),
-        boxShadow: [
-          BoxShadow(color: Colors.black.withValues(alpha: 0.03), blurRadius: 6, offset: const Offset(0, 2)),
-        ],
+        borderRadius: BorderRadius.circular(18),
+        boxShadow: [BoxShadow(color: kBrandColor.withValues(alpha: 0.06), blurRadius: 16, offset: const Offset(0, 6))],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
+              Container(
+                width: 44,
+                height: 44,
+                decoration: BoxDecoration(
+                  color: kBrandColor.withValues(alpha: 0.10),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: const Icon(Icons.signpost_rounded, color: kBrandColor, size: 22),
+              ),
+              const SizedBox(width: 12),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(ruas.namaRuas, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 15)),
+                    Text(ruas.namaRuas, style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 15)),
                     const SizedBox(height: 2),
-                    Text(
-                      'Nomor ${ruas.nomorMulai}–${ruas.nomorSelesai}',
-                      style: const TextStyle(fontSize: 12, color: Colors.black54),
-                    ),
+                    Text('Nomor ${ruas.nomorMulai}–${ruas.nomorSelesai}',
+                        style: const TextStyle(fontSize: 12.5, color: Colors.black54)),
                   ],
                 ),
               ),
               _StatusChip(penuh: penuh, sisa: ruas.sisa),
-              PopupMenuButton<String>(
-                padding: EdgeInsets.zero,
-                icon: const Icon(Icons.more_vert, size: 20, color: Colors.black54),
-                onSelected: (value) {
-                  if (value == 'edit') _openRuasDialog(context, ref, jalan: jalan, ruas: ruas);
-                  if (value == 'delete') _confirmDelete(context, ref, ruas);
-                },
-                itemBuilder: (_) => const [
-                  PopupMenuItem(value: 'edit', child: Text('Edit')),
-                  PopupMenuItem(value: 'delete', child: Text('Hapus', style: TextStyle(color: Colors.red))),
-                ],
+              IconButton(
+                onPressed: () => _showRuasSheet(context, ref, jalan, ruas),
+                icon: const Icon(Icons.more_horiz_rounded, color: Colors.black54),
+                visualDensity: VisualDensity.compact,
               ),
             ],
           ),
-          const SizedBox(height: 10),
+          const SizedBox(height: 14),
           ClipRRect(
-            borderRadius: BorderRadius.circular(6),
+            borderRadius: BorderRadius.circular(8),
             child: LinearProgressIndicator(
               value: persen.clamp(0, 1),
-              minHeight: 6,
-              backgroundColor: const Color(0xFFE5E7EB),
-              color: penuh ? Colors.red : kBrandColor,
+              minHeight: 8,
+              backgroundColor: kBrandColor.withValues(alpha: 0.08),
+              color: warna,
             ),
           ),
-          const SizedBox(height: 6),
-          Text(
-            'Kuota ${ruas.kuota} • lama ${ruas.terisiLama} • baru ${ruas.terisiBaru} • sisa ${ruas.sisa}',
-            style: const TextStyle(fontSize: 12, color: Colors.black54),
+          const SizedBox(height: 12),
+          Row(
+            children: [
+              _MiniStat('Kuota', ruas.kuota),
+              _MiniStat('Lama', ruas.terisiLama),
+              _MiniStat('Baru', ruas.terisiBaru),
+              _MiniStat('Sisa', ruas.sisa, warna: penuh ? Colors.red : const Color(0xFF15803D)),
+            ],
           ),
+        ],
+      ),
+      ),
+    );
+  }
+}
+
+Future<void> _showRuasSheet(BuildContext context, WidgetRef ref, JalanLengkap jalan, RuasLengkap ruas) {
+  return showModalBottomSheet<void>(
+    context: context,
+    showDragHandle: true,
+    shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
+    builder: (ctx) => SafeArea(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(20, 0, 20, 8),
+            child: Align(
+              alignment: Alignment.centerLeft,
+              child: Text(ruas.namaRuas,
+                  style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w800)),
+            ),
+          ),
+          ListTile(
+            leading: const Icon(Icons.edit_outlined),
+            title: const Text('Edit Ruas'),
+            onTap: () {
+              Navigator.pop(ctx);
+              _openRuasDialog(context, ref, jalan: jalan, ruas: ruas);
+            },
+          ),
+          ListTile(
+            leading: const Icon(Icons.delete_outline_rounded, color: Colors.red),
+            title: const Text('Hapus Ruas', style: TextStyle(color: Colors.red)),
+            onTap: () {
+              Navigator.pop(ctx);
+              _confirmDelete(context, ref, ruas);
+            },
+          ),
+          const SizedBox(height: 8),
+        ],
+      ),
+    ),
+  );
+}
+
+class _MiniStat extends StatelessWidget {
+  final String label;
+  final int value;
+  final Color? warna;
+
+  const _MiniStat(this.label, this.value, {this.warna});
+
+  @override
+  Widget build(BuildContext context) {
+    return Expanded(
+      child: Column(
+        children: [
+          Text('$value', style: TextStyle(fontSize: 17, fontWeight: FontWeight.w800, color: warna)),
+          const SizedBox(height: 1),
+          Text(label, style: const TextStyle(fontSize: 11.5, color: Colors.black54)),
         ],
       ),
     );
@@ -501,16 +641,11 @@ class _StatusChip extends StatelessWidget {
   Widget build(BuildContext context) {
     final warna = penuh ? Colors.red : Colors.green.shade700;
     return Container(
-      margin: const EdgeInsets.only(left: 8, top: 2),
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-      decoration: BoxDecoration(
-        color: warna.withValues(alpha: 0.1),
-        borderRadius: BorderRadius.circular(20),
-      ),
-      child: Text(
-        penuh ? 'Penuh' : 'Sisa $sisa',
-        style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: warna),
-      ),
+      margin: const EdgeInsets.only(left: 8),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+      decoration: BoxDecoration(color: warna.withValues(alpha: 0.12), borderRadius: BorderRadius.circular(20)),
+      child: Text(penuh ? 'Penuh' : 'Sisa $sisa',
+          style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700, color: warna)),
     );
   }
 }
