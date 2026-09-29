@@ -53,3 +53,4 @@ mobile/*.iml
 .DS_Store
 Thumbs.db
 /
+*.zip
