@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Sama persis dengan Scaffold background di splash_screen.dart (Flutter),
+         biar transisi native splash -> splash Flutter gak ada "kedip" ganti warna. -->
+    <color name="splash_background">#FFEEF1F7</color>
+</resources>

@@ -7,9 +7,10 @@ import 'user_management_state.dart';
 
 /// Satu notifier per role (lihat family di user_management_provider.dart).
 ///
-/// Petugas & superadmin: search/status/page dikerjain server.
+/// Petugas & superadmin: search/page dikerjain server (tanpa filter status).
 /// Pedagang: backend balikin semua data sekaligus, jadi list lengkapnya
-/// disimpan di [_semuaPedagang] lalu difilter + dipotong per 10 di sini.
+/// disimpan di [_semuaPedagang] lalu difilter (pencarian + lama/baru) dan
+/// dipotong per 10 di sini.
 class UserManagementNotifier extends StateNotifier<UserManagementState> {
   final UserRole role;
 
@@ -56,7 +57,6 @@ class UserManagementNotifier extends StateNotifier<UserManagementState> {
           page: 1,
         );
       }
-      _muatStats();
     } catch (e) {
       if (id != _reqId || !mounted) return;
       state = state.copyWith(isLoading: false, error: e.toString());
@@ -147,8 +147,8 @@ class UserManagementNotifier extends StateNotifier<UserManagementState> {
     final q = state.search.trim().toLowerCase();
 
     final cocok = _semuaPedagang.where((u) {
-      if (state.status == 'active' && !u.active) return false;
-      if (state.status == 'suspended' && u.active) return false;
+      // status = '' (semua) | 'lama' | 'baru'
+      if (state.status.isNotEmpty && u.statusPedagang != state.status) return false;
       if (q.isEmpty) return true;
       return [u.name, u.email, u.phone, u.namaUsaha ?? '']
           .any((s) => s.toLowerCase().contains(q));
@@ -163,14 +163,5 @@ class UserManagementNotifier extends StateNotifier<UserManagementState> {
       total: cocok.length,
       page: halaman,
     );
-  }
-
-  Future<void> _muatStats() async {
-    try {
-      final s = await UserRemoteDatasource.stats(role);
-      if (mounted) state = state.copyWith(stats: s);
-    } catch (_) {
-      // Statistik cuma pelengkap -- gagal ya sudah, list tetap tampil.
-    }
   }
 }
