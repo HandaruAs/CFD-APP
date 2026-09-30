@@ -45,6 +45,10 @@ import (
 	// Repository Laporan Superadmin
 	adminLaporanRepo "cfd-backend/modules/admin/laporan/repository"
 
+	// Repository Multi-Event (admin & pedagang)
+	adminEventRepo "cfd-backend/modules/admin/event/repository"
+	pedagangEventRepo "cfd-backend/modules/pedagang/event/repository"
+
 	// Modul Usecase
 	authUsecase "cfd-backend/modules/auth/usecase"
 	"cfd-backend/pkg/mailer"
@@ -80,6 +84,10 @@ import (
 	// Usecase Laporan Superadmin
 	adminLaporanUsecase "cfd-backend/modules/admin/laporan/usecase"
 
+	// Usecase Multi-Event
+	adminEventUsecase "cfd-backend/modules/admin/event/usecase"
+	pedagangEventUsecase "cfd-backend/modules/pedagang/event/usecase"
+
 	// Modul Controller
 	authController "cfd-backend/modules/auth/controller"
 	menuController "cfd-backend/modules/menu/controller"
@@ -113,6 +121,10 @@ import (
 
 	// Controller Laporan Superadmin
 	adminLaporanController "cfd-backend/modules/admin/laporan/controller"
+
+	// Controller Multi-Event
+	adminEventController "cfd-backend/modules/admin/event/controller"
+	pedagangEventController "cfd-backend/modules/pedagang/event/controller"
 
 	"github.com/gofiber/fiber/v3"
 	"github.com/gofiber/fiber/v3/middleware/cors"
@@ -163,6 +175,10 @@ func main() {
 	// Repository Laporan Superadmin
 	adminLaporanRepository := adminLaporanRepo.NewLaporanRepository(db)
 
+	// Repository Multi-Event
+	adminEventRepository := adminEventRepo.NewEventRepository(db)
+	pedagangEventRepository := pedagangEventRepo.NewEventRepository(db)
+
 	// ============================================================
 	// 2. INIT USECASES
 	// ============================================================
@@ -206,6 +222,10 @@ func main() {
 	// Usecase Laporan Superadmin
 	adminLaporanUC := adminLaporanUsecase.NewLaporanUsecase(adminLaporanRepository)
 
+	// Usecase Multi-Event
+	adminEventUC := adminEventUsecase.NewEventUsecase(adminEventRepository)
+	pedagangEventUC := pedagangEventUsecase.NewEventUsecase(pedagangEventRepository)
+
 	// ============================================================
 	// 3. INIT CONTROLLERS
 	// ============================================================
@@ -241,6 +261,10 @@ func main() {
 
 	// Controller Laporan Superadmin
 	adminLaporanCtrl := adminLaporanController.NewLaporanController(adminLaporanUC)
+
+	// Controller Multi-Event
+	adminEventCtrl := adminEventController.NewEventController(adminEventUC)
+	pedagangEventCtrl := pedagangEventController.NewEventController(pedagangEventUC)
 
 	// ============================================================
 	// 4. INIT FIBER APP
@@ -774,6 +798,37 @@ app.Use("/uploads", static.New("./uploads"))
 	)
 
 	// ============================================================
+	// 13b. MULTI-EVENT
+	// ============================================================
+	// Superadmin: kelola event (satu hari boleh banyak event), acak
+	// lokasi PER EVENT, atur kuota lama/baru per titik, pantau peserta.
+	adminEvents := app.Group("/api/admin/events",
+		middleware.AuthMiddleware(cfg.JWTSecret),
+		middleware.RoleMiddleware(userRepository, "superadmin"),
+	)
+	adminEvents.Get("/", adminEventCtrl.ListEvents)
+	adminEvents.Post("/", adminEventCtrl.CreateEvent)
+	adminEvents.Get("/:id", adminEventCtrl.GetEvent)
+	adminEvents.Put("/:id", adminEventCtrl.UpdateEvent)
+	adminEvents.Delete("/:id", adminEventCtrl.DeleteEvent)
+	adminEvents.Patch("/:id/status", adminEventCtrl.UbahStatus)
+	adminEvents.Post("/:id/acak-lokasi", adminEventCtrl.AcakLokasi)
+	adminEvents.Patch("/:id/lapak/:lapakId", adminEventCtrl.UpdateKuota)
+	adminEvents.Delete("/:id/lapak/:lapakId", adminEventCtrl.DeleteLapak)
+	adminEvents.Get("/:id/peserta", adminEventCtrl.ListPeserta)
+
+	// Pedagang: pilih event, nomor & lokasi diacak server.
+	// "/saya" didaftarkan sebelum "/:id/..." supaya tidak ketangkap sebagai :id.
+	pedagangEvents := app.Group("/api/pedagang/events",
+		middleware.AuthMiddleware(cfg.JWTSecret),
+		middleware.RoleMiddleware(userRepository, "pedagang"),
+	)
+	pedagangEvents.Get("/", pedagangEventCtrl.ListEvent)
+	pedagangEvents.Get("/saya", pedagangEventCtrl.ListSaya)
+	pedagangEvents.Post("/:id/ikut", pedagangEventCtrl.Ikut)
+	pedagangEvents.Delete("/:id/ikut", pedagangEventCtrl.Batal)
+
+	// ============================================================
 	// 14. ENDPOINT SUPERADMIN (Manajemen User)
 	// ============================================================
 
@@ -896,6 +951,11 @@ app.Use("/uploads", static.New("./uploads"))
 		for range ticker.C {
 			if err := operasionalUsecase.TickJadwalOtomatis(context.Background()); err != nil {
 				log.Printf("scheduler jam-operasional: tick gagal: %v", err)
+			}
+			// Status per event (terjadwal -> berlangsung -> selesai) berjalan
+			// sendiri-sendiri, jadi satu event bermasalah tidak mematikan event lain.
+			if err := adminEventUC.TickStatus(context.Background()); err != nil {
+				log.Printf("scheduler event: tick gagal: %v", err)
 			}
 		}
 	}()

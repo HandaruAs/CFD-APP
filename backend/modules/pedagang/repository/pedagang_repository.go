@@ -38,9 +38,10 @@ func (r *PedagangRepository) CreatePengajuanMandiri(
 	var id string
 	err := r.db.QueryRow(ctx,
 		`INSERT INTO pedagang_profiles 
-		 (user_id, nik, nama_lengkap, tanggal_lahir, nama_usaha, jenis_dagangan, jenis_lapak, status_verifikasi, submitted_at)
+		 (user_id, nik, nama_lengkap, tanggal_lahir, nama_usaha, jenis_dagangan, jenis_lapak, status_verifikasi, submitted_at, kategori)
 		 VALUES ($1, $2, $3, $4, $5, $6::jenis_dagangan_enum, $7::jenis_lapak_enum, 'approved',
-		         CASE WHEN $8::boolean THEN NOW() ELSE NULL END)
+		         CASE WHEN $8::boolean THEN NOW() ELSE NULL END,
+		         CASE WHEN $8::boolean THEN 'baru' ELSE 'lama' END::kategori_pedagang)
 		 RETURNING id`,
 		userID, nik, namaLengkap, tanggalLahir, namaUsaha, jenisDagangan, jenisLapak, mandiri,
 	).Scan(&id)
@@ -74,8 +75,8 @@ func (r *PedagangRepository) SimpanPengajuanMandiri(
 	var id string
 	err := r.db.QueryRow(ctx,
 		`INSERT INTO pedagang_profiles
-		 (user_id, nik, nama_lengkap, tanggal_lahir, nama_usaha, jenis_dagangan, jenis_lapak, status_verifikasi, submitted_at)
-		 VALUES ($1, $2, $3, $4, $5, $6::jenis_dagangan_enum, $7::jenis_lapak_enum, 'approved', NOW())
+		 (user_id, nik, nama_lengkap, tanggal_lahir, nama_usaha, jenis_dagangan, jenis_lapak, status_verifikasi, submitted_at, kategori)
+		 VALUES ($1, $2, $3, $4, $5, $6::jenis_dagangan_enum, $7::jenis_lapak_enum, 'approved', NOW(), 'baru')
 		 ON CONFLICT (user_id) DO UPDATE SET
 			nik            = EXCLUDED.nik,
 			nama_lengkap   = EXCLUDED.nama_lengkap,

@@ -1,27 +1,34 @@
 "use client";
 
 // Riwayat Sesi -- pengganti "Riwayat Operasional". Isinya sesi yang sudah
-// dibuat lewat Tambah Sesi dan jam selesainya sudah lewat. Diambil dari
-// daftar sesi yang sama (GET /api/petugas/manajemen-lapak/event), bukan
-// dari riwayat /jam-operasional lagi.
+// selesai, diakhiri, atau dibatalkan. Diambil dari daftar sesi yang sama
+// (GET /api/admin/events); statusnya ditentukan backend.
 
 import { useState } from "react";
 import { History } from "lucide-react";
-import type { EventDTO } from "../../manajemen-lapak/types";
-import { jamTampil, tanggalRingkas } from "./sesi-utils";
+import { jamTampil, tanggalRingkas, type SesiEvent, type StatusEvent } from "./sesi-utils";
+
+const STATUS_RIWAYAT: Partial<Record<StatusEvent, { label: string; pill: string }>> = {
+  selesai_normal: { label: "Selesai", pill: "pt-pill-success" },
+  diakhiri_awal: { label: "Diakhiri awal", pill: "pt-pill-warning" },
+  dibatalkan: { label: "Dibatalkan", pill: "pt-pill-danger" },
+};
+
+function StatusPill({ status }: { status: StatusEvent }) {
+  const st = STATUS_RIWAYAT[status] ?? { label: status, pill: "pt-pill-neutral" };
+  return <span className={`pt-pill ${st.pill} py-0.5`}>{st.label}</span>;
+}
 
 const PER_HALAMAN = 10;
 
 function tanggalTabel(iso: string) {
   const t = tanggalRingkas(iso);
   const d = new Date(`${iso.slice(0, 10)}T00:00:00`);
-  const bulanTahun = Number.isNaN(d.getTime())
-    ? ""
-    : d.toLocaleDateString("id-ID", { month: "short", year: "numeric" });
+  const bulanTahun = Number.isNaN(d.getTime()) ? "" : d.toLocaleDateString("id-ID", { month: "short", year: "numeric" });
   return `${t.hari}, ${t.tgl} ${bulanTahun}`;
 }
 
-export default function RiwayatSesi({ sesiList, loading }: { sesiList: EventDTO[]; loading: boolean }) {
+export default function RiwayatSesi({ sesiList, loading }: { sesiList: SesiEvent[]; loading: boolean }) {
   const [tampil, setTampil] = useState(PER_HALAMAN);
   const baris = sesiList.slice(0, tampil);
 
@@ -49,31 +56,31 @@ export default function RiwayatSesi({ sesiList, loading }: { sesiList: EventDTO[
                   <th className="px-sm py-sm font-medium">Tanggal</th>
                   <th className="px-sm py-sm font-medium">Sesi</th>
                   <th className="px-sm py-sm font-medium">Jam</th>
-                  <th className="px-sm py-sm font-medium">Jalan</th>
-                  <th className="px-sm py-sm text-right font-medium">Lapak terisi</th>
+                  <th className="px-sm py-sm font-medium">Status</th>
+                  <th className="px-sm py-sm text-right font-medium">Titik</th>
+                  <th className="px-sm py-sm text-right font-medium">Pedagang</th>
                 </tr>
               </thead>
               <tbody>
                 {baris.map((s) => {
-                  const jalan = s.jalan ?? [];
                   return (
                     <tr
                       key={s.id}
                       className="border-b border-outline-variant transition-colors last:border-0 hover:bg-surface-container-low/50"
                     >
                       <td className="whitespace-nowrap px-sm py-sm text-body-md text-on-surface">{tanggalTabel(s.tanggal)}</td>
-                      <td className="px-sm py-sm text-body-md font-medium text-on-surface">{s.namaEvent}</td>
+                      <td className="px-sm py-sm text-body-md font-medium text-on-surface">{s.nama}</td>
                       <td className="whitespace-nowrap px-sm py-sm text-body-md tabular-nums text-on-surface-variant">
                         {s.jamMulai ? `${jamTampil(s.jamMulai)} – ${jamTampil(s.jamSelesai)}` : "-"}
                       </td>
-                      <td
-                        className="max-w-[16rem] truncate px-sm py-sm text-body-md text-on-surface-variant"
-                        title={jalan.map((j) => j.namaJalan).join(", ")}
-                      >
-                        {jalan.length === 0 ? "-" : jalan.map((j) => j.namaJalan).join(", ")}
+                      <td className="px-sm py-sm">
+                        <StatusPill status={s.status} />
+                      </td>
+                      <td className="px-sm py-sm text-right text-body-md tabular-nums text-on-surface-variant">
+                        {s.jumlahTitik}
                       </td>
                       <td className="px-sm py-sm text-right text-body-md tabular-nums text-on-surface">
-                        {jalan.reduce((n, j) => n + j.terisi, 0)}
+                        {s.terisiLama + s.terisiBaru}
                       </td>
                     </tr>
                   );
@@ -85,16 +92,18 @@ export default function RiwayatSesi({ sesiList, loading }: { sesiList: EventDTO[
           {/* Kartu -- mobile */}
           <div className="flex flex-col gap-sm sm:hidden">
             {baris.map((s) => {
-              const jalan = s.jalan ?? [];
               return (
                 <div key={s.id} className="rounded-xl border border-outline-variant bg-surface-container-low p-md">
-                  <p className="text-body-md font-medium text-on-surface">{s.namaEvent}</p>
+                  <div className="flex items-center justify-between gap-sm">
+                    <p className="text-body-md font-medium text-on-surface">{s.nama}</p>
+                    <StatusPill status={s.status} />
+                  </div>
                   <p className="mt-0.5 text-body-sm text-on-surface-variant">
                     {tanggalTabel(s.tanggal)}
                     {s.jamMulai && ` · ${jamTampil(s.jamMulai)} – ${jamTampil(s.jamSelesai)}`}
                   </p>
                   <p className="mt-0.5 text-label-sm text-on-surface-variant">
-                    {jalan.length} jalan · {jalan.reduce((n, j) => n + j.terisi, 0)} lapak terisi
+                    {s.jumlahTitik} titik · {s.terisiLama + s.terisiBaru} pedagang
                   </p>
                 </div>
               );
