@@ -10,6 +10,8 @@ import type {
   LaporanResponse,
   StatsResponse,
   RegistrasiResponse,
+  GenerateSlotRequest,
+  GenerateSlotResponse,
 } from "./types";
 
 // CATATAN: sesuaikan BASE_URL / cara ambil token ini dengan lib/api client
@@ -79,11 +81,34 @@ export function getKuotaEvent(eventId: string) {
   );
 }
 
+// updateKuotaJalanEvent -- atur kuota 1 jalan di SEBUAH sesi/event tertentu
+// (aktif atau belum). Endpoint: PATCH /event/:id/jalan/:jalanId. Kalau jalan
+// itu belum diikutkan ke sesi tsb, backend otomatis menambahkannya.
+export function updateKuotaJalanEvent(eventId: string, jalanId: string, kuota: number) {
+  return request<{ message: string }>(
+    `/api/petugas/manajemen-lapak/event/${eventId}/jalan/${jalanId}`,
+    { method: "PATCH", body: JSON.stringify({ kuota }) }
+  );
+}
+
 export function deleteEvent(eventId: string) {
   return request<{ message: string }>(
     `/api/petugas/manajemen-lapak/event/${eventId}`,
     { method: "DELETE" }
   );
+}
+
+// ============================================================
+// 2b. Acak Lapak -- endpoint modul acak-lapak (dipakai dari Jam Operasional,
+// tombol "Acak Lapak" di tiap sesi). Frontend mengirim `sessionId` supaya
+// lokasi dibuat di sesi yang dipilih -- acak bisa dijalankan kapan saja.
+// ============================================================
+
+export function generateSlot(payload: GenerateSlotRequest) {
+  return request<{ data: GenerateSlotResponse }>("/api/petugas/acak-lapak/generate-slot", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
 }
 
 // ============================================================
@@ -211,4 +236,4 @@ export function getRegistrasi(params: {
   qs.set("page", String(params.page ?? 1));
   qs.set("limit", String(params.limit ?? 20));
   return request<RegistrasiResponse>(`/api/petugas/manajemen-lapak/registrasi?${qs.toString()}`);
-}
+}

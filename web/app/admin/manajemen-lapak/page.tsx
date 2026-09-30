@@ -2,16 +2,16 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { CalendarDays, Store, ClipboardList, MapPin, Route, LayoutGrid } from "lucide-react";
+import { Store, ClipboardList, MapPin, Route, LayoutGrid } from "lucide-react";
 import type { KecamatanLengkapData } from "./types";
 import { getWilayah } from "./api";
-import EventTab from "./components/EventTab";
 import RuasKuotaTab from "./components/RuasKuotaTab";
 import LaporanTab from "./components/LaporanTab";
 
 // Tab "Pedagang" sudah dipindah ke Manajemen User > Pedagang.
+// Tab "Event" (beserta Tambah Event) dipindah ke Jam Operasional sebagai
+// "Daftar Sesi" + tombol "Tambah Sesi".
 const TABS = [
-  { key: "event", label: "Event", icon: CalendarDays },
   { key: "ruas-kuota", label: "Ruas & Kuota", icon: Store },
   { key: "laporan", label: "Laporan", icon: ClipboardList },
 ] as const;
@@ -19,7 +19,7 @@ const TABS = [
 type TabKey = (typeof TABS)[number]["key"];
 
 export default function ManajemenLapakPage() {
-  const [activeTab, setActiveTab] = useState<TabKey>("event");
+  const [activeTab, setActiveTab] = useState<TabKey>("ruas-kuota");
 
   const [wilayah, setWilayah] = useState<KecamatanLengkapData[]>([]);
   const [wilayahLoading, setWilayahLoading] = useState(true);
@@ -51,7 +51,7 @@ export default function ManajemenLapakPage() {
     { label: "Jalan", nilai: semuaJalan.length, ikon: Route, warna: "bg-secondary-container/60 text-on-secondary-container" },
     { label: "Ruas", nilai: semuaJalan.reduce((n, j) => n + (j.ruas ?? []).length, 0), ikon: LayoutGrid, warna: "bg-tertiary-fixed text-on-tertiary-fixed" },
     {
-      label: "Lapak terisi (event aktif)",
+      label: "Lapak terisi (sesi aktif)",
       nilai: `${semuaJalan.reduce((n, j) => n + j.terisi, 0)} / ${semuaJalan.reduce((n, j) => n + j.kuotaEvent, 0)}`,
       ikon: Store,
       warna: "bg-surface-container-high text-on-surface-variant",
@@ -63,8 +63,8 @@ export default function ManajemenLapakPage() {
       <div>
         <h2 className="text-headline-lg text-on-surface">Manajemen Lapak</h2>
         <p className="mt-xs max-w-2xl text-body-md text-on-surface-variant">
-          Kelola event CFD serta ruas &amp; kuota per jalan dalam satu halaman. Event yang diaktifkan di sini
-          otomatis muncul di Jam Operasional.
+          Kelola kecamatan, jalan, serta ruas &amp; kuota lapak per jalan. Sesi (event) dibuat dan diacak
+          lapaknya di menu Jam Operasional.
         </p>
       </div>
 
@@ -105,7 +105,6 @@ export default function ManajemenLapakPage() {
       </div>
 
       <div className="pt-card">
-        {activeTab === "event" && <EventTab wilayah={wilayah} onEventBerubah={() => loadWilayah(true)} />}
         {activeTab === "ruas-kuota" && (
           <RuasKuotaTab wilayah={wilayah} loading={wilayahLoading} error={wilayahError} onRefresh={() => loadWilayah(true)} />
         )}
@@ -113,4 +112,4 @@ export default function ManajemenLapakPage() {
       </div>
     </div>
   );
-}
+}
