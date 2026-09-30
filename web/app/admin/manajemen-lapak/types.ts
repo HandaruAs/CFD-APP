@@ -48,6 +48,27 @@ export interface CreateEventRequest {
   kuotaTotal: number;
   keterangan: string;
   jalan: JalanEventInput[];
+  // Hasil acak lapak dari form Tambah Sesi -- dibuat di frontend SEBELUM
+  // sesi disimpan, lalu dikirim sekaligus di request simpan ini (satu
+  // request). Backend perlu menyimpan `acak.slot` ke lapak_slot untuk sesi
+  // yang baru dibuat. Lihat CATATAN-BACKEND.md.
+  acak?: AcakSesiPayload;
+}
+
+/** Satu lokasi lapak hasil acak. ruasId null = jalan belum dibagi ruas. */
+export interface AcakSlot {
+  jalanId: string;
+  ruasId: string | null;
+  nomorLapak: string; // "<KODE_EVENT>-XXXXXX"
+}
+
+export interface AcakSesiPayload {
+  scope: "kota" | "kecamatan" | "jalan" | "ruas";
+  kecamatanId?: string | null;
+  jalanId?: string | null;
+  ruasId?: string | null;
+  kodeEvent: string;
+  slot: AcakSlot[];
 }
 
 export interface JalanRingkasKuota {
@@ -150,7 +171,36 @@ export interface StatsResponse {
   persenHadir: number;
 }
 
-export type TabKey = "event" | "ruas-kuota" | "laporan";
+// Tab "Event" sudah dihapus -- pembuatan sesi/event pindah ke menu Jam
+// Operasional (tombol "Tambah Sesi").
+export type TabKey = "ruas-kuota" | "laporan";
+
+// ============================================================
+// Acak Lapak (POST /api/petugas/acak-lapak/generate-slot)
+// ============================================================
+
+export interface GenerateSlotRequest {
+  // ID sesi tujuan (cfd_sessions.id). Dikirim frontend supaya acak bisa
+  // dijalankan kapan saja untuk sesi mana pun, bukan cuma sesi hari ini.
+  sessionId?: string;
+  scope: "kota" | "kecamatan" | "jalan" | "ruas";
+  kecamatanId?: string | null;
+  jalanId?: string | null;
+  ruasId?: string | null;
+  // true = lokasi lama yang BELUM diklaim di sesi ini dihapus dulu.
+  // Untuk superadmin, penghapusan ini berlaku ke SEMUA jalan di sesi itu.
+  gantiPoolLama: boolean;
+}
+
+export interface GenerateSlotResponse {
+  scope: string;
+  scopeLabel: string;
+  jumlahJalan: number;
+  jumlahRuas: number;
+  jumlahSlotDibuat: number;
+  jumlahSlotDihapus: number;
+  jumlahSlotAda: number;
+}
 
 // ============================================================
 // Registrasi -- dipakai RegistrasiTab.tsx. Endpoint backend-nya
@@ -177,4 +227,4 @@ export interface RegistrasiResponse {
   total: number;
   page: number;
   limit: number;
-}
+}

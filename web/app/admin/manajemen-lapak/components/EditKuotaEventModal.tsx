@@ -98,7 +98,7 @@ export default function EditKuotaEventModal({ event, wilayah, onClose, onSaved }
           )}
 
           {rows.length === 0 ? (
-            <p className="text-body-sm text-on-surface-variant">Event ini belum punya jalan yang diikutkan.</p>
+            <p className="text-body-sm text-on-surface-variant">Sesi ini belum punya jalan yang diikutkan.</p>
           ) : (
             <div className="max-h-80 space-y-sm overflow-y-auto">
               {rows.map((row) => (
