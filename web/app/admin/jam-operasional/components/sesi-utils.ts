@@ -39,36 +39,104 @@ export function tanggalRingkas(iso: string) {
 }
 
 // ============================================================
-// Status sesi -- dihitung murni dari tanggal + jam yang diisi di Tambah
-// Sesi (tidak ada lagi tombol aktif/nonaktif, ubah jam, atau akhiri lebih
-// awal). Sesi otomatis "berlangsung" begitu jam mulainya tiba dan pindah
-// ke Riwayat Sesi begitu jam selesainya lewat.
+// Sesi = event di sistem multi-event (GET/POST /api/admin/events).
+// Status sekarang dihitung BACKEND (scheduler tiap menit), bukan lagi dari
+// jam di browser: draft -> terjadwal -> berlangsung -> selesai_normal.
 // ============================================================
 
-export type StatusSesi = "akan-datang" | "berlangsung" | "selesai";
+export type StatusEvent =
+  | "draft"
+  | "terjadwal"
+  | "berlangsung"
+  | "diperpanjang"
+  | "diakhiri_awal"
+  | "selesai_normal"
+  | "dibatalkan";
 
-interface SesiWaktu {
-  tanggal: string;
-  jamMulai: string;
+export type StatusPendaftaran = "belum_dibuka" | "dibuka" | "ditutup";
+
+export interface SesiEvent {
+  id: string;
+  nama: string;
+  tanggal: string; // YYYY-MM-DD
+  jamMulai: string; // HH:MM
   jamSelesai: string;
+  status: StatusEvent;
+  statusPendaftaran: StatusPendaftaran;
+  pendaftaranBukaAt: string | null;
+  pendaftaranTutupAt: string | null;
+  lepasKuotaAt: string | null;
+  kuotaLamaDilepas: boolean;
+  keterangan: string | null;
+  jumlahTitik: number;
+  kuotaLama: number;
+  kuotaBaru: number;
+  terisiLama: number;
+  terisiBaru: number;
 }
 
-/** Gabungkan "YYYY-MM-DD" + "HH:MM[:SS]" jadi Date lokal. */
-function waktuLokal(tanggal: string, jam: string): Date {
-  return new Date(`${tanggal.slice(0, 10)}T${(jam || "00:00").slice(0, 5)}:00`);
+export interface TitikLokasi {
+  id: string;
+  ruasId: string;
+  namaRuas: string;
+  jalanId: string;
+  namaJalan: string;
+  kecamatanId: string | null;
+  namaKecamatan: string | null;
+  kuotaLama: number;
+  kuotaBaru: number;
+  terisiLama: number;
+  terisiBaru: number;
+  sisaLama: number;
+  sisaBaru: number;
 }
 
-export function mulaiSesi(s: SesiWaktu): Date {
-  return waktuLokal(s.tanggal, s.jamMulai);
+export interface SesiDetail extends SesiEvent {
+  lapak: TitikLokasi[];
 }
 
-export function statusSesi(s: SesiWaktu, now: Date = new Date()): StatusSesi {
-  const tanggal = s.tanggal?.slice(0, 10) ?? "";
-  // Baris lama tanpa jam: cukup dibandingkan per tanggal.
-  if (!s.jamMulai || !s.jamSelesai) return tanggal < todayISO() ? "selesai" : "akan-datang";
-  const mulai = waktuLokal(tanggal, s.jamMulai);
-  const selesai = waktuLokal(tanggal, s.jamSelesai);
-  if (now >= selesai) return "selesai";
-  if (now >= mulai) return "berlangsung";
-  return "akan-datang";
+export interface HasilAcakLokasi {
+  scopeLabel: string;
+  jumlahKandidat: number;
+  ditambahkan: TitikLokasi[];
+}
+
+export type Cakupan = "kota" | "kecamatan" | "jalan" | "ruas";
+
+/** Sesi yang masih tampil di "Sesi Terjadwal" (belum selesai/batal). */
+export function sesiAktif(s: SesiEvent): boolean {
+  return s.status === "draft" || s.status === "terjadwal" || s.status === "berlangsung" || s.status === "diperpanjang";
+}
+
+export function sedangBerlangsung(s: SesiEvent): boolean {
+  return s.status === "berlangsung" || s.status === "diperpanjang";
+}
+
+/** ISO (dari backend) -> "3 Okt, 18.00 WIB" */
+export function waktuTampil(iso: string | null): string {
+  if (!iso) return "-";
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return iso;
+  return (
+    d.toLocaleString("id-ID", { timeZone: "Asia/Jakarta", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }) +
+    " WIB"
+  );
+}
+
+/** Fetch ke backend dengan token login; lempar Error berisi pesan backend. */
+export async function apiEvent<T>(path: string, options: RequestInit = {}): Promise<T> {
+  const base = process.env.NEXT_PUBLIC_API_URL;
+  if (!base) throw new Error("NEXT_PUBLIC_API_URL belum diset!");
+  const token = typeof window !== "undefined" ? localStorage.getItem("cfd_token") : null;
+  const res = await fetch(`${base}${path}`, {
+    ...options,
+    headers: {
+      "Content-Type": "application/json",
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      ...(options.headers ?? {}),
+    },
+  });
+  const body = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(body?.error ?? `Permintaan gagal (${res.status})`);
+  return body as T;
 }

@@ -711,8 +711,8 @@ func (r *Repository) CreatePedagangManual(ctx context.Context, req *entity.Creat
 		INSERT INTO pedagang_profiles
 			(id, user_id, nik, nama_usaha, jenis_dagangan, nama_lengkap, phone,
 			 alamat, lokasi_lapak, perkiraan_harga, tanggal_lahir, jenis_lapak,
-			 status_verifikasi, submitted_at)
-		VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, 'approved', NULL)
+			 status_verifikasi, submitted_at, kategori)
+		VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, 'approved', NULL, 'lama')
 		RETURNING id
 	`, userID, req.NIK, req.NamaUsaha, jenisDaganganParam, req.NamaLengkap, req.Phone,
 		req.Alamat, req.LokasiLapak, req.PerkiraanHarga, tanggalLahirParam, jenisLapakParam).Scan(&pedagangID)
