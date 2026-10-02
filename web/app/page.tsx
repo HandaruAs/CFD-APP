@@ -44,8 +44,8 @@ const features = [
 
 const steps = [
   { n: "01", title: "Daftar akun", desc: "Buat akun dan isi data usaha Anda langsung dari halaman ini." },
-  { n: "02", title: "Pilih lokasi", desc: "Pilih cakupan Se-Surabaya atau kecamatan tertentu -- sistem yang mengacak lapaknya." },
-  { n: "03", title: "Dapat nomor stan", desc: "Nomor stan langsung terbit beserta kode QR verifikasi." },
+  { n: "02", title: "Pilih event", desc: "Pilih event CFD yang ingin diikuti -- lokasi lapak diacak otomatis oleh sistem." },
+  { n: "03", title: "Dapat nomor stan", desc: "Nomor stan langsung terbit beserta kode QR untuk event tersebut." },
   { n: "04", title: "Check-in di lokasi", desc: "Tunjukkan QR ke petugas di lapangan untuk mulai berjualan." },
 ];
 
@@ -53,30 +53,49 @@ const steps = [
    SISA LAPAK REAL-TIME
 ========================================================= */
 
-interface JalanSisa {
+// Data dari GET /api/public/sisa-lapak: event hari ini s/d 14 hari ke
+// depan (tanpa data pribadi). Kuota diatur per event; sisa = kuota - terdaftar.
+interface LokasiEvent {
+  kecamatan: string | null;
+  namaJalan: string;
+  jumlahRuas: number;
+  kapasitas: number;
+}
+
+interface EventSisa {
   id: string;
-  kode_jalan: string;
   nama: string;
-  kuota: number;
+  tanggal: string;
+  jamMulai: string;
+  jamSelesai: string;
+  status: "terjadwal" | "berjalan" | "selesai" | "dibatalkan";
+  statusPendaftaran: "belum_dibuka" | "dibuka" | "ditutup";
+  kuotaTotal: number;
   terisi: number;
+  sisa: number;
+  lokasi: LokasiEvent[];
 }
 
-interface KecamatanSisa {
-  kecamatanId: string | null;
-  kecamatan: string;
-  jalan: JalanSisa[];
+function formatTanggalEvent(iso: string) {
+  const d = new Date(`${iso.slice(0, 10)}T00:00:00`);
+  if (Number.isNaN(d.getTime())) return iso;
+  const hariIni = new Date();
+  hariIni.setHours(0, 0, 0, 0);
+  const selisih = Math.round((d.getTime() - hariIni.getTime()) / 86_400_000);
+  const label = d.toLocaleDateString("id-ID", { weekday: "long", day: "numeric", month: "long" });
+  if (selisih === 0) return `Hari ini · ${label}`;
+  if (selisih === 1) return `Besok · ${label}`;
+  return label;
 }
 
-function jumlahSisa(jalan: JalanSisa[]) {
-  return jalan.reduce((total, j) => total + Math.max(j.kuota - j.terisi, 0), 0);
-}
-
-function jumlahKuota(jalan: JalanSisa[]) {
-  return jalan.reduce((total, j) => total + j.kuota, 0);
-}
+const LABEL_PENDAFTARAN: Record<EventSisa["statusPendaftaran"], string> = {
+  belum_dibuka: "Pendaftaran belum dibuka",
+  dibuka: "Pendaftaran dibuka",
+  ditutup: "Pendaftaran ditutup",
+};
 
 function SisaLapakRealtime() {
-  const [data, setData] = useState<KecamatanSisa[]>([]);
+  const [data, setData] = useState<EventSisa[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [expanded, setExpanded] = useState<string | null>(null);
@@ -97,7 +116,7 @@ function SisaLapakRealtime() {
         if (!res.ok) throw new Error("Gagal memuat data sisa lapak");
         const json = await res.json();
         if (ignore) return;
-        setData(Array.isArray(json) ? json : []);
+        setData(Array.isArray(json?.data) ? json.data : []);
         setError(null);
         setLastUpdated(new Date());
       } catch {
@@ -116,8 +135,10 @@ function SisaLapakRealtime() {
     };
   }, [reloadSignal]);
 
-  const totalSisa = data.reduce((total, k) => total + jumlahSisa(k.jalan), 0);
-  const totalKuota = data.reduce((total, k) => total + jumlahKuota(k.jalan), 0);
+  // Angka besar di kanan atas: sisa tempat di event yang pendaftarannya dibuka.
+  const eventDibuka = data.filter((e) => e.statusPendaftaran === "dibuka");
+  const totalSisa = eventDibuka.reduce((total, e) => total + e.sisa, 0);
+  const totalKuota = eventDibuka.reduce((total, e) => total + e.kuotaTotal, 0);
 
   return (
     <div>
@@ -125,10 +146,11 @@ function SisaLapakRealtime() {
         <div className="max-w-2xl">
           <p className="font-mono text-xs font-medium uppercase tracking-wider text-blue">Data langsung</p>
           <h2 className="mt-3 font-display text-3xl font-semibold tracking-tight text-ink-strong sm:text-[2.5rem]">
-            Sisa lapak se-Surabaya, hari ini
+            Event CFD & sisa lapak
           </h2>
           <p className="mt-4 text-[15px] leading-relaxed text-ink-soft">
-            Diperbarui otomatis tiap 30 detik. Klik nama kecamatan untuk melihat rincian tiap jalan.
+            Event hari ini sampai 2 minggu ke depan. Diperbarui otomatis tiap 30 detik. Klik event untuk melihat
+            lokasinya.
           </p>
         </div>
         <div className="flex items-center gap-3">
@@ -138,7 +160,7 @@ function SisaLapakRealtime() {
                 {totalSisa}
                 <span className="text-sm font-normal text-ink-soft"> / {totalKuota}</span>
               </p>
-              <p className="text-xs text-ink-soft">lapak tersisa</p>
+              <p className="text-xs text-ink-soft">lapak tersisa (pendaftaran dibuka)</p>
             </div>
           )}
           <button
@@ -173,41 +195,47 @@ function SisaLapakRealtime() {
 
         {!loading && !error && data.length === 0 && (
           <div className="rounded-2xl border border-line bg-white p-8 text-center text-sm text-ink-soft">
-            Belum ada sesi CFD yang dibuka hari ini.
+            Belum ada event CFD yang dijadwalkan dalam 2 minggu ke depan.
           </div>
         )}
 
         {data.length > 0 && (
           <div className="divide-y divide-line rounded-2xl border border-line bg-white">
-            {data.map((kec) => {
-              const key = kec.kecamatanId ?? kec.kecamatan;
-              const isOpen = expanded === key;
-              const sisa = jumlahSisa(kec.jalan);
-              const kuota = jumlahKuota(kec.jalan);
-              const penuh = sisa <= 0;
+            {data.map((ev) => {
+              const isOpen = expanded === ev.id;
+              const penuh = ev.sisa <= 0;
+              const berjalan = ev.status === "berjalan";
               return (
-                <div key={key}>
+                <div key={ev.id}>
                   <button
                     type="button"
-                    onClick={() => setExpanded(isOpen ? null : key)}
+                    onClick={() => setExpanded(isOpen ? null : ev.id)}
                     className="focus-ring flex w-full items-center justify-between gap-4 px-5 py-4 text-left transition-colors hover:bg-mist"
                   >
-                    <div className="flex items-center gap-3">
+                    <div className="flex min-w-0 items-center gap-3">
                       <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-blue/10">
                         <MapPin className="h-4 w-4 text-blue" strokeWidth={2.2} />
                       </span>
-                      <div>
-                        <p className="font-display text-[15px] font-semibold text-ink-strong">{kec.kecamatan}</p>
-                        <p className="text-xs text-ink-soft">{kec.jalan.length} jalan terdaftar</p>
+                      <div className="min-w-0">
+                        <p className="truncate font-display text-[15px] font-semibold text-ink-strong">{ev.nama}</p>
+                        <p className="text-xs text-ink-soft">
+                          {formatTanggalEvent(ev.tanggal)} · {ev.jamMulai.replace(":", ".")}–{ev.jamSelesai.replace(":", ".")} WIB
+                        </p>
+                        <p className="mt-0.5 flex items-center gap-1.5 text-xs text-ink-soft">
+                          <Circle
+                            className={`h-2 w-2 ${berjalan || ev.statusPendaftaran === "dibuka" ? "fill-leaf text-leaf" : "fill-ink-soft/40 text-ink-soft/40"}`}
+                          />
+                          {berjalan ? "Sedang berlangsung" : LABEL_PENDAFTARAN[ev.statusPendaftaran]}
+                        </p>
                       </div>
                     </div>
-                    <div className="flex items-center gap-3">
+                    <div className="flex shrink-0 items-center gap-3">
                       <span
                         className={`rounded-full px-3 py-1 font-mono text-xs font-medium ${
                           penuh ? "bg-[#fdecec] text-[#ba1a1a]" : "bg-leaf/10 text-leaf"
                         }`}
                       >
-                        {penuh ? "Penuh" : `Sisa ${sisa} / ${kuota}`}
+                        {penuh ? "Penuh" : `Sisa ${ev.sisa} / ${ev.kuotaTotal}`}
                       </span>
                       <ChevronDown
                         className={`h-4 w-4 text-ink-soft transition-transform ${isOpen ? "rotate-180" : ""}`}
@@ -218,31 +246,27 @@ function SisaLapakRealtime() {
 
                   {isOpen && (
                     <div className="border-t border-line bg-mist/50 px-5 py-4">
-                      {kec.jalan.length === 0 ? (
-                        <p className="text-sm text-ink-soft">Belum ada jalan terdaftar di kecamatan ini.</p>
+                      {ev.lokasi.length === 0 ? (
+                        <p className="text-sm text-ink-soft">Lokasi event ini belum ditentukan.</p>
                       ) : (
                         <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-                          {kec.jalan.map((j) => {
-                            const jSisa = Math.max(j.kuota - j.terisi, 0);
-                            const jPenuh = jSisa <= 0;
-                            return (
-                              <div
-                                key={j.id}
-                                className="flex items-center justify-between rounded-xl border border-line bg-white px-3.5 py-2.5"
-                              >
-                                <span className="text-[13px] text-ink-strong">{j.nama}</span>
-                                <span
-                                  className={`rounded-full px-2.5 py-1 font-mono text-[11px] font-medium ${
-                                    jPenuh ? "bg-[#fdecec] text-[#ba1a1a]" : "bg-leaf/10 text-leaf"
-                                  }`}
-                                >
-                                  {jPenuh ? "Penuh" : `Sisa ${jSisa}/${j.kuota}`}
-                                </span>
-                              </div>
-                            );
-                          })}
+                          {ev.lokasi.map((l) => (
+                            <div
+                              key={`${l.kecamatan ?? "-"}-${l.namaJalan}`}
+                              className="flex items-center justify-between rounded-xl border border-line bg-white px-3.5 py-2.5"
+                            >
+                              <span className="text-[13px] text-ink-strong">
+                                {l.namaJalan}
+                                {l.kecamatan && <span className="text-ink-soft"> · Kec. {l.kecamatan}</span>}
+                              </span>
+                              <span className="font-mono text-[11px] text-ink-soft">{l.jumlahRuas} ruas</span>
+                            </div>
+                          ))}
                         </div>
                       )}
+                      <p className="mt-3 text-xs text-ink-soft">
+                        Lokasi lapak dan nomor stan diacak otomatis oleh sistem saat pedagang ikut event.
+                      </p>
                     </div>
                   )}
                 </div>

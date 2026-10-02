@@ -1,7 +1,7 @@
 // app/petugas/sisa-lapak/page.tsx
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import { MapPin, Store, PackageCheck, PackageX, Loader2, Plus, Pencil, Trash2, X } from "lucide-react";
 
@@ -10,8 +10,26 @@ type JalanData = {
   id: string;
   kode_jalan: string;
   nama: string;
-  kuota: number;
-  terisi: number;
+  kuota: number; // kapasitas master jalan (dipakai form edit)
+  terisi: number; // pedagang yang ikut event HARI INI di jalan ini
+  kuotaHariIni?: number; // tempat di titik lokasi event hari ini di jalan ini (0 = tidak dipakai)
+};
+
+// Isi form tambah/edit jalan.
+type FormJalan = {
+  kode_jalan: string;
+  nama_jalan: string;
+  kapasitas: number;
+  instansi_id: string;
+};
+
+// Data awal form saat mengedit (instansi tidak diubah lewat edit).
+type JalanDiedit = {
+  id: string;
+  kode_jalan: string;
+  nama_jalan: string;
+  kapasitas: number;
+  instansi_id?: string;
 };
 
 type KecamatanData = {
@@ -62,9 +80,9 @@ function ModalForm({
 }: {
   open: boolean;
   onClose: () => void;
-  onSubmit: (data: any) => void;
+  onSubmit: (data: FormJalan) => void;
   title: string;
-  initialData?: any;
+  initialData?: JalanDiedit | null;
   instansiList: { id: string; nama: string }[];
   loading: boolean;
   error?: string | null;
@@ -76,8 +94,10 @@ function ModalForm({
     instansi_id: "",
   });
 
+  // Isi ulang form tiap modal dibuka / data yang diedit berganti.
   useEffect(() => {
     if (initialData) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setForm({
         kode_jalan: initialData.kode_jalan || "",
         nama_jalan: initialData.nama_jalan || "",
@@ -89,8 +109,9 @@ function ModalForm({
     }
   }, [initialData, open]);
 
-  const [mounted, setMounted] = useState(false);
-  useEffect(() => setMounted(true), []);
+  // Lazy initializer: langsung tahu sedang di browser tanpa effect+setState
+  // (pola yang sama dengan modal di halaman lain).
+  const [mounted] = useState(() => typeof window !== "undefined");
 
   if (!open || !mounted) return null;
 
@@ -218,7 +239,7 @@ export default function SisaLapakPage() {
   const [activeKecamatan, setActiveKecamatan] = useState<string | null>(null);
 
   const [modalOpen, setModalOpen] = useState(false);
-  const [editingItem, setEditingItem] = useState<any>(null);
+  const [editingItem, setEditingItem] = useState<JalanDiedit | null>(null);
   const [instansiList, setInstansiList] = useState<{ id: string; nama: string }[]>([]);
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
@@ -254,11 +275,14 @@ export default function SisaLapakPage() {
   };
 
   useEffect(() => {
+    // loadData & fetchInstansi baru memanggil setState setelah request
+    // selesai (await) -- aman, aturan lint ini belum bisa membedakannya.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     loadData();
     fetchInstansi();
   }, []);
 
-  const handleCreate = async (form: any) => {
+  const handleCreate = async (form: FormJalan) => {
     setSaving(true);
     setFormError(null);
     try {
@@ -280,7 +304,7 @@ export default function SisaLapakPage() {
     }
   };
 
-  const handleUpdate = async (form: any) => {
+  const handleUpdate = async (form: FormJalan) => {
     if (!editingItem) return;
     setSaving(true);
     setFormError(null);
@@ -329,7 +353,9 @@ export default function SisaLapakPage() {
     );
   }
 
-  const totalKuota = data.reduce((acc, k) => acc + k.jalan.reduce((s, j) => s + j.kuota, 0), 0);
+  // Angka ringkasan = tempat di titik lokasi event HARI INI (bukan kapasitas
+  // master), supaya sisa yang tampil sesuai lapak yang benar-benar dipakai.
+  const totalKuota = data.reduce((acc, k) => acc + k.jalan.reduce((s, j) => s + (j.kuotaHariIni ?? 0), 0), 0);
   const totalTerisi = data.reduce((acc, k) => acc + k.jalan.reduce((s, j) => s + j.terisi, 0), 0);
   const sisaTotal = totalKuota - totalTerisi;
 
@@ -340,7 +366,7 @@ export default function SisaLapakPage() {
         <div>
           <h2 className="text-headline-lg text-on-surface">Sisa Lapak</h2>
           <p className="mt-xs max-w-2xl text-body-md text-on-surface-variant">
-            Lihat dan kelola kuota lapak per kecamatan & jalan CFD Surabaya.
+            Lihat sisa tempat di titik lokasi event hari ini, dan kelola kapasitas jalan CFD Surabaya.
           </p>
           {data.length > 0 && (
             <p className="mt-xs text-label-sm text-on-surface-variant">
@@ -417,9 +443,11 @@ export default function SisaLapakPage() {
           {/* Daftar jalan di kecamatan aktif */}
           <div className="grid grid-cols-1 gap-md sm:grid-cols-2">
             {data.find((k) => k.kecamatan === activeKecamatan)?.jalan.map((j) => {
-              const sisa = j.kuota - j.terisi;
-              const level = levelSisa(sisa, j.kuota);
-              const persentase = j.kuota > 0 ? Math.min(100, Math.round((j.terisi / j.kuota) * 100)) : 0;
+              const tempat = j.kuotaHariIni ?? 0;
+              const dipakaiHariIni = tempat > 0;
+              const sisa = Math.max(0, tempat - j.terisi);
+              const level = levelSisa(sisa, tempat);
+              const persentase = tempat > 0 ? Math.min(100, Math.round((j.terisi / tempat) * 100)) : 0;
 
               return (
                 <div
@@ -432,10 +460,14 @@ export default function SisaLapakPage() {
                       <span className="text-label-sm text-on-surface-variant">{j.kode_jalan}</span>
                     </div>
                     <div className="flex flex-wrap items-center gap-sm">
-                      <span className={`inline-flex items-center gap-xs rounded-full px-sm py-1 text-label-sm ${level.bg} ${level.text}`}>
-                        <span className={`h-1.5 w-1.5 rounded-full ${level.dot}`} />
-                        {level.label}
-                      </span>
+                      {dipakaiHariIni ? (
+                        <span className={`inline-flex items-center gap-xs rounded-full px-sm py-1 text-label-sm ${level.bg} ${level.text}`}>
+                          <span className={`h-1.5 w-1.5 rounded-full ${level.dot}`} />
+                          {level.label}
+                        </span>
+                      ) : (
+                        <span className="pt-pill pt-pill-neutral py-0.5">Tidak dipakai hari ini</span>
+                      )}
                       <button
                         type="button"
                         onClick={() => {
@@ -466,17 +498,25 @@ export default function SisaLapakPage() {
                     </div>
                   </div>
 
-                  <div className="mt-md flex items-baseline gap-xs">
-                    <span className="text-title-lg font-semibold text-on-surface">{sisa}</span>
-                    <span className="text-label-sm text-on-surface-variant">sisa dari {j.kuota} lapak</span>
-                  </div>
+                  {dipakaiHariIni ? (
+                    <>
+                      <div className="mt-md flex items-baseline gap-xs">
+                        <span className="text-title-lg font-semibold text-on-surface">{sisa}</span>
+                        <span className="text-label-sm text-on-surface-variant">sisa dari {tempat} tempat hari ini</span>
+                      </div>
 
-                  <div className="mt-sm h-2 w-full overflow-hidden rounded-full bg-surface-container-high">
-                    <div className={`h-full rounded-full ${level.bar} transition-all duration-500`} style={{ width: `${persentase}%` }} />
-                  </div>
-                  <p className="mt-xs text-label-sm text-on-surface-variant">
-                    {j.terisi} terisi &middot; {persentase}% dari kuota
-                  </p>
+                      <div className="mt-sm h-2 w-full overflow-hidden rounded-full bg-surface-container-high">
+                        <div className={`h-full rounded-full ${level.bar} transition-all duration-500`} style={{ width: `${persentase}%` }} />
+                      </div>
+                      <p className="mt-xs text-label-sm text-on-surface-variant">
+                        {j.terisi} terisi &middot; {persentase}% &middot; kapasitas jalan {j.kuota}
+                      </p>
+                    </>
+                  ) : (
+                    <p className="mt-md text-label-sm text-on-surface-variant">
+                      Jalan ini tidak menjadi titik lokasi event hari ini. Kapasitas jalan: {j.kuota} lapak.
+                    </p>
+                  )}
                 </div>
               );
             })}

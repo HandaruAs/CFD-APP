@@ -181,12 +181,14 @@ function alasanTidakBisaIkut(ev: EventTersedia): string | null {
 export default function EventDanNomorStanPage() {
   const router = useRouter();
 
-  // --- Cek "harus ke halaman checkout dulu?" (dipertahankan dari versi
-  // sebelumnya, sama seperti mobile LapakScreen._cekDanPindah). Pedagang yang
-  // masih nunggak checkout langsung diarahkan ke CekOut. Catatan: endpoint
-  // ini masih membaca kehadiran sistem lama; ikut diganti saat check-in &
-  // checkout dipindah ke sistem event. ---
+  // --- Cek checkout (GET /api/pedagang/events/checkout) ---
+  //   - masih check-in di event yang SUDAH selesai (wajibCheckout) ->
+  //     langsung diarahkan ke CekOut: wajib isi omset dulu sebelum bisa
+  //     ikut / check-in event lain;
+  //   - masih check-in di event yang sedang berjalan -> tampil banner
+  //     dengan tautan ke CekOut (halaman ini tetap bisa dipakai).
   const [checkingCheckout, setCheckingCheckout] = useState(true);
+  const [checkInBerjalan, setCheckInBerjalan] = useState<string | null>(null); // nama event
 
   // --- Data usaha ---
   const [checkingPendaftar, setCheckingPendaftar] = useState(true);
@@ -220,12 +222,16 @@ export default function EventDanNomorStanPage() {
     let cancelled = false;
     async function cekHarusCheckout() {
       try {
-        const res = await fetch(apiUrl("/api/pedagang/check-in/status"), { headers: authHeaders() });
+        const res = await fetch(apiUrl("/api/pedagang/events/checkout"), { headers: authHeaders() });
         if (res.ok) {
-          const data = await res.json();
-          if (!cancelled && data.sudah_check_in) {
-            router.replace("/pedagang/CekOut");
-            return; // biarkan loading tampil sampai pindah halaman
+          const body = await res.json();
+          const d = body?.data;
+          if (!cancelled && d && !d.sudahCheckOut) {
+            if (d.wajibCheckout) {
+              router.replace("/pedagang/CekOut");
+              return; // biarkan loading tampil sampai pindah halaman
+            }
+            setCheckInBerjalan(d.namaEvent ?? "event");
           }
         }
       } catch {
@@ -340,6 +346,11 @@ export default function EventDanNomorStanPage() {
       setHasilIkut(res.data);
       await loadEvent();
     } catch (err) {
+      // Masih nunggak checkout event yang sudah selesai -> ke CekOut dulu.
+      if (err instanceof ApiError && err.code === "BELUM_CHECKOUT") {
+        router.push("/pedagang/CekOut");
+        return;
+      }
       setErrorAksi(err instanceof Error ? err.message : "Gagal ikut event.");
       await loadEvent(); // sisa kuota mungkin sudah berubah
     } finally {
@@ -415,6 +426,21 @@ export default function EventDanNomorStanPage() {
           />
         ) : (
           <div className="flex flex-col gap-6">
+            {checkInBerjalan && (
+              <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-[#bfeed7] bg-[#e3f8ee] px-4 py-3">
+                <p className="text-[12.5px] text-[#0f7a44]">
+                  Kamu sedang check-in di <strong>{checkInBerjalan}</strong>. Cek-out bisa dilakukan setelah event selesai.
+                </p>
+                <button
+                  type="button"
+                  onClick={() => router.push("/pedagang/CekOut")}
+                  className="text-[12.5px] font-semibold text-[#0f7a44] underline"
+                >
+                  Ke halaman Cek-out
+                </button>
+              </div>
+            )}
+
             {errorAksi && (
               <div role="alert" className="flex items-start gap-2 rounded-xl border border-[#f5c2c2] bg-[#fdecec] px-4 py-3">
                 <AlertTriangle size={16} className="mt-0.5 shrink-0 text-[#ba1a1a]" />

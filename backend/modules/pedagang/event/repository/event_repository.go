@@ -25,7 +25,18 @@ var (
 	ErrBelumIkut             = errors.New("kamu belum terdaftar di event ini")
 	ErrTidakBisaBatal        = errors.New("pendaftaran ini tidak bisa dibatalkan lagi")
 	ErrKeikutsertaanNotFound = errors.New("data keikutsertaan tidak ditemukan")
+	ErrBelumCheckIn          = errors.New("kamu belum check-in di event ini")
+	ErrSudahCheckout         = errors.New("kamu sudah checkout dari event ini")
+	ErrEventBelumSelesai     = errors.New("checkout baru bisa dilakukan setelah event selesai")
+	ErrOmsetTidakValid       = errors.New("isi total omset dengan angka lebih dari 0")
 )
+
+// ErrBelumCheckout: masih ada event yang sudah selesai tapi belum checkout.
+type ErrBelumCheckout struct{ NamaEvent string }
+
+func (e *ErrBelumCheckout) Error() string {
+	return fmt.Sprintf("selesaikan checkout (isi omset) event \"%s\" dulu", e.NamaEvent)
+}
 
 // ErrJadwalBentrok membawa nama event yang bentrok.
 type ErrJadwalBentrok struct{ NamaEvent string }
@@ -63,8 +74,9 @@ func (r *EventRepository) ListEventTersedia(ctx context.Context, pedagangID stri
 		       e.keterangan, e.status::text,
 		       e.pendaftaran_buka_at, e.pendaftaran_tutup_at, e.lepas_kuota_at,
 		       ((e.tanggal + e.jam_mulai) AT TIME ZONE 'Asia/Jakarta'),
-		       p.status::text
+		       p.status::text, k.sisa_lama, k.sisa_baru
 		FROM events e
+		JOIN v_event_kuota k ON k.event_id = e.id
 		LEFT JOIN event_participants p
 		       ON p.event_id = e.id AND p.pedagang_id = $1 AND p.deleted_at IS NULL
 		WHERE e.deleted_at IS NULL
@@ -83,7 +95,7 @@ func (r *EventRepository) ListEventTersedia(ctx context.Context, pedagangID stri
 		if err := rows.Scan(&ev.ID, &ev.Nama, &ev.Tanggal, &ev.JamMulai, &ev.JamSelesai,
 			&ev.Keterangan, &ev.Status,
 			&ev.PendaftaranBukaAt, &ev.PendaftaranTutupAt, &ev.LepasKuotaAt,
-			&ev.MulaiAt, &ev.StatusSaya); err != nil {
+			&ev.MulaiAt, &ev.StatusSaya, &ev.SisaLama, &ev.SisaBaru); err != nil {
 			return nil, nil, err
 		}
 		list = append(list, ev)
@@ -105,9 +117,8 @@ func (r *EventRepository) ListEventTersedia(ctx context.Context, pedagangID stri
 
 func (r *EventRepository) lapakPerEvent(ctx context.Context, eventIDs []string) (map[string][]entity.LapakSisa, error) {
 	rows, err := r.db.Query(ctx, `
-		SELECT v.event_id, kec.nama_instansi, v.nama_jalan, v.nama_ruas,
-		       v.sisa_lama::int, v.sisa_baru::int
-		FROM v_event_lapak_kuota v
+		SELECT v.event_id, kec.nama_instansi, v.nama_jalan, v.nama_ruas, v.sisa
+		FROM v_event_lapak_terisi v
 		JOIN master_ruas r ON r.id = v.ruas_id
 		LEFT JOIN LATERAL (
 			SELECT mi.nama_instansi
@@ -127,7 +138,7 @@ func (r *EventRepository) lapakPerEvent(ctx context.Context, eventIDs []string) 
 	for rows.Next() {
 		var eventID string
 		var l entity.LapakSisa
-		if err := rows.Scan(&eventID, &l.NamaKecamatan, &l.NamaJalan, &l.NamaRuas, &l.SisaLama, &l.SisaBaru); err != nil {
+		if err := rows.Scan(&eventID, &l.NamaKecamatan, &l.NamaJalan, &l.NamaRuas, &l.Sisa); err != nil {
 			return nil, err
 		}
 		hasil[eventID] = append(hasil[eventID], l)
@@ -137,11 +148,11 @@ func (r *EventRepository) lapakPerEvent(ctx context.Context, eventIDs []string) 
 
 type lapakKunci struct {
 	id        string
-	kuotaLama int
-	kuotaBaru int
-	sisa      map[string]int // "lama"/"baru" -> sisa
-	terpakai  map[int]bool
+	kapasitas int
+	terpakai  map[int]bool // nomor stan yang sudah dipakai
 }
+
+func (l *lapakKunci) sisa() int { return l.kapasitas - len(l.terpakai) }
 
 // Ikut: pedagang ikut event. Server memilih titik (ruas) dan nomor stand
 // secara acak dari kuota yang masih tersisa untuk kategorinya, lalu hasilnya
@@ -149,14 +160,14 @@ type lapakKunci struct {
 // dikunci FOR UPDATE, jadi dua pedagang yang menekan bersamaan diproses
 // bergantian dan tidak bisa dapat nomor yang sama.
 //
-// Aturan kuota:
-//   - pedagang lama hanya memakai kuota lama;
-//   - pedagang baru memakai kuota baru; setelah lepas_kuota_at, kalau kuota
-//     baru sudah habis, boleh memakai sisa kuota lama.
+// Aturan kuota (PER EVENT):
+//   - kuota pedagang lama = events.kuota_lama, kuota baru = kuota_total - kuota_lama;
+//   - pedagang lama hanya memakai jatah lama;
+//   - pedagang baru memakai jatah baru; setelah lepas_kuota_at, kalau jatah
+//     baru sudah habis, boleh memakai sisa jatah lama.
 //
-// Pemilihan titik diberi bobot sisa kuota, jadi setiap lapak kosong punya
-// peluang yang sama (titik dengan sisa 10 lebih mungkin terpilih daripada
-// titik dengan sisa 1).
+// Titik dipilih acak berbobot sisa tempat fisiknya (kapasitas titik), jadi
+// setiap lapak kosong punya peluang yang sama.
 func (r *EventRepository) Ikut(ctx context.Context, eventID, pedagangID, kategori, userID string) (string, error) {
 	tx, err := r.db.Begin(ctx)
 	if err != nil {
@@ -167,12 +178,15 @@ func (r *EventRepository) Ikut(ctx context.Context, eventID, pedagangID, kategor
 	var status, tanggal, jamMulai, jamSelesai string
 	var bukaAt, tutupAt, lepasAt *time.Time
 	var mulaiAt time.Time
+	var kuotaTotal, kuotaLama int
 	err = tx.QueryRow(ctx, `
 		SELECT status::text, tanggal::text, jam_mulai::text, jam_selesai::text,
 		       pendaftaran_buka_at, pendaftaran_tutup_at, lepas_kuota_at,
-		       ((tanggal + jam_mulai) AT TIME ZONE 'Asia/Jakarta')
+		       ((tanggal + jam_mulai) AT TIME ZONE 'Asia/Jakarta'),
+		       kuota_total, kuota_lama
 		FROM events WHERE id = $1 AND deleted_at IS NULL
-		FOR SHARE`, eventID).Scan(&status, &tanggal, &jamMulai, &jamSelesai, &bukaAt, &tutupAt, &lepasAt, &mulaiAt)
+		FOR SHARE`, eventID).Scan(&status, &tanggal, &jamMulai, &jamSelesai, &bukaAt, &tutupAt, &lepasAt, &mulaiAt,
+		&kuotaTotal, &kuotaLama)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return "", ErrEventTidakDitemukan
 	}
@@ -203,6 +217,24 @@ func (r *EventRepository) Ikut(ctx context.Context, eventID, pedagangID, kategor
 		return "", err
 	}
 
+	// Aturan: belum checkout di event yang sudah selesai -> wajib checkout dulu.
+	var namaBelumCheckout string
+	err = tx.QueryRow(ctx, `
+		SELECT e2.nama
+		FROM event_participants p
+		JOIN events e2 ON e2.id = p.event_id
+		WHERE p.pedagang_id = $1 AND p.deleted_at IS NULL AND p.status = 'check_in'
+		  AND (e2.status IN ('selesai_normal', 'diakhiri_awal', 'dibatalkan')
+		       OR now() >= (e2.tanggal + e2.jam_selesai) AT TIME ZONE 'Asia/Jakarta')
+		ORDER BY e2.tanggal, e2.jam_mulai
+		LIMIT 1`, pedagangID).Scan(&namaBelumCheckout)
+	if err == nil {
+		return "", &ErrBelumCheckout{NamaEvent: namaBelumCheckout}
+	}
+	if !errors.Is(err, pgx.ErrNoRows) {
+		return "", err
+	}
+
 	var namaBentrok string
 	err = tx.QueryRow(ctx, `
 		SELECT e2.nama
@@ -221,9 +253,10 @@ func (r *EventRepository) Ikut(ctx context.Context, eventID, pedagangID, kategor
 		return "", err
 	}
 
-	// Kunci semua titik event ini.
+	// Kunci semua titik event ini: dua pedagang yang menekan bersamaan
+	// diproses bergantian, jadi hitungan kuota & nomor selalu benar.
 	rows, err := tx.Query(ctx, `
-		SELECT id, kuota_lama, kuota_baru FROM event_lapak
+		SELECT id, kapasitas FROM event_lapak
 		WHERE event_id = $1 AND deleted_at IS NULL
 		ORDER BY id
 		FOR UPDATE`, eventID)
@@ -234,11 +267,10 @@ func (r *EventRepository) Ikut(ctx context.Context, eventID, pedagangID, kategor
 	byID := map[string]*lapakKunci{}
 	for rows.Next() {
 		l := &lapakKunci{terpakai: map[int]bool{}}
-		if err := rows.Scan(&l.id, &l.kuotaLama, &l.kuotaBaru); err != nil {
+		if err := rows.Scan(&l.id, &l.kapasitas); err != nil {
 			rows.Close()
 			return "", err
 		}
-		l.sisa = map[string]int{eventaturan.KategoriLama: l.kuotaLama, eventaturan.KategoriBaru: l.kuotaBaru}
 		lapak = append(lapak, l)
 		byID[l.id] = l
 	}
@@ -247,6 +279,9 @@ func (r *EventRepository) Ikut(ctx context.Context, eventID, pedagangID, kategor
 		return "", err
 	}
 
+	// Pemakaian kuota per jatah (lama/baru) di tingkat EVENT, dan nomor yang
+	// sudah dipakai per titik.
+	terisi := map[string]int{}
 	rows, err = tx.Query(ctx, `
 		SELECT event_lapak_id, kuota_dipakai::text, nomor FROM event_participants
 		WHERE event_id = $1 AND status <> 'batal' AND deleted_at IS NULL`, eventID)
@@ -260,8 +295,8 @@ func (r *EventRepository) Ikut(ctx context.Context, eventID, pedagangID, kategor
 			rows.Close()
 			return "", err
 		}
+		terisi[pool]++
 		if l, ok := byID[lapakID]; ok {
-			l.sisa[pool]--
 			l.terpakai[nomor] = true
 		}
 	}
@@ -270,6 +305,14 @@ func (r *EventRepository) Ikut(ctx context.Context, eventID, pedagangID, kategor
 		return "", err
 	}
 
+	// Jatah mana yang boleh dipakai:
+	//   - pedagang lama: jatah lama;
+	//   - pedagang baru: jatah baru; setelah lepas_kuota_at, kalau jatah baru
+	//     habis boleh memakai sisa jatah lama.
+	sisaJatah := map[string]int{
+		eventaturan.KategoriLama: kuotaLama - terisi[eventaturan.KategoriLama],
+		eventaturan.KategoriBaru: (kuotaTotal - kuotaLama) - terisi[eventaturan.KategoriBaru],
+	}
 	pools := []string{eventaturan.KategoriLama}
 	if kategori == eventaturan.KategoriBaru {
 		pools = []string{eventaturan.KategoriBaru}
@@ -277,50 +320,49 @@ func (r *EventRepository) Ikut(ctx context.Context, eventID, pedagangID, kategor
 			pools = append(pools, eventaturan.KategoriLama)
 		}
 	}
-
-	var pilih *lapakKunci
-	var poolDipakai string
-	var ukuranKumpulan int
+	poolDipakai := ""
 	for _, pool := range pools {
-		total := 0
-		for _, l := range lapak {
-			if l.sisa[pool] > 0 {
-				total += l.sisa[pool]
-			}
+		if sisaJatah[pool] > 0 {
+			poolDipakai = pool
+			break
 		}
-		if total == 0 {
-			continue
-		}
-		n, err := eventaturan.RandIntn(total)
-		if err != nil {
-			return "", err
-		}
-		for _, l := range lapak {
-			if l.sisa[pool] <= 0 {
-				continue
-			}
-			if n < l.sisa[pool] {
-				pilih = l
-				break
-			}
-			n -= l.sisa[pool]
-		}
-		poolDipakai, ukuranKumpulan = pool, total
-		break
 	}
-	if pilih == nil {
+	if poolDipakai == "" {
 		return "", ErrKuotaPenuh
 	}
 
-	kapasitas := pilih.kuotaLama + pilih.kuotaBaru
-	kosong := make([]int, 0, kapasitas)
-	for nomor := 1; nomor <= kapasitas; nomor++ {
+	// Pilih titik secara acak, berbobot sisa tempat fisik: setiap lapak
+	// kosong punya peluang yang sama.
+	ukuranKumpulan := 0
+	for _, l := range lapak {
+		if l.sisa() > 0 {
+			ukuranKumpulan += l.sisa()
+		}
+	}
+	if ukuranKumpulan == 0 {
+		return "", ErrKuotaPenuh
+	}
+	n, err := eventaturan.RandIntn(ukuranKumpulan)
+	if err != nil {
+		return "", err
+	}
+	var pilih *lapakKunci
+	for _, l := range lapak {
+		if l.sisa() <= 0 {
+			continue
+		}
+		if n < l.sisa() {
+			pilih = l
+			break
+		}
+		n -= l.sisa()
+	}
+
+	kosong := make([]int, 0, pilih.kapasitas)
+	for nomor := 1; nomor <= pilih.kapasitas; nomor++ {
 		if !pilih.terpakai[nomor] {
 			kosong = append(kosong, nomor)
 		}
-	}
-	if len(kosong) == 0 {
-		return "", ErrKuotaPenuh
 	}
 	idx, err := eventaturan.RandIntn(len(kosong))
 	if err != nil {
@@ -418,7 +460,7 @@ const selectKeikutsertaan = `
 	       ((e.tanggal + e.jam_mulai) AT TIME ZONE 'Asia/Jakarta'),
 	       kec.nama_instansi, j.nama_jalan, r.nama_ruas, p.nomor,
 	       p.kategori::text, p.kuota_dipakai::text, p.status::text, p.acak_at,
-	       p.check_in_at, p.check_out_at, p.pedagang_id
+	       p.check_in_at, p.check_out_at, p.id
 	FROM event_participants p
 	JOIN events e       ON e.id = p.event_id AND e.deleted_at IS NULL
 	JOIN event_lapak el ON el.id = p.event_lapak_id
@@ -476,4 +518,116 @@ func (r *EventRepository) ListSaya(ctx context.Context, pedagangID string) ([]en
 		list = append(list, *k)
 	}
 	return list, rows.Err()
+}
+
+// ============================================================
+// CHECKOUT PER EVENT
+// ============================================================
+
+const selectCheckout = `
+	SELECT p.id, e.id, e.nama, e.tanggal::text,
+	       to_char(e.jam_mulai, 'HH24:MI'), to_char(e.jam_selesai, 'HH24:MI'), e.status::text,
+	       kec.nama_instansi, j.nama_jalan, r.nama_ruas, p.nomor,
+	       COALESCE(pp.nik, ''), COALESCE(pp.nama_lengkap, ''), COALESCE(pp.tanggal_lahir::text, ''),
+	       COALESCE(pp.nama_usaha, ''), COALESCE(pp.jenis_dagangan::text, ''), COALESCE(pp.jenis_lapak::text, ''),
+	       p.status::text, p.check_in_at, p.check_out_at, p.omset,
+	       ((e.tanggal + e.jam_selesai) AT TIME ZONE 'Asia/Jakarta')
+	FROM event_participants p
+	JOIN pedagang_profiles pp ON pp.id = p.pedagang_id
+	JOIN events e       ON e.id = p.event_id
+	JOIN event_lapak el ON el.id = p.event_lapak_id
+	JOIN master_ruas r  ON r.id = el.ruas_id
+	JOIN master_jalan j ON j.id = r.jalan_id
+	LEFT JOIN LATERAL (
+		SELECT mi.nama_instansi
+		FROM jalan_instansi ji
+		JOIN master_instansi mi ON mi.id = ji.instansi_id AND mi.deleted_at IS NULL
+		WHERE ji.jalan_id = j.id
+		LIMIT 1
+	) kec ON true
+`
+
+func scanCheckout(row pgx.Row) (*entity.DataCheckout, error) {
+	var d entity.DataCheckout
+	err := row.Scan(&d.PesertaID, &d.EventID, &d.NamaEvent, &d.Tanggal, &d.JamMulai, &d.JamSelesai, &d.StatusEvent,
+		&d.NamaKecamatan, &d.NamaJalan, &d.NamaRuas, &d.Nomor,
+		&d.NIK, &d.NamaLengkap, &d.TanggalLahir, &d.NamaUsaha, &d.KategoriUsaha, &d.JenisLapak,
+		&d.Status, &d.CheckInAt, &d.CheckOutAt, &d.Omset, &d.JamSelesaiSesi)
+	if err != nil {
+		return nil, err
+	}
+	return &d, nil
+}
+
+// ListKandidatCheckout: semua check-in yang belum ditutup, ditambah
+// checkout yang dilakukan hari ini (WIB). Usecase yang memilih satu.
+func (r *EventRepository) ListKandidatCheckout(ctx context.Context, pedagangID string) ([]entity.DataCheckout, error) {
+	rows, err := r.db.Query(ctx, selectCheckout+`
+		WHERE p.pedagang_id = $1 AND p.deleted_at IS NULL
+		  AND (p.status = 'check_in'
+		       OR (p.status = 'check_out'
+		           AND (p.check_out_at AT TIME ZONE 'Asia/Jakarta')::date = (now() AT TIME ZONE 'Asia/Jakarta')::date))
+		ORDER BY e.tanggal, e.jam_mulai, p.check_out_at DESC NULLS FIRST`, pedagangID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	list := make([]entity.DataCheckout, 0)
+	for rows.Next() {
+		d, err := scanCheckout(rows)
+		if err != nil {
+			return nil, err
+		}
+		list = append(list, *d)
+	}
+	return list, rows.Err()
+}
+
+// Checkout: pedagang menutup kehadirannya di satu event dengan mengisi
+// omset. Hanya boleh setelah event itu selesai.
+func (r *EventRepository) Checkout(ctx context.Context, eventID, pedagangID string, omset int64, userID string, now time.Time) (string, error) {
+	tx, err := r.db.Begin(ctx)
+	if err != nil {
+		return "", err
+	}
+	defer tx.Rollback(ctx)
+
+	var pesertaID, statusPeserta, statusEvent string
+	var selesaiAt time.Time
+	err = tx.QueryRow(ctx, `
+		SELECT p.id, p.status::text, e.status::text,
+		       ((e.tanggal + e.jam_selesai) AT TIME ZONE 'Asia/Jakarta')
+		FROM event_participants p
+		JOIN events e ON e.id = p.event_id
+		WHERE p.event_id = $1 AND p.pedagang_id = $2 AND p.deleted_at IS NULL
+		FOR UPDATE OF p`, eventID, pedagangID).Scan(&pesertaID, &statusPeserta, &statusEvent, &selesaiAt)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return "", ErrBelumIkut
+	}
+	if err != nil {
+		return "", err
+	}
+	switch statusPeserta {
+	case eventaturan.PesertaCheckOut:
+		return "", ErrSudahCheckout
+	case eventaturan.PesertaCheckIn:
+	default:
+		return "", ErrBelumCheckIn
+	}
+	if !eventaturan.EventSudahSelesai(statusEvent, selesaiAt, now) {
+		return "", ErrEventBelumSelesai
+	}
+
+	if _, err := tx.Exec(ctx, `
+		UPDATE event_participants
+		SET status = 'check_out', check_out_at = now(), omset = $2, auto_checkout = false, updated_at = now()
+		WHERE id = $1`, pesertaID, omset); err != nil {
+		return "", err
+	}
+	if err := eventaturan.Audit(ctx, tx, &userID, "peserta.checkout", "event_participants", &pesertaID, &eventID,
+		map[string]string{"status": statusPeserta},
+		map[string]any{"status": eventaturan.PesertaCheckOut, "omset": omset}, nil); err != nil {
+		return "", err
+	}
+	return pesertaID, tx.Commit(ctx)
 }

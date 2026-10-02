@@ -101,6 +101,7 @@ type KehadiranRow struct {
 	CheckOut    string `json:"checkOut"`
 	Omset       *int64 `json:"omset"`
 	DicatatOleh string `json:"dicatatOleh"`
+	NamaEvent   string `json:"namaEvent"` // event tempat pedagang hadir
 }
 
 type LaporanResponse struct {

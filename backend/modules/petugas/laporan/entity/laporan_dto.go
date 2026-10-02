@@ -8,6 +8,7 @@ package entity
 type LaporanRequest struct {
 	StartDate string `json:"startDate" query:"startDate"` // format: 2006-01-02
 	EndDate   string `json:"endDate" query:"endDate"`     // format: 2006-01-02
+	EventID   string `json:"eventId" query:"eventId"`     // opsional: hanya 1 event
 	Search    string `json:"search" query:"search"`
 	Page      int    `json:"page" query:"page"`
 	Limit     int    `json:"limit" query:"limit"`

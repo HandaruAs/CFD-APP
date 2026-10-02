@@ -10,7 +10,6 @@ import {
   CheckCircle2,
   ShieldCheck,
   ShieldAlert,
-  XCircle,
   MapPin,
   Tag,
   User,
@@ -28,55 +27,68 @@ import {
 const QR_READER_ELEMENT_ID = "qr-reader";
 
 // ============================================================
-// TYPES - sesuai dengan response backend (snake_case, persis JSON dari Go)
+// TYPES - sesuai response /api/petugas/event-checkin (camelCase)
+// QR yang dipindai sekarang berisi id keikutsertaan (QR di kartu event
+// pedagang). QR lama (id pedagang) masih diterima backend selama aplikasi
+// mobile belum disesuaikan.
 // ============================================================
 
 type StatusScan = "idle" | "scanning" | "terdaftar" | "tidak-terdaftar";
 
-type PedagangDetail = {
-  id: string;
-  nama_usaha: string;
-  pemilik: string;
-  inisial: string;
-  kategori: string;
-  lokasi_lapak: string;
-  status_pendaftaran: string;
-  nik?: string;
-  alamat?: string;
-  perkiraan_harga?: string;
-};
-
-type VerifyQRResponse = {
-  valid: boolean;
-  message: string;
-  pedagang?: PedagangDetail;
-  sudah_check_in: boolean;
-  check_in_at?: string;
-  // false = check-in pasti ditolak (belum klaim lapak / belum checkout sesi lama)
-  bisa_check_in?: boolean;
-  peringatan?: string;
+type PesertaScan = {
+  pesertaId: string;
+  pedagangId: string;
+  namaLengkap: string | null;
+  namaUsaha: string | null;
+  jenisDagangan: string | null;
+  jenisLapak: string | null;
+  kategori: "lama" | "baru";
+  eventId: string;
+  namaEvent: string;
+  tanggal: string;
+  jamMulai: string;
+  jamSelesai: string;
+  statusEvent: string;
+  namaKecamatan: string | null;
+  namaJalan: string;
+  namaRuas: string;
+  nomor: number;
+  status: "terdaftar" | "check_in" | "check_out" | "batal" | "tidak_hadir";
+  checkInAt: string | null;
+  bisaCheckIn: boolean;
+  alasan: string | null;
 };
 
 type CheckInResponse = {
-  success: boolean;
   message: string;
-  check_in_at: string;
-  pedagang_id: string;
-  nama_usaha: string;
+  data: PesertaScan;
 };
 
-type RiwayatScanItem = {
-  waktu: string;
-  nama_usaha: string;
-  lokasi_lapak: string;
-  status: "berhasil" | "gagal";
-  pedagang_id?: string;
+type RiwayatItem = {
+  pesertaId: string;
+  namaLengkap: string | null;
+  namaUsaha: string | null;
+  namaEvent: string;
+  namaJalan: string;
+  namaRuas: string;
+  nomor: number;
+  checkInAt: string;
 };
 
-type RiwayatScanResponse = {
-  riwayat: RiwayatScanItem[];
-  total: number;
+const JENIS_DAGANGAN: Record<string, string> = {
+  makanan_minuman: "Makanan & Minuman",
+  bukan_makanan_minuman: "Bukan Makanan & Minuman",
 };
+
+function inisial(nama: string | null | undefined) {
+  const kata = (nama ?? "").trim().split(/\s+/).filter(Boolean);
+  return ((kata[0]?.[0] ?? "") + (kata[1]?.[0] ?? "")).toUpperCase() || "??";
+}
+
+function jamTampil(iso: string | null) {
+  if (!iso) return "...";
+  return new Date(iso).toLocaleTimeString("id-ID", { timeZone: "Asia/Jakarta", hour: "2-digit", minute: "2-digit" });
+}
 
 // ============================================================
 // API HELPER
@@ -119,7 +131,7 @@ async function apiFetch<T>(path: string, options: RequestInit = {}): Promise<T> 
 export default function ScanQrPage() {
   // State untuk scan
   const [status, setStatus] = useState<StatusScan>("idle");
-  const [pedagang, setPedagang] = useState<PedagangDetail | null>(null);
+  const [pedagang, setPedagang] = useState<PesertaScan | null>(null);
   const [sudahCheckin, setSudahCheckin] = useState(false);
   const [checkInAt, setCheckInAt] = useState<string | null>(null);
 
@@ -135,7 +147,7 @@ export default function ScanQrPage() {
 
   // State untuk toast & riwayat
   const [toast, setToast] = useState<{ message: string; type: "success" | "error" } | null>(null);
-  const [riwayat, setRiwayat] = useState<RiwayatScanItem[]>([]);
+  const [riwayat, setRiwayat] = useState<RiwayatItem[]>([]);
   const [qrCodeInput, setQrCodeInput] = useState("");
 
   // State & ref untuk kamera
@@ -156,8 +168,8 @@ export default function ScanQrPage() {
 
   const loadRiwayat = async () => {
     try {
-      const data = await apiFetch<RiwayatScanResponse>("/api/petugas/riwayat-scan");
-      setRiwayat(data.riwayat || []);
+      const data = await apiFetch<{ data: RiwayatItem[] }>("/api/petugas/event-checkin/riwayat");
+      setRiwayat(data.data || []);
     } catch (err) {
       console.error("Gagal load riwayat:", err);
       // Gagal load riwayat tidak usah tampilkan error ke user, cukup log
@@ -279,28 +291,20 @@ export default function ScanQrPage() {
     setTerblokir(false);
 
     try {
-      const data = await apiFetch<VerifyQRResponse>("/api/petugas/scan", {
+      // Hanya membaca -- check-in baru dicatat setelah tombol Konfirmasi.
+      const { data } = await apiFetch<{ data: PesertaScan }>("/api/petugas/event-checkin/periksa", {
         method: "POST",
-        body: JSON.stringify({ qr_code: kode }),
+        body: JSON.stringify({ qrCode: kode }),
       });
 
-      if (data.valid && data.pedagang) {
-        setStatus("terdaftar");
-        setPedagang(data.pedagang);
-        setSudahCheckin(data.sudah_check_in);
-        setCheckInAt(data.check_in_at || null);
-        // bisa_check_in undefined = backend lama -> anggap boleh
-        const ditolak = data.bisa_check_in === false;
-        setTerblokir(ditolak);
-        setPeringatan(ditolak ? data.peringatan || "Pedagang ini belum bisa check-in." : null);
-        showToast("✅ QR Code berhasil diverifikasi!", "success");
-
-        // Refresh riwayat setelah scan berhasil
-        await loadRiwayat();
-      } else {
-        setStatus("tidak-terdaftar");
-        showToast(data.message || "QR Code tidak dikenali", "error");
-      }
+      setStatus("terdaftar");
+      setPedagang(data);
+      const sudah = data.status === "check_in";
+      setSudahCheckin(sudah);
+      setCheckInAt(data.checkInAt);
+      setTerblokir(!data.bisaCheckIn);
+      setPeringatan(!data.bisaCheckIn && !sudah ? data.alasan || "Pedagang ini belum bisa check-in." : null);
+      showToast("✅ QR Code berhasil diverifikasi!", "success");
     } catch (err) {
       setStatus("tidak-terdaftar");
       const errorMsg = err instanceof Error ? err.message : "Gagal memverifikasi QR Code";
@@ -326,21 +330,19 @@ export default function ScanQrPage() {
 
     setIsCheckingIn(true);
     try {
-      const data = await apiFetch<CheckInResponse>("/api/petugas/check-in", {
+      const res = await apiFetch<CheckInResponse>("/api/petugas/event-checkin", {
         method: "POST",
-        body: JSON.stringify({ pedagang_id: pedagang.id }),
+        body: JSON.stringify({ pesertaId: pedagang.pesertaId }),
       });
 
-      if (data.success) {
-        setSudahCheckin(true);
-        setCheckInAt(data.check_in_at);
-        showToast("✅ Check-in berhasil dicatat!", "success");
+      setPedagang(res.data);
+      setSudahCheckin(true);
+      setCheckInAt(res.data.checkInAt);
+      setPeringatan(null);
+      showToast("✅ Check-in berhasil dicatat!", "success");
 
-        // Refresh riwayat setelah check-in
-        await loadRiwayat();
-      } else {
-        showToast(data.message || "Gagal melakukan check-in", "error");
-      }
+      // Refresh riwayat setelah check-in
+      await loadRiwayat();
     } catch (err) {
       const errorMsg = err instanceof Error ? err.message : "Gagal melakukan check-in";
       // Tampilkan juga di kartu hasil, supaya alasannya tetap terlihat
@@ -369,8 +371,6 @@ export default function ScanQrPage() {
     setQrCodeInput("");
   };
 
-  // Hitung ringkasan riwayat buat mini-stat (murni turunan dari state riwayat, bukan state baru)
-  const totalBerhasil = riwayat.filter((r) => r.status === "berhasil").length;
 
   // ============================================================
   // RENDER
@@ -395,7 +395,7 @@ export default function ScanQrPage() {
       <div>
         <h2 className="text-headline-lg text-on-surface">Scan QR Pedagang</h2>
         <p className="mt-xs max-w-2xl text-body-md text-on-surface-variant">
-          Pindai QR code pedagang untuk verifikasi dan catat kehadiran di CFD.
+          Pindai QR di kartu event pedagang untuk verifikasi dan catat kehadirannya di event tersebut.
         </p>
       </div>
       
@@ -472,7 +472,7 @@ export default function ScanQrPage() {
                 <Camera className="h-12 w-12" strokeWidth={1.5} />
                 <span className="text-label-sm">Masukkan kode QR di atas</span>
                 <span className="text-label-xs text-on-surface-variant/60">
-                  Atau tempelkan ID pedagang
+                  Atau tempelkan kode dari kartu event
                 </span>
               </div>
             )}
@@ -536,7 +536,7 @@ export default function ScanQrPage() {
                   Belum ada QR yang dipindai.
                 </p>
                 <p className="text-label-sm text-on-surface-variant/70">
-                  Masukkan kode QR di atas atau tempelkan ID pedagang
+                  Masukkan kode QR di atas atau tempelkan kode dari kartu event pedagang
                 </p>
               </div>
             )}
@@ -557,46 +557,60 @@ export default function ScanQrPage() {
 
                 <div className="flex items-start gap-sm rounded-md border border-outline-variant p-md hover:border-secondary/30 transition-colors">
                   <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-primary-fixed text-label-md font-semibold text-on-primary-fixed">
-                    {pedagang.inisial || "??"}
+                    {inisial(pedagang.namaLengkap || pedagang.namaUsaha)}
                   </span>
                   <div className="flex-1">
-                    <p className="text-title-lg text-on-surface">{pedagang.nama_usaha}</p>
-                    <p className="text-label-sm text-on-surface-variant">{pedagang.id}</p>
-
+                    <p className="text-title-lg text-on-surface">{pedagang.namaUsaha || "-"}</p>
                     <div className="mt-sm grid grid-cols-1 gap-xs sm:grid-cols-2">
                       <div className="flex items-center gap-xs text-label-sm text-on-surface-variant">
                         <User className="h-3.5 w-3.5" strokeWidth={2} />
-                        {pedagang.pemilik}
+                        {pedagang.namaLengkap || "-"}
                       </div>
                       <div className="flex items-center gap-xs text-label-sm text-on-surface-variant">
                         <Tag className="h-3.5 w-3.5" strokeWidth={2} />
-                        {pedagang.kategori}
+                        {JENIS_DAGANGAN[pedagang.jenisDagangan ?? ""] ?? pedagang.jenisDagangan ?? "-"}
                       </div>
                       <div className="flex items-center gap-xs text-label-sm text-on-surface-variant sm:col-span-2">
-                        <MapPin className="h-3.5 w-3.5" strokeWidth={2} />
-                        {pedagang.lokasi_lapak || "Lokasi belum diisi"}
+                        <IdCard className="h-3.5 w-3.5" strokeWidth={2} />
+                        Pedagang {pedagang.kategori === "lama" ? "lama" : "baru"}
                       </div>
-                      {pedagang.perkiraan_harga && (
-                        <div className="flex items-center gap-xs text-label-sm text-on-surface-variant sm:col-span-2">
-                          <span className="font-semibold">Perkiraan Harga:</span>
-                          {pedagang.perkiraan_harga}
-                        </div>
-                      )}
                     </div>
+                  </div>
+                </div>
 
-                    {pedagang.status_pendaftaran && (
-                      <span className="mt-sm inline-flex items-center rounded-full bg-secondary-container/40 px-sm py-1 text-label-sm text-on-secondary-container">
-                        {pedagang.status_pendaftaran}
+                {/* Event & lapak dari QR ini */}
+                <div className="rounded-md border border-outline-variant p-md">
+                  <p className="text-label-sm uppercase tracking-wide text-on-surface-variant">Event</p>
+                  <p className="text-body-md font-semibold text-on-surface">{pedagang.namaEvent}</p>
+                  <p className="text-label-sm text-on-surface-variant">
+                    {new Date(`${pedagang.tanggal}T00:00:00`).toLocaleDateString("id-ID", {
+                      weekday: "long",
+                      day: "numeric",
+                      month: "long",
+                    })}{" "}
+                    · {pedagang.jamMulai.replace(":", ".")} – {pedagang.jamSelesai.replace(":", ".")} WIB
+                  </p>
+                  <div className="mt-sm flex items-end justify-between gap-sm">
+                    <div className="flex min-w-0 items-start gap-xs text-label-md text-on-surface">
+                      <MapPin className="mt-0.5 h-4 w-4 shrink-0 text-on-surface-variant" strokeWidth={2} />
+                      <span>
+                        {pedagang.namaJalan} · {pedagang.namaRuas}
+                        {pedagang.namaKecamatan && (
+                          <span className="block text-label-sm text-on-surface-variant">Kec. {pedagang.namaKecamatan}</span>
+                        )}
                       </span>
-                    )}
+                    </div>
+                    <div className="shrink-0 text-right">
+                      <p className="text-label-sm text-on-surface-variant">Nomor Stan</p>
+                      <p className="text-headline-md font-semibold leading-none text-primary">{pedagang.nomor}</p>
+                    </div>
                   </div>
                 </div>
 
                 {sudahCheckin ? (
                   <div className="flex items-center gap-sm rounded-md bg-secondary-container/40 px-md py-sm text-label-md text-on-secondary-container animate-in fade-in">
                     <CheckCircle2 className="h-[18px] w-[18px]" strokeWidth={2} />
-                    Check-in berhasil dicatat pukul{" "}
-                    {checkInAt ? new Date(checkInAt).toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit" }) : "..."}
+                    Sudah check-in pukul {jamTampil(checkInAt)} WIB
                   </div>
                 ) : (
                   <>
@@ -640,7 +654,8 @@ export default function ScanQrPage() {
                     {error || "Kode QR ini tidak cocok dengan data pedagang di sistem."}
                   </p>
                   <p className="mt-xs text-label-sm text-on-surface-variant/70">
-                    Arahkan pedagang untuk mendaftar terlebih dahulu sebelum diizinkan berjualan.
+                    Pastikan yang dipindai adalah QR di kartu event pedagang. Kalau pedagang belum ikut event, arahkan untuk
+                    mendaftar dan memilih event terlebih dahulu.
                   </p>
                 </div>
               </div>
@@ -655,14 +670,14 @@ export default function ScanQrPage() {
               <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary">
                 <ListChecks className="h-[18px] w-[18px]" strokeWidth={2} />
               </span>
-              <h3 className="text-title-lg text-on-surface">Riwayat Scan Hari Ini</h3>
+              <h3 className="text-title-lg text-on-surface">Riwayat Check-in Hari Ini</h3>
               <span className="ml-auto flex items-center gap-1 text-label-sm text-on-surface-variant">
                 {isLoadingRiwayat ? (
                   "Memuat..."
                 ) : (
                   <>
                     <TrendingUp className="h-3.5 w-3.5 text-secondary" strokeWidth={2} />
-                    {totalBerhasil} berhasil · {riwayat.length} total
+                    {riwayat.length} pedagang
                   </>
                 )}
               </span>
@@ -675,32 +690,25 @@ export default function ScanQrPage() {
             ) : riwayat.length === 0 ? (
               <div className="flex flex-col items-center justify-center gap-xs rounded-md bg-surface-container-low py-md text-center">
                 <p className="text-label-md text-on-surface-variant">
-                  Belum ada riwayat scan hari ini.
+                  Belum ada check-in hari ini.
                 </p>
               </div>
             ) : (
               <ul className="flex flex-col gap-sm">
-                {riwayat.map((item, i) => (
+                {riwayat.map((item) => (
                   <li
-                    key={i}
-                    className={`flex items-center gap-sm rounded-md p-sm transition-colors ${
-                      item.status === "berhasil"
-                        ? "bg-secondary-container/20 hover:bg-secondary-container/30"
-                        : "bg-error-container/10 hover:bg-error-container/20"
-                    }`}
+                    key={item.pesertaId}
+                    className="flex items-center gap-sm rounded-md bg-secondary-container/20 p-sm transition-colors hover:bg-secondary-container/30"
                   >
-                    {item.status === "berhasil" ? (
-                      <CheckCircle2 className="h-4 w-4 shrink-0 text-secondary" strokeWidth={2} />
-                    ) : (
-                      <XCircle className="h-4 w-4 shrink-0 text-error" strokeWidth={2} />
-                    )}
+                    <CheckCircle2 className="h-4 w-4 shrink-0 text-secondary" strokeWidth={2} />
                     <div className="min-w-0 flex-1">
-                      <p className="truncate text-label-md text-on-surface">{item.nama_usaha}</p>
+                      <p className="truncate text-label-md text-on-surface">{item.namaUsaha || item.namaLengkap || "-"}</p>
                       <p className="flex items-center gap-1 truncate text-label-sm text-on-surface-variant">
                         <MapPin className="h-3 w-3 shrink-0" strokeWidth={2} />
-                        {item.lokasi_lapak || "Lokasi belum diisi"}
+                        {item.namaEvent} · {item.namaJalan} · {item.namaRuas} · No. {item.nomor}
                       </p>
                     </div>
+                    <span className="shrink-0 text-label-sm tabular-nums text-on-surface-variant">{jamTampil(item.checkInAt)}</span>
                   </li>
                 ))}
               </ul>

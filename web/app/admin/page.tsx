@@ -35,11 +35,29 @@ type DashboardData = {
     };
     lapak: { terisi: number; kapasitas: number; persen: number };
     hadir: { klaim: number; checkIn: number; checkOut: number };
+    // Semua event hari ini (satu hari boleh banyak event). sesi/lapak/hadir
+    // di atas adalah ringkasan gabungannya.
+    events?: EventHariIni[];
   };
   tren: {
     sesi: { sesiId: string; tanggal: string; namaSesi: string; klaim: number; hadir: number; omset: number }[];
     minggu: { mingguMulai: string; baru: number; lama: number; total: number }[];
   };
+};
+
+type EventHariIni = {
+  id: string;
+  nama: string;
+  status: StatusSesi;
+  jamMulai: string;
+  jamSelesai: string;
+  sisaMenit: number;
+  titik: number;
+  kapasitas: number;
+  klaim: number;
+  checkIn: number;
+  checkOut: number;
+  omset: number;
 };
 
 // ============================================================
@@ -211,11 +229,12 @@ export default function AdminDashboardPage() {
         <>
           <Seksi judul="Hari Ini">
             <BagianHariIni data={data.hariIni} />
+            <DaftarEventHariIni events={data.hariIni.events ?? []} />
           </Seksi>
 
           <Seksi
             judul="Tren Kegiatan"
-            deskripsi={`${data.tren.sesi.length} sesi CFD terakhir dan pendaftaran pedagang ${data.tren.minggu.length} minggu terakhir.`}
+            deskripsi={`${data.tren.sesi.length} event terakhir dan pendaftaran pedagang ${data.tren.minggu.length} minggu terakhir.`}
           >
             <GrafikKehadiran sesi={data.tren.sesi} />
             <div className="grid grid-cols-1 gap-md xl:grid-cols-2">
@@ -344,6 +363,7 @@ function BagianHariIni({ data }: { data: DashboardData["hariIni"] }) {
   const tampilan = TAMPILAN_SESI[sesi.status] ?? TAMPILAN_SESI.belum_ada;
   const IkonSesi = tampilan.ikon;
   const gelap = sesi.status === "berjalan";
+  const jumlahEvent = (data.events ?? []).filter((e) => e.status !== "dibatalkan").length;
 
   return (
     <div className="grid grid-cols-1 gap-md lg:grid-cols-3">
@@ -356,7 +376,9 @@ function BagianHariIni({ data }: { data: DashboardData["hariIni"] }) {
             <IkonSesi className="h-5 w-5" strokeWidth={2} />
           </span>
           <div className="min-w-0">
-            <p className={`text-label-md ${gelap ? "text-on-primary/80" : "text-on-surface-variant"}`}>Sesi CFD</p>
+            <p className={`text-label-md ${gelap ? "text-on-primary/80" : "text-on-surface-variant"}`}>
+              Event CFD{jumlahEvent > 1 ? ` · ${jumlahEvent} event hari ini` : ""}
+            </p>
             <p className="mt-1 text-headline-md">{tampilan.label}</p>
             {sesi.namaSesi && (
               <p className={`mt-1 truncate text-body-sm ${gelap ? "text-on-primary/80" : "text-on-surface-variant"}`}>
@@ -419,7 +441,7 @@ function BagianHariIni({ data }: { data: DashboardData["hariIni"] }) {
           <BatangProgres persen={persenAman(hadir.checkIn, penyebutHadir)} warna="bg-secondary" />
           <p className="mt-sm text-body-sm text-on-surface-variant">
             {penyebutHadir === 0
-              ? "Belum ada pedagang yang klaim lapak hari ini."
+              ? "Belum ada pedagang yang ikut event hari ini."
               : `${hadir.checkOut} sudah check-out${belumCheckout > 0 ? ` · ${belumCheckout} masih di lapak` : ""}`}
           </p>
         </div>
@@ -429,6 +451,66 @@ function BagianHariIni({ data }: { data: DashboardData["hariIni"] }) {
   );
 }
 
+
+// Daftar semua event hari ini -- muncul kalau ada lebih dari satu event,
+// karena kartu di atas cuma meringkas.
+const LABEL_STATUS_EVENT: Record<StatusSesi, { label: string; pill: string }> = {
+  berjalan: { label: "Berjalan", pill: "pt-pill-success" },
+  terjadwal: { label: "Terjadwal", pill: "pt-pill-warning" },
+  selesai: { label: "Selesai", pill: "pt-pill-neutral" },
+  dibatalkan: { label: "Dibatalkan", pill: "pt-pill-danger" },
+  belum_ada: { label: "-", pill: "pt-pill-neutral" },
+};
+
+function DaftarEventHariIni({ events }: { events: EventHariIni[] }) {
+  if (events.length <= 1) return null;
+  return (
+    <Kartu>
+      <JudulKartu icon={CalendarClock} judul="Event Hari Ini" keterangan={`${events.length} event`} />
+      <div className="mt-md overflow-x-auto">
+        <table className="w-full text-left">
+          <thead>
+            <tr className="border-b border-outline-variant text-label-sm text-on-surface-variant">
+              <th className="px-sm py-sm font-medium">Event</th>
+              <th className="px-sm py-sm font-medium">Jam</th>
+              <th className="px-sm py-sm text-right font-medium">Lapak</th>
+              <th className="px-sm py-sm text-right font-medium">Hadir</th>
+              <th className="px-sm py-sm text-right font-medium">Check-out</th>
+              <th className="px-sm py-sm text-right font-medium">Omset</th>
+            </tr>
+          </thead>
+          <tbody>
+            {events.map((e) => {
+              const st = LABEL_STATUS_EVENT[e.status] ?? LABEL_STATUS_EVENT.belum_ada;
+              return (
+                <tr key={e.id} className="border-b border-outline-variant last:border-0">
+                  <td className="px-sm py-sm">
+                    <p className="text-body-md font-medium text-on-surface">{e.nama}</p>
+                    <span className={`pt-pill ${st.pill} mt-0.5 py-0.5`}>
+                      <span className={`pt-pill-dot ${e.status === "berjalan" ? "is-pulse" : ""}`} />
+                      {st.label}
+                      {e.status === "berjalan" && ` · ${formatSisaWaktu(e.sisaMenit)}`}
+                    </span>
+                  </td>
+                  <td className="whitespace-nowrap px-sm py-sm text-body-sm tabular-nums text-on-surface-variant">
+                    {e.jamMulai} – {e.jamSelesai}
+                  </td>
+                  <td className="px-sm py-sm text-right text-body-sm tabular-nums text-on-surface">
+                    {e.klaim} / {e.kapasitas}
+                    <span className="block text-label-sm text-on-surface-variant">{e.titik} titik</span>
+                  </td>
+                  <td className="px-sm py-sm text-right text-body-sm tabular-nums text-on-surface">{e.checkIn}</td>
+                  <td className="px-sm py-sm text-right text-body-sm tabular-nums text-on-surface">{e.checkOut}</td>
+                  <td className="px-sm py-sm text-right text-body-sm tabular-nums text-on-surface">{formatRupiah(e.omset)}</td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+    </Kartu>
+  );
+}
 
 function BatangProgres({ persen, warna = "bg-primary" }: { persen: number; warna?: string }) {
   return (
@@ -500,7 +582,7 @@ function GrafikKehadiran({ sesi }: { sesi: DashboardData["tren"]["sesi"] }) {
       <div className="mb-md flex flex-wrap items-start justify-between gap-sm">
         <div className="flex items-center gap-sm">
           <Users className="h-4 w-4 text-primary" strokeWidth={2.2} />
-          <h4 className="text-title-md text-on-surface">Kehadiran per Sesi</h4>
+          <h4 className="text-title-md text-on-surface">Kehadiran per Event</h4>
         </div>
         {sesi.length > 0 && (
           <div className="inline-flex rounded-full bg-surface-container-high p-0.5" role="group" aria-label="Tampilan grafik">
@@ -529,7 +611,7 @@ function GrafikKehadiran({ sesi }: { sesi: DashboardData["tren"]["sesi"] }) {
       </div>
 
       {sesi.length === 0 ? (
-        <Kosong teks="Belum ada sesi CFD yang tercatat." />
+        <Kosong teks="Belum ada event yang tercatat." />
       ) : (
         <div className="grid grid-cols-1 gap-lg lg:grid-cols-[minmax(0,1fr)_260px]">
           {/* ---------- Grafik ---------- */}
@@ -571,7 +653,7 @@ function GrafikKehadiran({ sesi }: { sesi: DashboardData["tren"]["sesi"] }) {
               className="relative flex h-[220px] items-end gap-xs border-b border-outline-variant outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
               tabIndex={0}
               role="listbox"
-              aria-label="Pilih sesi. Gunakan panah kiri dan kanan."
+              aria-label="Pilih event. Gunakan panah kiri dan kanan."
               aria-activedescendant={`sesi-kehadiran-${aktif}`}
               onKeyDown={onKeyDown}
             >
@@ -799,7 +881,7 @@ function PanelSesi({
       </dl>
 
       <div className="flex items-center justify-between gap-sm border-t border-outline-variant pt-sm text-body-sm">
-        <span className="text-on-surface-variant">Omset sesi ini</span>
+        <span className="text-on-surface-variant">Omset event ini</span>
         <span className="font-semibold tabular-nums text-on-surface">{formatRupiah(sesi.omset)}</span>
       </div>
     </div>
@@ -822,8 +904,8 @@ function Selisih({ nilai, satuan = "", ringkas = false }: { nilai: number; satua
   const bulat = satuan === "%" ? Math.round(nilai * 10) / 10 : Math.round(nilai);
   if (bulat === 0) {
     return (
-      <span className="block text-label-sm text-on-surface-variant" title="Dibanding sesi sebelumnya">
-        {ringkas ? "= sesi lalu" : "sama dengan sesi lalu"}
+      <span className="block text-label-sm text-on-surface-variant" title="Dibanding event sebelumnya">
+        {ringkas ? "= event lalu" : "sama dengan event lalu"}
       </span>
     );
   }
@@ -831,11 +913,11 @@ function Selisih({ nilai, satuan = "", ringkas = false }: { nilai: number; satua
   return (
     <span
       className={`block text-label-sm font-semibold ${naik ? "text-secondary" : "text-error"}`}
-      title={`${naik ? "Naik" : "Turun"} ${Math.abs(bulat).toLocaleString("id-ID")}${satuan} dibanding sesi sebelumnya`}
+      title={`${naik ? "Naik" : "Turun"} ${Math.abs(bulat).toLocaleString("id-ID")}${satuan} dibanding event sebelumnya`}
     >
       {naik ? "▲" : "▼"} {Math.abs(bulat).toLocaleString("id-ID")}
       {satuan}
-      {!ringkas && <span className="font-normal text-on-surface-variant"> vs sesi lalu</span>}
+      {!ringkas && <span className="font-normal text-on-surface-variant"> vs event lalu</span>}
     </span>
   );
 }
@@ -855,9 +937,9 @@ function GrafikOmset({ sesi }: { sesi: DashboardData["tren"]["sesi"] }) {
 
   return (
     <Kartu>
-      <JudulKartu icon={Wallet} judul="Omset per Sesi" keterangan={sesi.length ? `Total ${formatRupiah(total)}` : undefined} />
+      <JudulKartu icon={Wallet} judul="Omset per Event" keterangan={sesi.length ? `Total ${formatRupiah(total)}` : undefined} />
       {sesi.length === 0 ? (
-        <Kosong teks="Belum ada sesi CFD yang tercatat." />
+        <Kosong teks="Belum ada event yang tercatat." />
       ) : (
         <>
           <div className="mb-sm text-label-sm text-on-surface-variant">Dari omset yang diisi pedagang saat check-out</div>

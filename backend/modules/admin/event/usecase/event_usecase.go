@@ -3,6 +3,7 @@ package usecase
 import (
 	"context"
 	"errors"
+	"fmt"
 	"strconv"
 	"strings"
 	"time"
@@ -19,11 +20,20 @@ var (
 	ErrBelumAdaTitik        = errors.New("event belum punya titik lokasi, acak lokasi dulu sebelum diterbitkan")
 	ErrBukanHariH           = errors.New("event hanya bisa dimulai manual di hari pelaksanaannya")
 	ErrJadwalTerkunci       = errors.New("tanggal dan jam event tidak bisa diubah karena sudah ada pedagang yang terdaftar")
-	ErrKuotaTurun           = errors.New("pendaftaran sudah dibuka, kuota hanya boleh dinaikkan")
-	ErrKuotaDiBawahTerisi   = errors.New("kuota tidak boleh lebih kecil dari jumlah yang sudah terisi")
+	ErrKuotaTurun           = errors.New("pendaftaran sudah dibuka, kuota total hanya boleh dinaikkan")
+	ErrKuotaDiBawahTerisi   = errors.New("kuota tidak boleh lebih kecil dari jumlah pedagang yang sudah terdaftar")
+	ErrKuotaBelumDiisi      = errors.New("kuota event belum diisi")
+	ErrKapasitasDiBawahIsi  = errors.New("kapasitas titik tidak boleh lebih kecil dari jumlah pedagang di titik itu")
 	ErrLapakMasihDipakai    = errors.New("titik lokasi ini sudah ada pedagangnya, tidak bisa dihapus")
 	ErrEventMasihAdaPeserta = errors.New("event sudah punya peserta, batalkan event dulu sebelum menghapus")
 )
+
+// ErrKapasitasKurang: kuota event melebihi jumlah tempat di titik-titiknya.
+type ErrKapasitasKurang struct{ Kuota, Kapasitas int }
+
+func (e *ErrKapasitasKurang) Error() string {
+	return fmt.Sprintf("kuota event (%d) melebihi kapasitas titik lokasi (%d lapak). Tambah titik lokasi atau turunkan kuota", e.Kuota, e.Kapasitas)
+}
 
 // ValidationError membawa pesan spesifik ke controller (400).
 type ValidationError struct{ Pesan string }
@@ -44,8 +54,8 @@ type EventRepository interface {
 
 	ListLapak(ctx context.Context, eventID string) ([]entity.EventLapak, error)
 	GetLapak(ctx context.Context, eventID, lapakID string) (*entity.EventLapak, error)
-	AcakLokasi(ctx context.Context, eventID string, req *entity.AcakLokasiRequest, persenLama int, actorID string) (int, []entity.EventLapak, error)
-	UpdateKuota(ctx context.Context, eventID, lapakID string, kuotaLama, kuotaBaru int, sebelum *entity.EventLapak, actorID string) error
+	AcakLokasi(ctx context.Context, eventID string, req *entity.AcakLokasiRequest, actorID string) (int, []entity.EventLapak, error)
+	UpdateKapasitas(ctx context.Context, eventID, lapakID string, kapasitas int, sebelum *entity.EventLapak, actorID string) error
 	DeleteLapak(ctx context.Context, eventID, lapakID string, sebelum *entity.EventLapak, actorID string) error
 
 	ListPeserta(ctx context.Context, eventID string) ([]entity.Peserta, error)
@@ -62,7 +72,7 @@ type EventUsecase interface {
 	DeleteEvent(ctx context.Context, actorID, id string) error
 
 	AcakLokasi(ctx context.Context, actorID, eventID string, req *entity.AcakLokasiRequest) (*entity.AcakLokasiResponse, error)
-	UpdateKuota(ctx context.Context, actorID, eventID, lapakID string, req *entity.UpdateKuotaRequest) (*entity.EventLapak, error)
+	UpdateKapasitas(ctx context.Context, actorID, eventID, lapakID string, req *entity.UpdateKapasitasRequest) (*entity.EventLapak, error)
 	DeleteLapak(ctx context.Context, actorID, eventID, lapakID string) error
 
 	ListPeserta(ctx context.Context, eventID string) ([]entity.Peserta, error)
@@ -192,6 +202,13 @@ func (u *eventUsecase) validasiEvent(req *entity.EventRequest) (*entity.EventInp
 		}
 	}
 
+	if req.KuotaTotal < 1 {
+		return nil, invalid("kuota event wajib diisi, minimal 1")
+	}
+	if req.KuotaLama < 0 || req.KuotaLama > req.KuotaTotal {
+		return nil, invalid("kuota pedagang lama harus antara 0 dan kuota event")
+	}
+
 	var ket *string
 	if req.Keterangan != nil && strings.TrimSpace(*req.Keterangan) != "" {
 		k := strings.TrimSpace(*req.Keterangan)
@@ -206,6 +223,8 @@ func (u *eventUsecase) validasiEvent(req *entity.EventRequest) (*entity.EventInp
 		PendaftaranTutupAt: tutup,
 		LepasKuotaAt:       lepas,
 		Keterangan:         ket,
+		KuotaTotal:         req.KuotaTotal,
+		KuotaLama:          req.KuotaLama,
 	}, nil
 }
 
@@ -243,6 +262,20 @@ func (u *eventUsecase) UpdateEvent(ctx context.Context, actorID, id string, req 
 			return nil, ErrJadwalTerkunci
 		}
 	}
+	// Aturan kuota per event:
+	//  - tidak boleh di bawah pedagang yang sudah terdaftar (per kategori jatah);
+	//  - setelah pendaftaran dibuka, kuota total hanya boleh naik;
+	//  - kalau event sudah terbit, kuota tidak boleh melebihi kapasitas titik.
+	u.lengkapi(sebelum)
+	if in.KuotaLama < sebelum.TerisiLama || in.KuotaTotal-in.KuotaLama < sebelum.TerisiBaru {
+		return nil, ErrKuotaDiBawahTerisi
+	}
+	if sebelum.StatusPendaftaran != eventaturan.PendaftaranBelumDibuka && in.KuotaTotal < sebelum.KuotaTotal {
+		return nil, ErrKuotaTurun
+	}
+	if sebelum.Status == eventaturan.StatusTerjadwal && in.KuotaTotal > sebelum.KapasitasTitik {
+		return nil, &ErrKapasitasKurang{Kuota: in.KuotaTotal, Kapasitas: sebelum.KapasitasTitik}
+	}
 	if err := u.repo.UpdateEvent(ctx, id, in, sebelum, actorID); err != nil {
 		return nil, err
 	}
@@ -263,6 +296,12 @@ func (u *eventUsecase) UbahStatus(ctx context.Context, actorID, id string, req *
 	case entity.AksiTerbitkan:
 		if ev.JumlahTitik == 0 {
 			return nil, ErrBelumAdaTitik
+		}
+		if ev.KuotaTotal < 1 {
+			return nil, ErrKuotaBelumDiisi
+		}
+		if ev.KuotaTotal > ev.KapasitasTitik {
+			return nil, &ErrKapasitasKurang{Kuota: ev.KuotaTotal, Kapasitas: ev.KapasitasTitik}
 		}
 		dari, ke = []string{eventaturan.StatusDraft}, eventaturan.StatusTerjadwal
 	case entity.AksiMulai:
@@ -320,21 +359,13 @@ func (u *eventUsecase) AcakLokasi(ctx context.Context, actorID, eventID string, 
 	if req.JumlahTitik < 0 {
 		return nil, invalid("jumlah titik tidak boleh negatif")
 	}
-	persen := 50
-	if req.PersenLama != nil {
-		persen = *req.PersenLama
-	}
-	if persen < 0 || persen > 100 {
-		return nil, invalid("persen kuota pedagang lama harus 0-100")
-	}
-
 	ids, err := rapikanWilayah(req)
 	if err != nil {
 		return nil, err
 	}
 	req.WilayahIDs = ids
 
-	kandidat, ditambahkan, err := u.repo.AcakLokasi(ctx, eventID, req, persen, actorID)
+	kandidat, ditambahkan, err := u.repo.AcakLokasi(ctx, eventID, req, actorID)
 	if err != nil {
 		return nil, err
 	}
@@ -409,16 +440,13 @@ func gabungNama(nama []string) string {
 	return strings.Join(nama[:3], ", ") + ", dan " + strconv.Itoa(len(nama)-3) + " lainnya"
 }
 
-// UpdateKuota: sebelum pendaftaran dibuka bebas diatur. Setelah dibuka,
-// kuota hanya boleh naik. Kapan pun, kuota tidak boleh di bawah yang sudah
-// terisi, dan total tidak boleh di bawah nomor terbesar yang sudah dipakai
-// (nomor stand di ruas = 1..kuota_lama+kuota_baru).
-func (u *eventUsecase) UpdateKuota(ctx context.Context, actorID, eventID, lapakID string, req *entity.UpdateKuotaRequest) (*entity.EventLapak, error) {
-	if req.KuotaLama < 0 || req.KuotaBaru < 0 {
-		return nil, invalid("kuota tidak boleh negatif")
-	}
-	if req.KuotaLama+req.KuotaBaru == 0 {
-		return nil, invalid("total kuota minimal 1, hapus titiknya kalau tidak dipakai")
+// UpdateKapasitas: ubah kapasitas fisik 1 titik. Tidak boleh di bawah
+// jumlah pedagang di titik itu / nomor terbesar yang dipakai (nomor stan =
+// 1..kapasitas), dan kalau event sudah terbit total kapasitas tidak boleh
+// jadi lebih kecil dari kuota event.
+func (u *eventUsecase) UpdateKapasitas(ctx context.Context, actorID, eventID, lapakID string, req *entity.UpdateKapasitasRequest) (*entity.EventLapak, error) {
+	if req.Kapasitas < 1 {
+		return nil, invalid("kapasitas minimal 1, hapus titiknya kalau tidak dipakai")
 	}
 	ev, err := u.repo.GetEvent(ctx, eventID)
 	if err != nil {
@@ -427,19 +455,20 @@ func (u *eventUsecase) UpdateKuota(ctx context.Context, actorID, eventID, lapakI
 	if ev.Status != eventaturan.StatusDraft && ev.Status != eventaturan.StatusTerjadwal {
 		return nil, ErrKuotaTerkunci
 	}
-	u.lengkapi(ev)
 	l, err := u.repo.GetLapak(ctx, eventID, lapakID)
 	if err != nil {
 		return nil, err
 	}
-	if ev.StatusPendaftaran != eventaturan.PendaftaranBelumDibuka &&
-		(req.KuotaLama < l.KuotaLama || req.KuotaBaru < l.KuotaBaru) {
-		return nil, ErrKuotaTurun
+	if req.Kapasitas < l.Terisi || req.Kapasitas < l.NomorTerbesar {
+		return nil, ErrKapasitasDiBawahIsi
 	}
-	if req.KuotaLama < l.TerisiLama || req.KuotaBaru < l.TerisiBaru || req.KuotaLama+req.KuotaBaru < l.NomorTerbesar {
-		return nil, ErrKuotaDiBawahTerisi
+	if ev.Status == eventaturan.StatusTerjadwal {
+		baru := ev.KapasitasTitik - l.Kapasitas + req.Kapasitas
+		if baru < ev.KuotaTotal {
+			return nil, &ErrKapasitasKurang{Kuota: ev.KuotaTotal, Kapasitas: baru}
+		}
 	}
-	if err := u.repo.UpdateKuota(ctx, eventID, lapakID, req.KuotaLama, req.KuotaBaru, l, actorID); err != nil {
+	if err := u.repo.UpdateKapasitas(ctx, eventID, lapakID, req.Kapasitas, l, actorID); err != nil {
 		return nil, err
 	}
 	return u.repo.GetLapak(ctx, eventID, lapakID)
@@ -459,8 +488,11 @@ func (u *eventUsecase) DeleteLapak(ctx context.Context, actorID, eventID, lapakI
 	if err != nil {
 		return err
 	}
-	if l.TerisiLama+l.TerisiBaru > 0 {
+	if l.Terisi > 0 {
 		return ErrLapakMasihDipakai
+	}
+	if ev.Status == eventaturan.StatusTerjadwal && ev.KapasitasTitik-l.Kapasitas < ev.KuotaTotal {
+		return &ErrKapasitasKurang{Kuota: ev.KuotaTotal, Kapasitas: ev.KapasitasTitik - l.Kapasitas}
 	}
 	return u.repo.DeleteLapak(ctx, eventID, lapakID, l, actorID)
 }

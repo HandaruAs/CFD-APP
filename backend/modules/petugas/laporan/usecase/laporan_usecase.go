@@ -8,11 +8,13 @@ import (
 
 	"cfd-backend/modules/petugas/laporan/entity"
 	"cfd-backend/modules/petugas/laporan/repository"
+
+	"github.com/google/uuid"
 )
 
 type LaporanUsecase interface {
 	GetLaporan(ctx context.Context, req *entity.LaporanRequest) (*entity.LaporanResponse, error)
-	GetStatsKehadiran(ctx context.Context, startDate, endDate string) (*entity.StatsResponse, error)
+	GetStatsKehadiran(ctx context.Context, startDate, endDate, eventID string) (*entity.StatsResponse, error)
 	GetDetailKehadiran(ctx context.Context, kehadiranID string) (*entity.DetailKehadiranResponse, error)
 }
 
@@ -29,7 +31,7 @@ func NewLaporanUsecase(repo repository.LaporanRepository) LaporanUsecase {
 
 func (u *laporanUsecase) GetLaporan(ctx context.Context, req *entity.LaporanRequest) (*entity.LaporanResponse, error) {
 	if req.StartDate == "" {
-		req.StartDate = time.Now().Format("2006-01-02")
+		req.StartDate = hariIniWIB()
 	}
 	if req.EndDate == "" {
 		req.EndDate = req.StartDate
@@ -41,12 +43,12 @@ func (u *laporanUsecase) GetLaporan(ctx context.Context, req *entity.LaporanRequ
 		req.Limit = 20
 	}
 
-	data, total, err := u.repo.GetKehadiranByDateRange(ctx, req.StartDate, req.EndDate, req.Search, req.Page, req.Limit)
+	data, total, err := u.repo.GetKehadiranByDateRange(ctx, req.StartDate, req.EndDate, req.EventID, req.Search, req.Page, req.Limit)
 	if err != nil {
 		return nil, err
 	}
 
-	stats, err := u.repo.GetStatsKehadiran(ctx, req.StartDate, req.EndDate)
+	stats, err := u.repo.GetStatsKehadiran(ctx, req.StartDate, req.EndDate, req.EventID)
 	if err != nil {
 		return nil, err
 	}
@@ -65,19 +67,27 @@ func (u *laporanUsecase) GetLaporan(ctx context.Context, req *entity.LaporanRequ
 	}, nil
 }
 
-func (u *laporanUsecase) GetStatsKehadiran(ctx context.Context, startDate, endDate string) (*entity.StatsResponse, error) {
+func (u *laporanUsecase) GetStatsKehadiran(ctx context.Context, startDate, endDate, eventID string) (*entity.StatsResponse, error) {
 	if startDate == "" {
-		startDate = time.Now().Format("2006-01-02")
+		startDate = hariIniWIB()
 	}
 	if endDate == "" {
 		endDate = startDate
 	}
-	return u.repo.GetStatsKehadiran(ctx, startDate, endDate)
+	return u.repo.GetStatsKehadiran(ctx, startDate, endDate, eventID)
+}
+
+// hariIniWIB: tanggal hari ini menurut WIB, bukan zona waktu server.
+func hariIniWIB() string {
+	return time.Now().In(time.FixedZone("WIB", 7*3600)).Format("2006-01-02")
 }
 
 // GetDetailKehadiran ambil detail 1 baris kehadiran. NIK dan email pedagang
 // disensor di sini (server), jadi data aslinya tidak pernah sampai ke browser.
 func (u *laporanUsecase) GetDetailKehadiran(ctx context.Context, kehadiranID string) (*entity.DetailKehadiranResponse, error) {
+	if _, err := uuid.Parse(kehadiranID); err != nil {
+		return nil, ErrKehadiranTidakDitemukan
+	}
 	raw, err := u.repo.GetDetailKehadiran(ctx, kehadiranID)
 	if err != nil {
 		return nil, err

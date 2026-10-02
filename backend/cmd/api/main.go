@@ -48,6 +48,8 @@ import (
 	// Repository Multi-Event (admin & pedagang)
 	adminEventRepo "cfd-backend/modules/admin/event/repository"
 	pedagangEventRepo "cfd-backend/modules/pedagang/event/repository"
+	eventCheckInRepo "cfd-backend/modules/petugas/event-checkin/repository"
+	eventInfoRepo "cfd-backend/modules/event-info/repository"
 
 	// Modul Usecase
 	authUsecase "cfd-backend/modules/auth/usecase"
@@ -87,6 +89,8 @@ import (
 	// Usecase Multi-Event
 	adminEventUsecase "cfd-backend/modules/admin/event/usecase"
 	pedagangEventUsecase "cfd-backend/modules/pedagang/event/usecase"
+	eventCheckInUsecase "cfd-backend/modules/petugas/event-checkin/usecase"
+	eventInfoUsecase "cfd-backend/modules/event-info/usecase"
 
 	// Modul Controller
 	authController "cfd-backend/modules/auth/controller"
@@ -125,6 +129,8 @@ import (
 	// Controller Multi-Event
 	adminEventController "cfd-backend/modules/admin/event/controller"
 	pedagangEventController "cfd-backend/modules/pedagang/event/controller"
+	eventCheckInController "cfd-backend/modules/petugas/event-checkin/controller"
+	eventInfoController "cfd-backend/modules/event-info/controller"
 
 	"github.com/gofiber/fiber/v3"
 	"github.com/gofiber/fiber/v3/middleware/cors"
@@ -178,6 +184,8 @@ func main() {
 	// Repository Multi-Event
 	adminEventRepository := adminEventRepo.NewEventRepository(db)
 	pedagangEventRepository := pedagangEventRepo.NewEventRepository(db)
+	eventCheckInRepository := eventCheckInRepo.NewCheckInRepository(db)
+	eventInfoRepository := eventInfoRepo.NewEventInfoRepository(db)
 
 	// ============================================================
 	// 2. INIT USECASES
@@ -225,6 +233,8 @@ func main() {
 	// Usecase Multi-Event
 	adminEventUC := adminEventUsecase.NewEventUsecase(adminEventRepository)
 	pedagangEventUC := pedagangEventUsecase.NewEventUsecase(pedagangEventRepository)
+	eventCheckInUC := eventCheckInUsecase.NewCheckInUsecase(eventCheckInRepository)
+	eventInfoUC := eventInfoUsecase.NewEventInfoUsecase(eventInfoRepository)
 
 	// ============================================================
 	// 3. INIT CONTROLLERS
@@ -265,6 +275,8 @@ func main() {
 	// Controller Multi-Event
 	adminEventCtrl := adminEventController.NewEventController(adminEventUC)
 	pedagangEventCtrl := pedagangEventController.NewEventController(pedagangEventUC)
+	eventCheckInCtrl := eventCheckInController.NewCheckInController(eventCheckInUC)
+	eventInfoCtrl := eventInfoController.NewEventInfoController(eventInfoUC)
 
 	// ============================================================
 	// 4. INIT FIBER APP
@@ -813,7 +825,7 @@ app.Use("/uploads", static.New("./uploads"))
 	adminEvents.Delete("/:id", adminEventCtrl.DeleteEvent)
 	adminEvents.Patch("/:id/status", adminEventCtrl.UbahStatus)
 	adminEvents.Post("/:id/acak-lokasi", adminEventCtrl.AcakLokasi)
-	adminEvents.Patch("/:id/lapak/:lapakId", adminEventCtrl.UpdateKuota)
+	adminEvents.Patch("/:id/lapak/:lapakId", adminEventCtrl.UpdateKapasitas)
 	adminEvents.Delete("/:id/lapak/:lapakId", adminEventCtrl.DeleteLapak)
 	adminEvents.Get("/:id/peserta", adminEventCtrl.ListPeserta)
 
@@ -825,8 +837,34 @@ app.Use("/uploads", static.New("./uploads"))
 	)
 	pedagangEvents.Get("/", pedagangEventCtrl.ListEvent)
 	pedagangEvents.Get("/saya", pedagangEventCtrl.ListSaya)
+	pedagangEvents.Get("/checkout", pedagangEventCtrl.DataCheckout)
 	pedagangEvents.Post("/:id/ikut", pedagangEventCtrl.Ikut)
 	pedagangEvents.Delete("/:id/ikut", pedagangEventCtrl.Batal)
+	pedagangEvents.Post("/:id/checkout", pedagangEventCtrl.Checkout)
+
+	// Petugas: check-in pedagang per event (pindai QR kartu event).
+	// Permission sama dengan scan QR lama.
+	eventCheckIn := app.Group("/api/petugas/event-checkin",
+		middleware.AuthMiddleware(cfg.JWTSecret),
+		middleware.PermissionMiddleware(permissionRepository, "pedagang.scan"),
+	)
+	eventCheckIn.Post("/periksa", eventCheckInCtrl.Periksa)
+	eventCheckIn.Post("/", eventCheckInCtrl.CheckIn)
+	eventCheckIn.Get("/riwayat", eventCheckInCtrl.Riwayat)
+
+	// Ringkasan event: beranda publik (tanpa login) & dashboard petugas.
+	app.Get("/api/public/sisa-lapak", eventInfoCtrl.ListPublik)
+	app.Get("/api/petugas/events/hari-ini",
+		middleware.AuthMiddleware(cfg.JWTSecret),
+		middleware.PermissionMiddleware(permissionRepository, "jadwal.read"),
+		eventInfoCtrl.ListHariIni,
+	)
+	// Pilihan event untuk filter laporan petugas (permission sama dengan laporan).
+	app.Get("/api/petugas/events",
+		middleware.AuthMiddleware(cfg.JWTSecret),
+		middleware.PermissionMiddleware(permissionRepository, "pedagang.read"),
+		eventInfoCtrl.ListPilihan,
+	)
 
 	// ============================================================
 	// 14. ENDPOINT SUPERADMIN (Manajemen User)

@@ -33,95 +33,90 @@ func NewDashboardUsecase(repo repository.DashboardRepository) DashboardUsecase {
 func (u *dashboardUsecase) GetDashboard(ctx context.Context) (*entity.DashboardResponse, error) {
 	now := time.Now()
 	res := &entity.DashboardResponse{}
-	res.HariIni.Tanggal = now.Format("2006-01-02")
+	res.HariIni.Tanggal = now.In(wib).Format("2006-01-02")
 
-	// ---------- 1. HARI INI ----------
-	sesi, err := u.repo.GetSesiHariIni(ctx)
+	events, err := u.repo.GetEventHariIni(ctx)
 	if err != nil {
 		return nil, err
 	}
-	res.HariIni.Sesi = statusSesi(sesi, now)
 
-	var sesiID *string
-	if sesi != nil {
-		sesiID = &sesi.ID
-		hadir, err := u.repo.GetHadirHariIni(ctx, sesi.ID)
-		if err != nil {
-			return nil, err
+	// Semua event hari ini + jumlah lapak & kehadiran gabungan.
+	res.HariIni.Events = make([]entity.EventHariIni, 0, len(events))
+	for _, e := range events {
+		status, sisa := statusEvent(e, now)
+		res.HariIni.Events = append(res.HariIni.Events, entity.EventHariIni{
+			ID: e.ID, Nama: e.Nama, Status: status, JamMulai: e.JamMulai, JamSelesai: e.JamSelesai,
+			SisaMenit: sisa, Titik: e.Titik, Kapasitas: e.Kapasitas,
+			Klaim: e.Klaim, CheckIn: e.CheckIn, CheckOut: e.CheckOut, Omset: e.Omset,
+		})
+		if status == "dibatalkan" {
+			continue
 		}
-		res.HariIni.Hadir = hadir
+		res.HariIni.Lapak.Kapasitas += e.Kapasitas
+		res.HariIni.Lapak.Terisi += e.Klaim
+		res.HariIni.Hadir.Klaim += e.Klaim
+		res.HariIni.Hadir.CheckIn += e.CheckIn
+		res.HariIni.Hadir.CheckOut += e.CheckOut
 	}
+	res.HariIni.Lapak.Persen = persen(res.HariIni.Lapak.Terisi, res.HariIni.Lapak.Kapasitas)
+	res.HariIni.Sesi = ringkasanSesi(res.HariIni.Events)
 
-	lapak, err := u.repo.GetLapakHariIni(ctx, sesiID)
-	if err != nil {
-		return nil, err
-	}
-	lapak.Persen = persen(lapak.Terisi, lapak.Kapasitas)
-	res.HariIni.Lapak = lapak
-
-	// ---------- 2. TREN ----------
 	if res.Tren.Sesi, err = u.repo.GetTrenSesi(ctx, jumlahSesiTren); err != nil {
 		return nil, err
 	}
 	if res.Tren.Minggu, err = u.repo.GetTrenMinggu(ctx, jumlahMingguTren); err != nil {
 		return nil, err
 	}
-
 	return res, nil
 }
 
-// ============================================================
-// HELPER
-// ============================================================
+var wib = time.FixedZone("WIB", 7*3600)
 
-// statusSesi menerjemahkan baris cfd_sessions hari ini jadi status yang
-// gampang ditampilkan. Aturan "berjalan" disamakan dengan modul Jam
-// Operasional: is_active, belum diakhiri, dan jam sekarang di dalam
-// rentang jam mulai - jam selesai.
-func statusSesi(s *repository.SesiRow, now time.Time) entity.SesiHariIni {
-	// Baris tanpa jam mulai = sesi otomatis yang dibuat sistem waktu
-	// pedagang klaim / petugas acak lapak -- belum dibuka petugas.
-	if s == nil || s.JamMulai == nil {
-		return entity.SesiHariIni{Status: "belum_ada"}
+// statusEvent: status event dalam istilah dashboard + sisa menit kalau
+// sedang berjalan. Jam yang sudah lewat dianggap selesai walau scheduler
+// belum sempat mengubah statusnya.
+func statusEvent(e repository.EventRow, now time.Time) (string, int) {
+	switch e.Status {
+	case "dibatalkan":
+		return "dibatalkan", 0
+	case "selesai_normal", "diakhiri_awal":
+		return "selesai", 0
 	}
+	if !now.Before(e.SelesaiAt) {
+		return "selesai", 0
+	}
+	if e.Status == "berlangsung" || e.Status == "diperpanjang" || !now.Before(e.MulaiAt) {
+		return "berjalan", int(math.Ceil(e.SelesaiAt.Sub(now).Minutes()))
+	}
+	return "terjadwal", 0
+}
 
-	out := entity.SesiHariIni{
-		NamaSesi:   &s.NamaSesi,
-		JamMulai:   s.JamMulai,
-		JamSelesai: s.JamSelesai,
+// ringkasanSesi memilih satu event untuk kartu "Sesi hari ini" (dipakai
+// tampilan lama/mobile): yang sedang berjalan, lalu yang terjadwal paling
+// awal, lalu yang terakhir selesai, lalu yang dibatalkan.
+func ringkasanSesi(events []entity.EventHariIni) entity.SesiHariIni {
+	pilih := func(status string, terakhir bool) *entity.EventHariIni {
+		var hasil *entity.EventHariIni
+		for i := range events {
+			if events[i].Status != status {
+				continue
+			}
+			if hasil == nil || terakhir {
+				hasil = &events[i]
+			}
+		}
+		return hasil
 	}
-	if s.JamSelesaiAktual != nil {
-		out.JamSelesai = s.JamSelesaiAktual
-	}
-
-	if s.Status == "dibatalkan" {
-		out.Status = "dibatalkan"
-		return out
-	}
-
-	nowMenit := now.Hour()*60 + now.Minute()
-	mulai, errMulai := jamKeMenit(*s.JamMulai)
-	selesai := 24 * 60
-	if s.JamSelesai != nil {
-		if m, err := jamKeMenit(*s.JamSelesai); err == nil {
-			selesai = m
+	for _, c := range []struct {
+		status   string
+		terakhir bool
+	}{{"berjalan", false}, {"terjadwal", false}, {"selesai", true}, {"dibatalkan", true}} {
+		if e := pilih(c.status, c.terakhir); e != nil {
+			nama, mulai, selesai := e.Nama, e.JamMulai, e.JamSelesai
+			return entity.SesiHariIni{Status: e.Status, NamaSesi: &nama, JamMulai: &mulai, JamSelesai: &selesai, SisaMenit: e.SisaMenit}
 		}
 	}
-
-	switch {
-	case s.JamSelesaiAktual != nil || s.Status == "selesai" || s.Status == "ditutup":
-		out.Status = "selesai"
-	case !s.IsActive:
-		out.Status = "belum_ada"
-	case errMulai == nil && nowMenit < mulai:
-		out.Status = "terjadwal"
-	case nowMenit >= selesai:
-		out.Status = "selesai"
-	default:
-		out.Status = "berjalan"
-		out.SisaMenit = selesai - nowMenit
-	}
-	return out
+	return entity.SesiHariIni{Status: "belum_ada"}
 }
 
 func jamKeMenit(jam string) (int, error) {

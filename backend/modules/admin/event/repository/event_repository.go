@@ -3,7 +3,6 @@ package repository
 import (
 	"context"
 	"errors"
-	"math"
 
 	"cfd-backend/modules/admin/event/entity"
 	"cfd-backend/modules/shared/eventaturan"
@@ -34,25 +33,18 @@ func NewEventRepository(db *pgxpool.Pool) *EventRepository {
 // EVENT
 // ============================================================
 
-// Kolom event + ringkasan kuota dari view v_event_lapak_kuota.
+// Kolom event + ringkasan kuota per event dari view v_event_kuota.
 const selectEvent = `
 	SELECT e.id, e.nama, e.tanggal::text,
 	       to_char(e.jam_mulai, 'HH24:MI'), to_char(e.jam_selesai, 'HH24:MI'),
 	       e.status::text, e.pendaftaran_buka_at, e.pendaftaran_tutup_at, e.lepas_kuota_at,
 	       e.jam_mulai_aktual, e.jam_selesai_aktual, e.keterangan, e.created_at,
 	       ((e.tanggal + e.jam_mulai) AT TIME ZONE 'Asia/Jakarta') AS mulai_at,
-	       COALESCE(k.jumlah_titik, 0), COALESCE(k.kuota_lama, 0), COALESCE(k.kuota_baru, 0),
-	       COALESCE(k.terisi_lama, 0), COALESCE(k.terisi_baru, 0)
+	       k.kuota_total, k.kuota_lama, k.kuota_baru,
+	       k.terisi_lama, k.terisi_baru, k.sisa_lama, k.sisa_baru,
+	       k.jumlah_titik, k.kapasitas_titik
 	FROM events e
-	LEFT JOIN LATERAL (
-		SELECT COUNT(*)::int                 AS jumlah_titik,
-		       SUM(v.kuota_lama)::int        AS kuota_lama,
-		       SUM(v.kuota_baru)::int        AS kuota_baru,
-		       SUM(v.terisi_lama)::int       AS terisi_lama,
-		       SUM(v.terisi_baru)::int       AS terisi_baru
-		FROM v_event_lapak_kuota v
-		WHERE v.event_id = e.id
-	) k ON true
+	JOIN v_event_kuota k ON k.event_id = e.id
 `
 
 func scanEvent(row pgx.Row) (*entity.Event, error) {
@@ -62,7 +54,9 @@ func scanEvent(row pgx.Row) (*entity.Event, error) {
 		&ev.Status, &ev.PendaftaranBukaAt, &ev.PendaftaranTutupAt, &ev.LepasKuotaAt,
 		&ev.JamMulaiAktual, &ev.JamSelesaiAktual, &ev.Keterangan, &ev.CreatedAt,
 		&ev.MulaiAt,
-		&ev.JumlahTitik, &ev.KuotaLama, &ev.KuotaBaru, &ev.TerisiLama, &ev.TerisiBaru,
+		&ev.KuotaTotal, &ev.KuotaLama, &ev.KuotaBaru,
+		&ev.TerisiLama, &ev.TerisiBaru, &ev.SisaLama, &ev.SisaBaru,
+		&ev.JumlahTitik, &ev.KapasitasTitik,
 	)
 	if err != nil {
 		return nil, err
@@ -112,12 +106,12 @@ func (r *EventRepository) CreateEvent(ctx context.Context, in *entity.EventInput
 	err = tx.QueryRow(ctx, `
 		INSERT INTO events (nama, tanggal, jam_mulai, jam_selesai,
 		                    pendaftaran_buka_at, pendaftaran_tutup_at, lepas_kuota_at,
-		                    keterangan, status, created_by)
-		VALUES ($1, $2::date, $3::time, $4::time, $5, $6, $7, $8, 'draft', $9)
+		                    keterangan, status, created_by, kuota_total, kuota_lama)
+		VALUES ($1, $2::date, $3::time, $4::time, $5, $6, $7, $8, 'draft', $9, $10, $11)
 		RETURNING id`,
 		in.Nama, in.Tanggal, in.JamMulai, in.JamSelesai,
 		in.PendaftaranBukaAt, in.PendaftaranTutupAt, in.LepasKuotaAt,
-		in.Keterangan, actorID,
+		in.Keterangan, actorID, in.KuotaTotal, in.KuotaLama,
 	).Scan(&id)
 	if err != nil {
 		return "", err
@@ -141,10 +135,11 @@ func (r *EventRepository) UpdateEvent(ctx context.Context, id string, in *entity
 		UPDATE events SET
 			nama = $2, tanggal = $3::date, jam_mulai = $4::time, jam_selesai = $5::time,
 			pendaftaran_buka_at = $6, pendaftaran_tutup_at = $7, lepas_kuota_at = $8,
-			keterangan = $9, updated_at = now()
+			keterangan = $9, kuota_total = $10, kuota_lama = $11, updated_at = now()
 		WHERE id = $1 AND deleted_at IS NULL AND status IN ('draft', 'terjadwal')`,
 		id, in.Nama, in.Tanggal, in.JamMulai, in.JamSelesai,
 		in.PendaftaranBukaAt, in.PendaftaranTutupAt, in.LepasKuotaAt, in.Keterangan,
+		in.KuotaTotal, in.KuotaLama,
 	)
 	if err != nil {
 		return err
@@ -269,12 +264,11 @@ func (r *EventRepository) CountPesertaAktif(ctx context.Context, eventID string)
 const selectLapak = `
 	SELECT v.event_lapak_id, v.ruas_id, v.nama_ruas, v.jalan_id, v.nama_jalan,
 	       kec.id, kec.nama_instansi,
-	       v.kuota_lama, v.kuota_baru,
-	       v.terisi_lama::int, v.terisi_baru::int, v.sisa_lama::int, v.sisa_baru::int,
+	       v.kapasitas, v.terisi, v.sisa,
 	       COALESCE((SELECT MAX(p.nomor) FROM event_participants p
 	                 WHERE p.event_lapak_id = v.event_lapak_id
 	                   AND p.status <> 'batal' AND p.deleted_at IS NULL), 0)
-	FROM v_event_lapak_kuota v
+	FROM v_event_lapak_terisi v
 	JOIN master_ruas r ON r.id = v.ruas_id
 	LEFT JOIN LATERAL (
 		SELECT mi.id, mi.nama_instansi
@@ -290,8 +284,7 @@ func scanLapak(row pgx.Row) (*entity.EventLapak, error) {
 	err := row.Scan(
 		&l.ID, &l.RuasID, &l.NamaRuas, &l.JalanID, &l.NamaJalan,
 		&l.KecamatanID, &l.NamaKecamatan,
-		&l.KuotaLama, &l.KuotaBaru,
-		&l.TerisiLama, &l.TerisiBaru, &l.SisaLama, &l.SisaBaru,
+		&l.Kapasitas, &l.Terisi, &l.Sisa,
 		&l.NomorTerbesar,
 	)
 	if err != nil {
@@ -340,9 +333,9 @@ type kandidatRuas struct {
 //   - dipakai event lain di tanggal yang sama dengan jam yang bentrok,
 //   - kuotanya 0 di master jalan.
 //
-// Kuota tiap ruas diambil dari master (JSONB master_jalan.ruas) lalu dibagi
-// ke kuota lama/baru sesuai persenLama. jumlahTitik 0 = ambil semua kandidat.
-func (r *EventRepository) AcakLokasi(ctx context.Context, eventID string, req *entity.AcakLokasiRequest, persenLama int, actorID string) (int, []entity.EventLapak, error) {
+// Kapasitas tiap titik = kuota ruas di master (JSONB master_jalan.ruas).
+// jumlahTitik 0 = ambil semua kandidat.
+func (r *EventRepository) AcakLokasi(ctx context.Context, eventID string, req *entity.AcakLokasiRequest, actorID string) (int, []entity.EventLapak, error) {
 	tx, err := r.db.Begin(ctx)
 	if err != nil {
 		return 0, nil, err
@@ -459,13 +452,11 @@ func (r *EventRepository) AcakLokasi(ctx context.Context, eventID string, req *e
 
 	ids := make([]string, 0, ambil)
 	for _, k := range kandidat[:ambil] {
-		kuotaLama := int(math.Round(float64(k.kuota) * float64(persenLama) / 100))
-		kuotaBaru := k.kuota - kuotaLama
 		var id string
 		err := tx.QueryRow(ctx, `
-			INSERT INTO event_lapak (event_id, ruas_id, kuota_lama, kuota_baru, created_by)
-			VALUES ($1, $2, $3, $4, $5)
-			RETURNING id`, eventID, k.ruasID, kuotaLama, kuotaBaru, actorID).Scan(&id)
+			INSERT INTO event_lapak (event_id, ruas_id, kapasitas, created_by)
+			VALUES ($1, $2, $3, $4)
+			RETURNING id`, eventID, k.ruasID, k.kuota, actorID).Scan(&id)
 		if err != nil {
 			return 0, nil, err
 		}
@@ -479,7 +470,6 @@ func (r *EventRepository) AcakLokasi(ctx context.Context, eventID string, req *e
 			"jumlahTitik":    req.JumlahTitik,
 			"jumlahKandidat": len(kandidat),
 			"jumlahDiambil":  ambil,
-			"persenLama":     persenLama,
 			"eventLapakIds":  ids,
 		}, nil); err != nil {
 		return 0, nil, err
@@ -500,7 +490,7 @@ func (r *EventRepository) AcakLokasi(ctx context.Context, eventID string, req *e
 	return len(kandidat), hasil, nil
 }
 
-func (r *EventRepository) UpdateKuota(ctx context.Context, eventID, lapakID string, kuotaLama, kuotaBaru int, sebelum *entity.EventLapak, actorID string) error {
+func (r *EventRepository) UpdateKapasitas(ctx context.Context, eventID, lapakID string, kapasitas int, sebelum *entity.EventLapak, actorID string) error {
 	tx, err := r.db.Begin(ctx)
 	if err != nil {
 		return err
@@ -508,18 +498,18 @@ func (r *EventRepository) UpdateKuota(ctx context.Context, eventID, lapakID stri
 	defer tx.Rollback(ctx)
 
 	tag, err := tx.Exec(ctx, `
-		UPDATE event_lapak SET kuota_lama = $3, kuota_baru = $4, updated_at = now()
+		UPDATE event_lapak SET kapasitas = $3, updated_at = now()
 		WHERE id = $2 AND event_id = $1 AND deleted_at IS NULL`,
-		eventID, lapakID, kuotaLama, kuotaBaru)
+		eventID, lapakID, kapasitas)
 	if err != nil {
 		return err
 	}
 	if tag.RowsAffected() == 0 {
 		return ErrLapakTidakDitemukan
 	}
-	if err := eventaturan.Audit(ctx, tx, &actorID, "event_lapak.update_kuota", "event_lapak", &lapakID, &eventID,
-		map[string]int{"kuotaLama": sebelum.KuotaLama, "kuotaBaru": sebelum.KuotaBaru},
-		map[string]int{"kuotaLama": kuotaLama, "kuotaBaru": kuotaBaru}, nil); err != nil {
+	if err := eventaturan.Audit(ctx, tx, &actorID, "event_lapak.update_kapasitas", "event_lapak", &lapakID, &eventID,
+		map[string]int{"kapasitas": sebelum.Kapasitas},
+		map[string]int{"kapasitas": kapasitas}, nil); err != nil {
 		return err
 	}
 	return tx.Commit(ctx)

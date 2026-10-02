@@ -24,8 +24,27 @@ import {
 } from "lucide-react";
 
 // ===== TYPES =====
+// Event hari ini dari GET /api/petugas/events/hari-ini. Satu hari boleh
+// punya beberapa event; kartu status di atas menampilkan event yang paling
+// relevan (sedang berjalan, lalu yang akan mulai paling dekat, lalu yang
+// terakhir selesai), daftar lengkapnya ada di bawahnya.
+type EventHariIni = {
+  id: string;
+  nama: string;
+  tanggal: string;
+  jamMulai: string;
+  jamSelesai: string;
+  status: "terjadwal" | "berjalan" | "selesai" | "dibatalkan";
+  sisaMenit: number;
+  totalMenit: number;
+  kuotaTotal: number;
+  terisi: number;
+  checkIn: number;
+  checkOut: number;
+};
 type SesiAktif = {
   id: string;
+  nama: string;
   tanggal: string;
   jamMulai: string;
   jamSelesaiRencana: string;
@@ -34,16 +53,29 @@ type SesiAktif = {
   sisaMenit: number;
   totalMenit: number;
 };
-type StatusOperasional = {
-  pendaftaran: {
-    isOpen: boolean;
-    linkPendaftaran: string | null;
-    jamBuka?: string | null;
-    jamTutup?: string | null;
-  };
-  sesi: SesiAktif | null;
-  riwayat: unknown[];
-};
+
+// Pilih event untuk kartu status: berjalan > terjadwal paling awal >
+// selesai paling akhir > dibatalkan.
+function pilihEventUtama(events: EventHariIni[]): SesiAktif | null {
+  const urutan: EventHariIni["status"][] = ["berjalan", "terjadwal", "selesai", "dibatalkan"];
+  for (const st of urutan) {
+    const cocok = events.filter((e) => e.status === st);
+    if (cocok.length === 0) continue;
+    const e = st === "selesai" || st === "dibatalkan" ? cocok[cocok.length - 1] : cocok[0];
+    return {
+      id: e.id,
+      nama: e.nama,
+      tanggal: e.tanggal,
+      jamMulai: e.jamMulai,
+      jamSelesaiRencana: e.jamSelesai,
+      status: e.status,
+      aktif: e.status === "berjalan",
+      sisaMenit: e.sisaMenit,
+      totalMenit: e.totalMenit,
+    };
+  }
+  return null;
+}
 type KehadiranItem = {
   id: string;
   pedagangId: string;
@@ -114,9 +146,9 @@ function sapaan(jam: number) {
 
 type SesiTone = "live" | "upcoming" | "ended" | "none";
 function turunkanStatusSesi(sesi: SesiAktif | null): { label: string; tone: SesiTone } {
-  if (!sesi) return { label: "Belum Ada Sesi", tone: "none" };
+  if (!sesi) return { label: "Belum Ada Event", tone: "none" };
   if (sesi.aktif) return { label: "Sedang Berlangsung", tone: "live" };
-  if (sesi.status === "ditutup") return { label: "Diakhiri Lebih Awal", tone: "ended" };
+  if (sesi.status === "dibatalkan") return { label: "Dibatalkan", tone: "ended" };
   if (sesi.status === "selesai") return { label: "Sudah Selesai", tone: "ended" };
 
   const now = new Date();
@@ -309,7 +341,7 @@ const INTERVAL_REFRESH_MS = 60_000;
 
 export default function PetugasHomePage() {
   const kurangiGerak = useReducedMotion();
-  const [status, setStatus] = useState<StatusOperasional | null>(null);
+  const [events, setEvents] = useState<EventHariIni[]>([]);
   const [laporan, setLaporan] = useState<LaporanResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -320,11 +352,11 @@ export default function PetugasHomePage() {
   const load = useCallback(async (manual = false) => {
     if (manual) setRefreshing(true);
     try {
-      const [statusData, laporanData] = await Promise.all([
-        apiFetch("/api/petugas/jam-operasional") as Promise<StatusOperasional>,
+      const [eventData, laporanData] = await Promise.all([
+        apiFetch("/api/petugas/events/hari-ini") as Promise<{ data: EventHariIni[] }>,
         apiFetch("/api/petugas/laporan?limit=100") as Promise<LaporanResponse>,
       ]);
-      setStatus(statusData);
+      setEvents(eventData.data ?? []);
       setLaporan(laporanData);
       setLoadError(null);
       setDiperbarui(new Date());
@@ -348,7 +380,14 @@ export default function PetugasHomePage() {
     };
   }, [load]);
 
-  const sesi = status?.sesi ?? null;
+  const sesi = pilihEventUtama(events);
+  const kuotaHariIni = events
+    .filter((e) => e.status !== "dibatalkan")
+    .reduce((t, e) => ({ total: t.total + e.kuotaTotal, terisi: t.terisi + e.terisi, jumlah: t.jumlah + 1 }), {
+      total: 0,
+      terisi: 0,
+      jumlah: 0,
+    });
   const { label: labelSesi, tone: toneSesi } = turunkanStatusSesi(sesi);
 
   const totalTerdaftar = laporan?.totalTerdaftar ?? 0;
@@ -468,7 +507,8 @@ export default function PetugasHomePage() {
                 </span>
                 <div>
                   <p className={`text-label-sm ${toneSesi === "live" ? "text-white/70" : "text-on-surface-variant"}`}>
-                    Status Sesi CFD
+                    {sesi ? sesi.nama : "Status Event"}
+                    {events.length > 1 && ` · ${events.length} event hari ini`}
                   </p>
                   <p className="mt-1 text-headline-md">{labelSesi}</p>
                   {sesi && (
@@ -510,6 +550,44 @@ export default function PetugasHomePage() {
           </div>
         )}
       </motion.div>
+
+      {/* ===== DAFTAR EVENT HARI INI (kalau lebih dari satu) ===== */}
+      {!loading && events.length > 1 && (
+        <motion.div variants={BAGIAN} className="pt-card">
+          <p className="text-label-md font-semibold text-on-surface">Event Hari Ini</p>
+          <ul className="mt-sm divide-y divide-outline-variant">
+            {events.map((e) => (
+              <li key={e.id} className="flex flex-wrap items-center justify-between gap-sm py-sm">
+                <div className="min-w-0">
+                  <p className="text-body-md font-medium text-on-surface">{e.nama}</p>
+                  <p className="text-label-sm text-on-surface-variant">
+                    {e.jamMulai} – {e.jamSelesai} WIB · {e.terisi}/{e.kuotaTotal} pedagang · {e.checkIn} hadir
+                  </p>
+                </div>
+                <span
+                  className={`pt-pill py-0.5 ${
+                    e.status === "berjalan"
+                      ? "pt-pill-success"
+                      : e.status === "terjadwal"
+                        ? "pt-pill-warning"
+                        : e.status === "dibatalkan"
+                          ? "pt-pill-danger"
+                          : "pt-pill-neutral"
+                  }`}
+                >
+                  {e.status === "berjalan"
+                    ? `Berjalan · sisa ${formatSisaWaktu(e.sisaMenit)}`
+                    : e.status === "terjadwal"
+                      ? "Terjadwal"
+                      : e.status === "dibatalkan"
+                        ? "Dibatalkan"
+                        : "Selesai"}
+                </span>
+              </li>
+            ))}
+          </ul>
+        </motion.div>
+      )}
 
       {/* ===== KEHADIRAN & PENDAFTARAN ===== */}
       <motion.div variants={BAGIAN} className="grid grid-cols-1 gap-md sm:grid-cols-2">
@@ -554,26 +632,20 @@ export default function PetugasHomePage() {
                   <Sparkles className="h-5 w-5" strokeWidth={2} />
                 </span>
                 <div>
-                  <p className="text-label-md text-on-surface-variant">Pendaftaran Pedagang</p>
-                  {/* Dulu tulisan "Dibuka/Ditutup" tampil dua kali -- sekarang cukup satu */}
-                  <p className="mt-0.5 inline-flex items-center gap-sm text-headline-md font-semibold text-on-surface">
-                    <span
-                      className={`h-2.5 w-2.5 rounded-full ${status?.pendaftaran.isOpen ? "bg-secondary" : "bg-outline"}`}
-                      aria-hidden="true"
-                    />
-                    {status?.pendaftaran.isOpen ? "Dibuka" : "Ditutup"}
+                  {/* Pendaftaran sekarang diatur per event -- kartu ini
+                      menampilkan kuota gabungan semua event hari ini. */}
+                  <p className="text-label-md text-on-surface-variant">Kuota Event Hari Ini</p>
+                  <p className="mt-0.5 text-headline-md font-semibold text-on-surface">
+                    {kuotaHariIni.terisi}
+                    <span className="text-body-md font-normal text-on-surface-variant"> / {kuotaHariIni.total} pedagang</span>
                   </p>
                 </div>
               </div>
-              {status?.pendaftaran.isOpen && status.pendaftaran.jamBuka && status.pendaftaran.jamTutup ? (
-                <p className="mt-sm text-body-sm text-on-surface-variant">
-                  Jam pendaftaran {status.pendaftaran.jamBuka.slice(0, 5)} – {status.pendaftaran.jamTutup.slice(0, 5)} WIB
-                </p>
-              ) : (
-                <p className="mt-sm text-body-sm text-on-surface-variant">
-                  {status?.pendaftaran.isOpen ? "Pedagang bisa mendaftar kapan saja." : "Pedagang baru belum bisa mendaftar."}
-                </p>
-              )}
+              <p className="mt-sm text-body-sm text-on-surface-variant">
+                {kuotaHariIni.total === 0
+                  ? "Belum ada event hari ini."
+                  : `Sisa ${Math.max(0, kuotaHariIni.total - kuotaHariIni.terisi)} tempat dari ${kuotaHariIni.jumlah} event.`}
+              </p>
             </div>
           </>
         )}

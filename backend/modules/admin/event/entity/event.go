@@ -26,17 +26,25 @@ type Event struct {
 	JamMulaiAktual     *time.Time `json:"jamMulaiAktual"`
 	JamSelesaiAktual   *time.Time `json:"jamSelesaiAktual"`
 	Keterangan         *string    `json:"keterangan"`
-	JumlahTitik        int        `json:"jumlahTitik"`
-	KuotaLama          int        `json:"kuotaLama"`
-	KuotaBaru          int        `json:"kuotaBaru"`
-	TerisiLama         int        `json:"terisiLama"`
-	TerisiBaru         int        `json:"terisiBaru"`
-	CreatedAt          time.Time  `json:"createdAt"`
+	// Kuota PER EVENT: admin mengisi kuota total & kuota pedagang lama,
+	// kuota pedagang baru = total - lama.
+	KuotaTotal     int       `json:"kuotaTotal"`
+	KuotaLama      int       `json:"kuotaLama"`
+	KuotaBaru      int       `json:"kuotaBaru"`
+	TerisiLama     int       `json:"terisiLama"`
+	TerisiBaru     int       `json:"terisiBaru"`
+	SisaLama       int       `json:"sisaLama"`
+	SisaBaru       int       `json:"sisaBaru"`
+	JumlahTitik    int       `json:"jumlahTitik"`
+	KapasitasTitik int       `json:"kapasitasTitik"` // jumlah kapasitas fisik semua titik lokasi
+	CreatedAt      time.Time `json:"createdAt"`
 
 	MulaiAt time.Time `json:"-"` // tanggal + jam_mulai (WIB), buat hitung status pendaftaran
 }
 
-// EventLapak: 1 titik lokasi (ruas) di sebuah event.
+// EventLapak: 1 titik lokasi (ruas) di sebuah event. Kapasitas = berapa
+// lapak yang muat secara fisik (dari kuota ruas di Manajemen Lapak); nomor
+// stan di titik ini = 1..kapasitas.
 type EventLapak struct {
 	ID            string  `json:"id"`
 	RuasID        string  `json:"ruasId"`
@@ -45,12 +53,9 @@ type EventLapak struct {
 	NamaJalan     string  `json:"namaJalan"`
 	KecamatanID   *string `json:"kecamatanId"`
 	NamaKecamatan *string `json:"namaKecamatan"`
-	KuotaLama     int     `json:"kuotaLama"`
-	KuotaBaru     int     `json:"kuotaBaru"`
-	TerisiLama    int     `json:"terisiLama"`
-	TerisiBaru    int     `json:"terisiBaru"`
-	SisaLama      int     `json:"sisaLama"`
-	SisaBaru      int     `json:"sisaBaru"`
+	Kapasitas     int     `json:"kapasitas"`
+	Terisi        int     `json:"terisi"`
+	Sisa          int     `json:"sisa"`
 	NomorTerbesar int     `json:"-"` // nomor terbesar yang sedang dipakai peserta aktif
 }
 
@@ -71,6 +76,8 @@ type EventRequest struct {
 	PendaftaranTutupAt *string `json:"pendaftaranTutupAt"`
 	LepasKuotaAt       *string `json:"lepasKuotaAt"`
 	Keterangan         *string `json:"keterangan"`
+	KuotaTotal         int     `json:"kuotaTotal"` // kuota event, mis. 50
+	KuotaLama          int     `json:"kuotaLama"`  // jatah pedagang lama dari kuota total, mis. 20
 }
 
 // EventInput: EventRequest yang sudah divalidasi & diparse usecase.
@@ -83,6 +90,8 @@ type EventInput struct {
 	PendaftaranTutupAt *time.Time
 	LepasKuotaAt       *time.Time
 	Keterangan         *string
+	KuotaTotal         int
+	KuotaLama          int
 }
 
 // Aksi status event.
@@ -115,7 +124,6 @@ type AcakLokasiRequest struct {
 	KecamatanID  *string  `json:"kecamatanId"`
 	JalanID      *string  `json:"jalanId"`
 	JumlahTitik  int      `json:"jumlahTitik"` // jumlah ruas yang diambil; 0 = semua ruas yang tersedia di cakupan
-	PersenLama   *int     `json:"persenLama"`  // porsi kuota untuk pedagang lama, 0-100 (default 50)
 
 	// WilayahIDs: id kecamatan/jalan/ruas yang sudah dirapikan usecase
 	// (gabungan field jamak + tunggal, tanpa duplikat). Kosong untuk scope kota.
@@ -128,9 +136,9 @@ type AcakLokasiResponse struct {
 	Ditambahkan    []EventLapak `json:"ditambahkan"`
 }
 
-type UpdateKuotaRequest struct {
-	KuotaLama int `json:"kuotaLama"`
-	KuotaBaru int `json:"kuotaBaru"`
+// UpdateKapasitasRequest: ubah kapasitas fisik 1 titik.
+type UpdateKapasitasRequest struct {
+	Kapasitas int `json:"kapasitas"`
 }
 
 type Peserta struct {
