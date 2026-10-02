@@ -2,8 +2,7 @@ package entity
 
 import "time"
 
-// LokasiRingkas: sebaran titik lokasi sebuah event + sisa kuota untuk
-// kategori pedagang yang sedang login.
+// LokasiRingkas: sebaran titik lokasi sebuah event + sisa tempat di titik itu.
 type LokasiRingkas struct {
 	NamaKecamatan *string `json:"namaKecamatan"`
 	NamaJalan     string  `json:"namaJalan"`
@@ -31,6 +30,8 @@ type EventTersedia struct {
 	Status       string     `json:"-"`
 	MulaiAt      time.Time  `json:"-"`
 	LepasKuotaAt *time.Time `json:"-"`
+	SisaLama     int        `json:"-"` // sisa jatah lama di tingkat event
+	SisaBaru     int        `json:"-"` // sisa jatah baru di tingkat event
 }
 
 type EventTersediaResponse struct {
@@ -59,19 +60,61 @@ type Keikutsertaan struct {
 	CheckInAt     *time.Time `json:"checkInAt"`
 	CheckOutAt    *time.Time `json:"checkOutAt"`
 	BisaBatal     bool       `json:"bisaBatal"`
-	QRCode        string     `json:"qrCode"` // id pedagang, sama dengan QR yang dipindai petugas
+	QRCode        string     `json:"qrCode"` // id keikutsertaan: QR unik per event, dipindai petugas saat check-in
 
 	PendaftaranBukaAt  *time.Time `json:"-"`
 	PendaftaranTutupAt *time.Time `json:"-"`
 	MulaiAt            time.Time  `json:"-"`
 }
 
-// LapakSisa: sisa kuota lama/baru per titik lokasi (dari view
-// v_event_lapak_kuota), bahan hitung sisa sesuai kategori pedagang.
+// LapakSisa: sisa tempat fisik per titik lokasi (view v_event_lapak_terisi).
 type LapakSisa struct {
 	NamaKecamatan *string
 	NamaJalan     string
 	NamaRuas      string
-	SisaLama      int
-	SisaBaru      int
+	Sisa          int
+}
+
+// DataCheckout: isi halaman Check-out pedagang untuk SATU event -- event
+// yang check-in-nya belum ditutup (yang sudah selesai didahulukan), atau
+// checkout terakhir hari ini kalau semua sudah selesai.
+type DataCheckout struct {
+	PesertaID     string  `json:"pesertaId"`
+	EventID       string  `json:"eventId"`
+	NamaEvent     string  `json:"namaEvent"`
+	Tanggal       string  `json:"tanggal"`
+	JamMulai      string  `json:"jamMulai"`
+	JamSelesai    string  `json:"jamSelesai"`
+	NamaKecamatan *string `json:"namaKecamatan"`
+	NamaJalan     string  `json:"namaJalan"`
+	NamaRuas      string  `json:"namaRuas"`
+	Nomor         int     `json:"nomor"`
+
+	NIK           string `json:"nik"`
+	NamaLengkap   string `json:"namaLengkap"`
+	TanggalLahir  string `json:"tanggalLahir"`
+	NamaUsaha     string `json:"namaUsaha"`
+	KategoriUsaha string `json:"kategoriUsaha"`
+	JenisLapak    string `json:"jenisLapak"`
+
+	SudahCheckIn  bool       `json:"sudahCheckIn"`
+	SudahCheckOut bool       `json:"sudahCheckOut"`
+	CheckInAt     *time.Time `json:"checkInAt"`
+	CheckOutAt    *time.Time `json:"checkOutAt"`
+	Omset         *int64     `json:"omset"`
+
+	// JamSelesaiSesi: tanggal + jam selesai event (WIB), untuk hitung mundur.
+	JamSelesaiSesi time.Time `json:"jamSelesaiSesi"`
+	// SesiSudahSelesai: sumber kebenaran boleh/tidaknya checkout sekarang.
+	SesiSudahSelesai bool `json:"sesiSudahSelesai"`
+	// WajibCheckout: check-in di event yang SUDAH selesai tapi omset belum
+	// diisi. Selama true, pedagang tidak bisa ikut / check-in event lain.
+	WajibCheckout bool `json:"wajibCheckout"`
+
+	Status      string `json:"-"`
+	StatusEvent string `json:"-"`
+}
+
+type CheckoutRequest struct {
+	Omset int64 `json:"omset"`
 }

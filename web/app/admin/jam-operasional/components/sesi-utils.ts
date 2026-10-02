@@ -68,11 +68,17 @@ export interface SesiEvent {
   lepasKuotaAt: string | null;
   kuotaLamaDilepas: boolean;
   keterangan: string | null;
-  jumlahTitik: number;
+  // Kuota PER EVENT: diisi admin (total & jatah pedagang lama),
+  // kuota pedagang baru = total - lama.
+  kuotaTotal: number;
   kuotaLama: number;
   kuotaBaru: number;
   terisiLama: number;
   terisiBaru: number;
+  sisaLama: number;
+  sisaBaru: number;
+  jumlahTitik: number;
+  kapasitasTitik: number; // jumlah tempat fisik di semua titik lokasi
 }
 
 export interface TitikLokasi {
@@ -83,12 +89,9 @@ export interface TitikLokasi {
   namaJalan: string;
   kecamatanId: string | null;
   namaKecamatan: string | null;
-  kuotaLama: number;
-  kuotaBaru: number;
-  terisiLama: number;
-  terisiBaru: number;
-  sisaLama: number;
-  sisaBaru: number;
+  kapasitas: number; // berapa lapak yang muat di titik ini
+  terisi: number;
+  sisa: number;
 }
 
 export interface SesiDetail extends SesiEvent {
@@ -123,7 +126,16 @@ export function waktuTampil(iso: string | null): string {
   );
 }
 
-/** Fetch ke backend dengan token login; lempar Error berisi pesan backend. */
+/** Error dari backend, membawa `code` (mis. "KAPASITAS_KURANG") kalau ada. */
+export class ApiEventError extends Error {
+  code?: string;
+  constructor(message: string, code?: string) {
+    super(message);
+    this.code = code;
+  }
+}
+
+/** Fetch ke backend dengan token login; lempar ApiEventError berisi pesan backend. */
 export async function apiEvent<T>(path: string, options: RequestInit = {}): Promise<T> {
   const base = process.env.NEXT_PUBLIC_API_URL;
   if (!base) throw new Error("NEXT_PUBLIC_API_URL belum diset!");
@@ -137,6 +149,6 @@ export async function apiEvent<T>(path: string, options: RequestInit = {}): Prom
     },
   });
   const body = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(body?.error ?? `Permintaan gagal (${res.status})`);
+  if (!res.ok) throw new ApiEventError(body?.error ?? `Permintaan gagal (${res.status})`, body?.code);
   return body as T;
 }

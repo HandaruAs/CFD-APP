@@ -5,13 +5,22 @@ import (
 	"fmt"
 
 	"cfd-backend/modules/petugas/laporan/entity"
+
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
+// Laporan kehadiran sekarang membaca data EVENT (event_participants),
+// bukan tabel sistem lama (kehadiran_pedagang / lapak_klaim / cfd_sessions).
+// Bentuk response sengaja tetap sama supaya web & mobile tidak perlu ganti
+// kontrak. Satu baris = satu pedagang yang ikut satu event (yang batal tidak
+// dihitung); "belum-hadir" = sudah dapat lapak tapi belum check-in.
+// Rentang tanggal memakai TANGGAL EVENT. eventID (opsional) mempersempit ke
+// satu event.
+
 type LaporanRepository interface {
-	GetKehadiranByDateRange(ctx context.Context, startDate, endDate, search string, page, limit int) ([]entity.KehadiranItem, int, error)
-	GetStatsKehadiran(ctx context.Context, startDate, endDate string) (*entity.StatsResponse, error)
+	GetKehadiranByDateRange(ctx context.Context, startDate, endDate, eventID, search string, page, limit int) ([]entity.KehadiranItem, int, error)
+	GetStatsKehadiran(ctx context.Context, startDate, endDate, eventID string) (*entity.StatsResponse, error)
 	GetDetailKehadiran(ctx context.Context, kehadiranID string) (*entity.DetailKehadiranRaw, error)
 }
 
@@ -23,7 +32,35 @@ func NewLaporanRepository(db *pgxpool.Pool) LaporanRepository {
 	return &laporanRepository{db: db}
 }
 
-func (r *laporanRepository) GetKehadiranByDateRange(ctx context.Context, startDate, endDate, search string, page, limit int) ([]entity.KehadiranItem, int, error) {
+// filterPeserta: kondisi bersama untuk daftar, jumlah, dan statistik.
+// $1 = tanggal mulai, $2 = tanggal selesai, $3 = event id (boleh kosong).
+const filterPeserta = `
+	ep.deleted_at IS NULL
+	AND ep.status <> 'batal'
+	AND e.deleted_at IS NULL
+	AND e.tanggal BETWEEN $1::date AND $2::date
+	AND ($3 = '' OR e.id::text = $3)
+`
+
+const fromPeserta = `
+	FROM event_participants ep
+	JOIN events e             ON e.id = ep.event_id
+	JOIN pedagang_profiles p  ON p.id = ep.pedagang_id
+	JOIN users u              ON u.id = p.user_id
+	JOIN event_lapak el       ON el.id = ep.event_lapak_id
+	JOIN master_ruas r        ON r.id = el.ruas_id
+	JOIN master_jalan mj      ON mj.id = r.jalan_id
+`
+
+const statusLaporan = `
+	CASE
+		WHEN ep.check_out_at IS NOT NULL THEN 'check-out'
+		WHEN ep.check_in_at IS NOT NULL THEN 'check-in'
+		ELSE 'belum-hadir'
+	END
+`
+
+func (r *laporanRepository) GetKehadiranByDateRange(ctx context.Context, startDate, endDate, eventID, search string, page, limit int) ([]entity.KehadiranItem, int, error) {
 	if page < 1 {
 		page = 1
 	}
@@ -32,195 +69,125 @@ func (r *laporanRepository) GetKehadiranByDateRange(ctx context.Context, startDa
 	}
 	offset := (page - 1) * limit
 
+	args := []any{startDate, endDate, eventID}
 	searchFilter := ""
-	args := []interface{}{startDate, endDate}
-	argIdx := 3
-
 	if search != "" {
-		searchFilter = fmt.Sprintf(`AND (p.nama_usaha ILIKE '%%' || $%d || '%%' OR u.name ILIKE '%%' || $%d || '%%')`, argIdx, argIdx)
+		searchFilter = `AND (p.nama_usaha ILIKE '%' || $4 || '%' OR u.name ILIKE '%' || $4 || '%'
+		                 OR p.nama_lengkap ILIKE '%' || $4 || '%')`
 		args = append(args, search)
-		argIdx++
 	}
+	n := len(args)
 
 	query := fmt.Sprintf(`
-		SELECT 
-			k.id,
-			k.pedagang_id,
-			COALESCE(p.nama_usaha, '') AS nama_usaha,
-			COALESCE(u.name, '') AS pemilik,
+		SELECT
+			ep.id,
+			ep.pedagang_id,
+			COALESCE(p.nama_usaha, ''),
+			COALESCE(NULLIF(p.nama_lengkap, ''), u.name, ''),
 			COALESCE(
-				UPPER(SUBSTRING(u.name, 1, 1)) || 
-				UPPER(SUBSTRING(SPLIT_PART(u.name, ' ', 2), 1, 1)),
-				UPPER(SUBSTRING(u.name, 1, 2))
-			) AS inisial,
-			COALESCE(p.jenis_dagangan::text, '') AS kategori,
-			-- Lokasi = lapak yang diklaim pedagang DI SESI ITU ("Jalan X / CFD-123456").
-			-- Dulu diambil dari profil (lokasi_lapak, bahkan alamat rumah), jadi
-			-- kolom Lokasi Lapak kosong / salah & kartu "Lapak Terisi" selalu 0.
-			COALESCE(
-				mj.nama_jalan || ' / ' || lk.nomor_lapak,
-				NULLIF(p.lokasi_lapak, ''),
-				''
-			) AS lokasi_lapak,
-			TO_CHAR(k.check_in_at, 'HH24:MI') AS waktu_checkin,
-			TO_CHAR(k.check_out_at, 'HH24:MI') AS waktu_checkout,
-			k.omset,
-			'Scan QR' AS metode,
-			CASE 
-				WHEN k.check_out_at IS NOT NULL THEN 'check-out'
-				WHEN k.check_in_at IS NOT NULL THEN 'check-in'
-				ELSE 'belum-hadir'
-			END AS status
-		FROM kehadiran_pedagang k
-		JOIN pedagang_profiles p ON k.pedagang_id = p.id
-		JOIN users u ON p.user_id = u.id
-		LEFT JOIN LATERAL (
-			SELECT jalan_id, nomor_lapak
-			FROM lapak_klaim
-			WHERE pedagang_id = k.pedagang_id
-			  AND session_id = k.session_id
-			  AND status = 'aktif'
-			ORDER BY claimed_at DESC
-			LIMIT 1
-		) lk ON TRUE
-		LEFT JOIN master_jalan mj ON mj.id = lk.jalan_id
-		WHERE tanggal_wib(k.check_in_at) BETWEEN $1 AND $2
-			AND k.deleted_at IS NULL
+				NULLIF(UPPER(SUBSTRING(COALESCE(NULLIF(p.nama_lengkap, ''), u.name), 1, 1)) ||
+				       UPPER(SUBSTRING(SPLIT_PART(COALESCE(NULLIF(p.nama_lengkap, ''), u.name), ' ', 2), 1, 1)), ''),
+				'??'
+			),
+			COALESCE(p.jenis_dagangan::text, ''),
+			-- "Jalan Darmo · Ruas 2 / No. 7 (CFD Genteng)"
+			mj.nama_jalan || ' · ' || r.nama_ruas || ' / No. ' || ep.nomor || ' (' || e.nama || ')',
+			COALESCE(TO_CHAR(ep.check_in_at AT TIME ZONE 'Asia/Jakarta', 'HH24:MI'), '-'),
+			TO_CHAR(ep.check_out_at AT TIME ZONE 'Asia/Jakarta', 'HH24:MI'),
+			ep.omset,
+			'Scan QR',
 			%s
-		ORDER BY k.check_in_at DESC
+		%s
+		WHERE %s %s
+		ORDER BY e.tanggal DESC, ep.check_in_at DESC NULLS LAST, e.jam_mulai, mj.nama_jalan, ep.nomor
 		LIMIT $%d OFFSET $%d
-	`, searchFilter, argIdx, argIdx+1)
+	`, statusLaporan, fromPeserta, filterPeserta, searchFilter, n+1, n+2)
 
-	args = append(args, limit, offset)
-
-	rows, err := r.db.Query(ctx, query, args...)
+	rows, err := r.db.Query(ctx, query, append(args, limit, offset)...)
 	if err != nil {
 		return nil, 0, err
 	}
 	defer rows.Close()
 
-	var items []entity.KehadiranItem
+	items := make([]entity.KehadiranItem, 0)
 	for rows.Next() {
 		var item entity.KehadiranItem
-		err := rows.Scan(
-			&item.ID,
-			&item.PedagangID,
-			&item.NamaUsaha,
-			&item.Pemilik,
-			&item.Inisial,
-			&item.Kategori,
-			&item.LokasiLapak,
-			&item.WaktuCheckin,
-			&item.WaktuCheckout,
-			&item.Omset,
-			&item.Metode,
-			&item.Status,
-		)
-		if err != nil {
+		if err := rows.Scan(
+			&item.ID, &item.PedagangID, &item.NamaUsaha, &item.Pemilik, &item.Inisial,
+			&item.Kategori, &item.LokasiLapak, &item.WaktuCheckin, &item.WaktuCheckout,
+			&item.Omset, &item.Metode, &item.Status,
+		); err != nil {
 			return nil, 0, err
 		}
 		items = append(items, item)
 	}
-
-	countQuery := fmt.Sprintf(`
-		SELECT COUNT(*)
-		FROM kehadiran_pedagang k
-		JOIN pedagang_profiles p ON k.pedagang_id = p.id
-		JOIN users u ON p.user_id = u.id
-		WHERE DATE(k.check_in_at) BETWEEN $1 AND $2
-			AND k.deleted_at IS NULL
-			%s
-	`, searchFilter)
-
-	countArgs := []interface{}{startDate, endDate}
-	if search != "" {
-		countArgs = append(countArgs, search)
-	}
-
-	var total int
-	err = r.db.QueryRow(ctx, countQuery, countArgs...).Scan(&total)
-	if err != nil {
+	if err := rows.Err(); err != nil {
 		return nil, 0, err
 	}
 
+	var total int
+	countQuery := fmt.Sprintf(`SELECT COUNT(*) %s WHERE %s %s`, fromPeserta, filterPeserta, searchFilter)
+	if err := r.db.QueryRow(ctx, countQuery, args...).Scan(&total); err != nil {
+		return nil, 0, err
+	}
 	return items, total, nil
 }
 
-func (r *laporanRepository) GetStatsKehadiran(ctx context.Context, startDate, endDate string) (*entity.StatsResponse, error) {
-	query := `
-		SELECT 
-			COALESCE((SELECT COUNT(*) FROM pedagang_profiles WHERE status_verifikasi = 'approved' AND deleted_at IS NULL), 0) AS total_terdaftar,
-			COALESCE(COUNT(DISTINCT k.pedagang_id), 0) AS total_checkin,
-			COALESCE(COUNT(DISTINCT CASE WHEN k.check_out_at IS NOT NULL THEN k.pedagang_id END), 0) AS total_checkout,
-			COALESCE(SUM(k.omset), 0) AS total_omset,
-			-- dibulatkan ke rupiah: AVG menghasilkan desimal, dan desimal gak
-			-- bisa masuk ke kolom int64 di Go (bisa bikin endpoint ini error).
-			COALESCE(ROUND(AVG(k.omset)), 0)::bigint AS rata_omset,
-			CASE 
-				WHEN COALESCE((SELECT COUNT(*) FROM pedagang_profiles WHERE status_verifikasi = 'approved' AND deleted_at IS NULL), 0) > 0 
-				THEN ROUND((COALESCE(COUNT(DISTINCT k.pedagang_id), 0)::decimal / COALESCE((SELECT COUNT(*) FROM pedagang_profiles WHERE status_verifikasi = 'approved' AND deleted_at IS NULL), 0)::decimal) * 100, 2)
-				ELSE 0
-			END AS persen_hadir,
-			-- Lapak terisi = kehadiran yang punya klaim lapak aktif di sesinya.
-			COUNT(DISTINCT lk.id) AS lapak_terisi
-		FROM kehadiran_pedagang k
-		LEFT JOIN LATERAL (
-			SELECT id
-			FROM lapak_klaim
-			WHERE pedagang_id = k.pedagang_id
-			  AND session_id = k.session_id
-			  AND status = 'aktif'
-			ORDER BY claimed_at DESC
-			LIMIT 1
-		) lk ON TRUE
-		WHERE tanggal_wib(k.check_in_at) BETWEEN $1 AND $2
-			AND k.deleted_at IS NULL
-	`
+// GetStatsKehadiran:
+//   - totalTerdaftar = pedagang yang dapat lapak di event dalam rentang (tidak batal)
+//   - totalCheckin   = yang sudah check-in (termasuk yang sudah check-out)
+//   - totalCheckout  = yang sudah check-out
+//   - omset          = dari yang sudah check-out
+//   - lapakTerisi    = sama dengan totalTerdaftar (setiap peserta memegang 1 lapak)
+func (r *laporanRepository) GetStatsKehadiran(ctx context.Context, startDate, endDate, eventID string) (*entity.StatsResponse, error) {
+	query := fmt.Sprintf(`
+		SELECT
+			COUNT(*)::int,
+			COUNT(*) FILTER (WHERE ep.check_in_at IS NOT NULL)::int,
+			COUNT(*) FILTER (WHERE ep.check_out_at IS NOT NULL)::int,
+			COALESCE(SUM(ep.omset), 0)::bigint,
+			COALESCE(ROUND(AVG(ep.omset)), 0)::bigint,
+			CASE WHEN COUNT(*) > 0
+			     THEN ROUND(COUNT(*) FILTER (WHERE ep.check_in_at IS NOT NULL)::numeric / COUNT(*) * 100, 2)
+			     ELSE 0 END::float8,
+			COUNT(*)::int
+		FROM event_participants ep
+		JOIN events e ON e.id = ep.event_id
+		WHERE %s
+	`, filterPeserta)
 
-	var stats entity.StatsResponse
-	err := r.db.QueryRow(ctx, query, startDate, endDate).Scan(
-		&stats.TotalTerdaftar,
-		&stats.TotalCheckin,
-		&stats.TotalCheckout,
-		&stats.TotalOmset,
-		&stats.RataOmset,
-		&stats.PersenHadir,
-		&stats.LapakTerisi,
-	)
-	if err != nil {
+	var s entity.StatsResponse
+	if err := r.db.QueryRow(ctx, query, startDate, endDate, eventID).Scan(
+		&s.TotalTerdaftar, &s.TotalCheckin, &s.TotalCheckout,
+		&s.TotalOmset, &s.RataOmset, &s.PersenHadir, &s.LapakTerisi,
+	); err != nil {
 		return nil, err
 	}
-
-	return &stats, nil
+	return &s, nil
 }
 
-// GetDetailKehadiran ambil data lengkap 1 baris kehadiran: info check-in/out,
-// lokasi lapak yang diklaim pedagang di sesi itu, data usaha, dan data
-// pribadi pedagang. Return nil, nil kalau data tidak ditemukan.
+// GetDetailKehadiran: 1 baris laporan (id = id keikutsertaan). nil, nil
+// kalau tidak ditemukan.
 func (r *laporanRepository) GetDetailKehadiran(ctx context.Context, kehadiranID string) (*entity.DetailKehadiranRaw, error) {
 	var d entity.DetailKehadiranRaw
 	err := r.db.QueryRow(ctx, `
 		SELECT
-			k.id,
-			tanggal_wib(k.check_in_at)::text,
-			COALESCE(s.nama_sesi, ''),
-			TO_CHAR(k.check_in_at, 'HH24:MI'),
-			TO_CHAR(k.check_out_at, 'HH24:MI'),
-			k.omset,
-			CASE
-				WHEN k.check_out_at IS NOT NULL THEN 'check-out'
-				WHEN k.check_in_at IS NOT NULL THEN 'check-in'
-				ELSE 'belum-hadir'
-			END,
+			ep.id,
+			e.tanggal::text,
+			e.nama,
+			COALESCE(TO_CHAR(ep.check_in_at AT TIME ZONE 'Asia/Jakarta', 'HH24:MI'), '-'),
+			TO_CHAR(ep.check_out_at AT TIME ZONE 'Asia/Jakarta', 'HH24:MI'),
+			ep.omset,
+			`+statusLaporan+`,
 			COALESCE(petugas.name, ''),
-			COALESCE(mj.nama_jalan, ''),
+			mj.nama_jalan || ' · ' || r.nama_ruas,
 			COALESCE((
 				SELECT STRING_AGG(mi.nama_instansi, ', ' ORDER BY mi.nama_instansi)
 				FROM jalan_instansi ji
 				JOIN master_instansi mi ON mi.id = ji.instansi_id AND mi.deleted_at IS NULL
-				WHERE ji.jalan_id = lk.jalan_id
+				WHERE ji.jalan_id = mj.id
 			), ''),
-			COALESCE(lk.nomor_lapak, ''),
+			ep.nomor::text,
 			COALESCE(p.lokasi_lapak, ''),
 			COALESCE(p.nama_usaha, ''),
 			COALESCE(p.jenis_dagangan::text, ''),
@@ -229,23 +196,10 @@ func (r *laporanRepository) GetDetailKehadiran(ctx context.Context, kehadiranID 
 			COALESCE(p.nik, ''),
 			COALESCE(u.email, ''),
 			COALESCE(p.tanggal_lahir::text, ''),
-			CASE WHEN p.submitted_at IS NULL THEN 'lama' ELSE 'baru' END
-		FROM kehadiran_pedagang k
-		JOIN pedagang_profiles p ON p.id = k.pedagang_id
-		JOIN users u ON u.id = p.user_id
-		LEFT JOIN cfd_sessions s ON s.id = k.session_id
-		LEFT JOIN users petugas ON petugas.id = k.scanned_by
-		LEFT JOIN LATERAL (
-			SELECT jalan_id, nomor_lapak
-			FROM lapak_klaim
-			WHERE pedagang_id = k.pedagang_id
-			  AND session_id = k.session_id
-			  AND status = 'aktif'
-			ORDER BY claimed_at DESC
-			LIMIT 1
-		) lk ON TRUE
-		LEFT JOIN master_jalan mj ON mj.id = lk.jalan_id
-		WHERE k.id = $1 AND k.deleted_at IS NULL
+			ep.kategori::text
+		`+fromPeserta+`
+		LEFT JOIN users petugas ON petugas.id = ep.check_in_by
+		WHERE ep.id = $1 AND ep.deleted_at IS NULL
 	`, kehadiranID).Scan(
 		&d.KehadiranID, &d.Tanggal, &d.NamaSesi, &d.WaktuCheckin, &d.WaktuCheckout,
 		&d.Omset, &d.Status, &d.DicatatOleh,
@@ -254,10 +208,10 @@ func (r *laporanRepository) GetDetailKehadiran(ctx context.Context, kehadiranID 
 		&d.NamaLengkap, &d.NIK, &d.Email, &d.TanggalLahir,
 		&d.StatusPedagang,
 	)
+	if err == pgx.ErrNoRows {
+		return nil, nil
+	}
 	if err != nil {
-		if err == pgx.ErrNoRows {
-			return nil, nil
-		}
 		return nil, err
 	}
 	return &d, nil

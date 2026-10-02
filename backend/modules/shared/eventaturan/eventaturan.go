@@ -82,6 +82,65 @@ func KuotaLamaDilepas(lepasAt *time.Time, now time.Time) bool {
 	return lepasAt != nil && !now.Before(*lepasAt)
 }
 
+// CheckInDibukaSebelumMulai: check-in pedagang dibuka sejak sekian menit
+// sebelum jam mulai event (hari-H), supaya pedagang yang datang lebih awal
+// untuk menata lapak tidak menumpuk di menit jam mulai. Ubah di sini saja.
+const CheckInDibukaSebelumMulai = 60 * time.Minute
+
+// AlasanTidakBisaCheckIn menilai jendela check-in sebuah event.
+// "" artinya check-in boleh dilakukan sekarang.
+func AlasanTidakBisaCheckIn(statusEvent string, mulaiAt, selesaiAt, now time.Time) string {
+	switch statusEvent {
+	case StatusDraft:
+		return "Event belum diterbitkan."
+	case StatusDibatalkan:
+		return "Event ini dibatalkan."
+	case StatusSelesaiNormal, StatusDiakhiriAwal:
+		return "Event sudah selesai."
+	}
+	if !now.Before(selesaiAt) {
+		return "Event sudah selesai."
+	}
+	buka := mulaiAt.Add(-CheckInDibukaSebelumMulai)
+	if now.Before(buka) {
+		return "Check-in dibuka mulai " + buka.In(WIB).Format("02/01 15:04") + " WIB."
+	}
+	return ""
+}
+
+// EventSudahSelesai: event dianggap selesai kalau statusnya selesai /
+// diakhiri / dibatalkan, atau jam selesainya sudah lewat (scheduler mungkin
+// belum sempat mengubah status).
+func EventSudahSelesai(statusEvent string, selesaiAt, now time.Time) bool {
+	switch statusEvent {
+	case StatusSelesaiNormal, StatusDiakhiriAwal, StatusDibatalkan:
+		return true
+	}
+	return !now.Before(selesaiAt)
+}
+
+// AlasanPesertaTidakBisaCheckIn menilai status keikutsertaan pedagang.
+// "" artinya statusnya masih 'terdaftar' dan boleh check-in.
+func AlasanPesertaTidakBisaCheckIn(statusPeserta string, checkInAt *time.Time) string {
+	switch statusPeserta {
+	case PesertaTerdaftar:
+		return ""
+	case PesertaCheckIn:
+		if checkInAt != nil {
+			return "Pedagang sudah check-in pukul " + checkInAt.In(WIB).Format("15:04") + " WIB."
+		}
+		return "Pedagang sudah check-in."
+	case PesertaCheckOut:
+		return "Pedagang sudah check-out dari event ini."
+	case PesertaBatal:
+		return "Pendaftaran pedagang di event ini sudah dibatalkan."
+	case PesertaTidakHadir:
+		return "Pedagang tercatat tidak hadir di event ini."
+	default:
+		return "Status pedagang tidak dikenali."
+	}
+}
+
 // RandIntn angka acak 0..n-1 dari crypto/rand (bukan math/rand), supaya
 // hasil acak tidak bisa ditebak dari luar.
 func RandIntn(n int) (int, error) {

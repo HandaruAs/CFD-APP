@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, FormEvent } from "react";
+import { useEffect, useState, FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import { PublicNavbar } from "@/components/public-navbar";
 import { PublicFooter } from "@/components/public-footer";
@@ -13,7 +13,7 @@ import {
   IdCard,
   Store,
   CheckCircle2,
-  QrCode,
+  CalendarDays,
   AlertCircle,
   Loader2,
 } from "lucide-react";
@@ -28,7 +28,10 @@ import {
                                  dapat token, tanpa user harus
                                  login manual di step berikutnya.
    2) Pendaftaran usaha       -> POST /api/pedagang/pengajuan
-   3) Pilih lokasi & klaim    -> POST /api/pedagang/lapak/klaim
+   3) Selesai                 -> arahkan ke /pedagang/nomer-stand untuk
+                                 MEMILIH EVENT. Lokasi & nomor stan diacak
+                                 sistem saat pedagang ikut event (sistem
+                                 multi-event), bukan lagi klaim lapak di sini.
 
    Field & endpoint SENGAJA disamain persis dengan yang dipakai
    di web/app/Auth/register, web/app/Auth/login,
@@ -42,12 +45,15 @@ import {
 
 type Step = 1 | 2 | 3;
 
-interface HasilAlokasi {
-  nomorStand: string;
-  kecamatan: string;
-  namaJalan: string;
-  // Kosong kalau lapaknya dari jalan yang belum dibagi ruas.
-  namaRuas: string;
+// Ringkasan event dari GET /api/public/sisa-lapak (dipakai di langkah 3).
+interface EventPublik {
+  id: string;
+  nama: string;
+  tanggal: string;
+  jamMulai: string;
+  jamSelesai: string;
+  statusPendaftaran: "belum_dibuka" | "dibuka" | "ditutup";
+  sisa: number;
 }
 
 const KATEGORI_OPTIONS = [
@@ -67,12 +73,6 @@ function apiUrl(path: string) {
 function authHeaders(): HeadersInit {
   const token = typeof window !== "undefined" ? localStorage.getItem("cfd_token") : null;
   return { Authorization: `Bearer ${token ?? ""}` };
-}
-
-function qrCodeUrl(pedagangId: string) {
-  return `https://api.qrserver.com/v1/create-qr-code/?size=240x240&data=${encodeURIComponent(
-    pedagangId
-  )}`;
 }
 
 function StepDot({ n, active, done }: { n: number; active: boolean; done: boolean }) {
@@ -113,9 +113,24 @@ export default function DaftarLapakPage() {
   const [category, setCategory] = useState("");
   const [stallType, setStallType] = useState("");
 
-  // ---- Step 3: hasil ----
-  const [pedagangId, setPedagangId] = useState("");
-  const [hasil, setHasil] = useState<HasilAlokasi | null>(null);
+  // ---- Step 3: event yang bisa dipilih ----
+  const [eventDibuka, setEventDibuka] = useState<EventPublik[] | null>(null);
+
+  useEffect(() => {
+    if (step !== 3) return;
+    let batal = false;
+    fetch(apiUrl("/api/public/sisa-lapak"))
+      .then((r) => (r.ok ? r.json() : { data: [] }))
+      .then((json) => {
+        if (batal) return;
+        const list: EventPublik[] = Array.isArray(json?.data) ? json.data : [];
+        setEventDibuka(list.filter((ev) => ev.statusPendaftaran === "dibuka" && ev.sisa > 0));
+      })
+      .catch(() => !batal && setEventDibuka([]));
+    return () => {
+      batal = true;
+    };
+  }, [step]);
 
   // ---------- STEP 1: Register + auto-login ----------
   const handleStep1 = async (e: FormEvent) => {
@@ -171,39 +186,9 @@ export default function DaftarLapakPage() {
     }
   };
 
-  // Ambil lapak yang SUDAH diklaim (dipakai kalau klaim sebelumnya ternyata
-  // sudah berhasil, mis. respons pertama gagal sampai karena koneksi putus).
-  const tampilkanLapakTerklaim = async () => {
-    const [resStatus, resProfil] = await Promise.all([
-      fetch(apiUrl("/api/pedagang/lapak/status"), { headers: authHeaders() }),
-      fetch(apiUrl("/api/pedagang/pengajuan"), { headers: authHeaders() }),
-    ]);
-    const status = await resStatus.json().catch(() => ({}));
-    const profil = await resProfil.json().catch(() => ({}));
-    if (!resStatus.ok || !status.sudah_klaim) {
-      throw new Error("Gagal mengambil data lapakmu. Silakan masuk ke akunmu untuk melihat nomor stan.");
-    }
-    setHasil({
-      nomorStand: status.nomor_lapak,
-      kecamatan: status.nama_kecamatan ?? "",
-      namaJalan: status.nama_jalan ?? "",
-      namaRuas: status.nama_ruas ?? "",
-    });
-    setPedagangId(profil.id ?? "");
-    setStep(3);
-  };
-
-  // ---------- STEP 2: Data usaha, LANGSUNG lanjut klaim lokasi ----------
-  // Urutannya sengaja: CEK KETERSEDIAAN -> SIMPAN DATA USAHA -> KLAIM.
-  //
-  // Dulu data usaha disimpan dulu baru klaim. Kalau lapak belum diacak
-  // petugas, pedagang dapat pesan error TAPI datanya sudah tersimpan
-  // (terhitung "terdaftar" tanpa nomor lapak), dan waktu dia kirim ulang
-  // setelah lapak diacak, malah ditolak "kamu sudah pernah mengajukan
-  // usaha sebelumnya". Sekarang:
-  //   1. kalau lapak belum bisa diklaim, data usaha BELUM disimpan;
-  //   2. simpan data usaha aman dikirim ulang (backend meng-update);
-  //   3. kalau ternyata sudah pernah klaim, hasilnya langsung ditampilkan.
+  // ---------- STEP 2: Simpan data usaha ----------
+  // Setelah tersimpan, pedagang tinggal memilih event di halaman pedagang.
+  // Simpan data usaha aman dikirim ulang (backend memperbarui datanya).
   const handleStep2 = async (e: FormEvent) => {
     e.preventDefault();
     setError(null);
@@ -223,25 +208,6 @@ export default function DaftarLapakPage() {
 
     setLoading(true);
     try {
-      // 1. Cek dulu apakah masih ada lapak yang bisa diklaim hari ini.
-      const resCek = await fetch(apiUrl("/api/pedagang/lapak/ketersediaan"), { headers: authHeaders() });
-      const dataCek = await resCek.json().catch(() => ({}));
-      if (!resCek.ok) {
-        throw new Error(dataCek.error || "Gagal mengecek ketersediaan lapak.");
-      }
-      if (dataCek.status === "sudah_klaim") {
-        await tampilkanLapakTerklaim();
-        return;
-      }
-      if (!dataCek.tersedia) {
-        const pesan =
-          dataCek.status === "penuh"
-            ? "Maaf, semua lapak untuk hari ini sudah terisi."
-            : "Lokasi lapak hari ini belum disiapkan petugas.";
-        throw new Error(`${pesan} Data kamu belum disimpan, silakan coba lagi nanti tanpa perlu membuat akun baru.`);
-      }
-
-      // 2. Simpan data usaha (kalau dikirim ulang, datanya diperbarui).
       const resPengajuan = await fetch(apiUrl("/api/pedagang/pengajuan"), {
         method: "POST",
         headers: {
@@ -261,35 +227,6 @@ export default function DaftarLapakPage() {
       if (!resPengajuan.ok) {
         throw new Error(dataPengajuan.error || "Gagal menyimpan data usaha.");
       }
-
-      // 3. Klaim lapak.
-      const resKlaim = await fetch(apiUrl("/api/pedagang/lapak/klaim"), {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          ...authHeaders(),
-        },
-      });
-      const dataKlaim = await resKlaim.json().catch(() => ({}));
-      if (!resKlaim.ok) {
-        if (dataKlaim.kode === "sudah_klaim") {
-          await tampilkanLapakTerklaim();
-          return;
-        }
-        // Jarang terjadi (lapak habis di antara langkah 1 dan 3). Data usaha
-        // sudah tersimpan, jadi cukup coba lagi -- gak akan ditolak.
-        throw new Error(
-          `${dataKlaim.error || "Gagal mengklaim lapak."} Data usahamu sudah tersimpan, kamu bisa menekan tombol ini lagi nanti.`
-        );
-      }
-
-      setHasil({
-        nomorStand: dataKlaim.nomor_lapak,
-        kecamatan: dataKlaim.nama_kecamatan,
-        namaJalan: dataKlaim.nama_jalan,
-        namaRuas: dataKlaim.nama_ruas ?? "",
-      });
-      setPedagangId(dataPengajuan.pengajuan_id ?? "");
       setStep(3);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Terjadi kesalahan. Silakan coba lagi.");
@@ -305,10 +242,10 @@ export default function DaftarLapakPage() {
         <div className="w-full max-w-[560px]">
           <div className="mb-6">
             <h1 className="text-[24px] leading-tight font-bold text-[#1a1d29]">
-              Daftar &amp; Dapatkan Nomor Stan
+              Daftar sebagai Pedagang
             </h1>
             <p className="text-[13px] text-[#767884] mt-1">
-              Tiga langkah singkat: buat akun, isi data usaha, lalu dapatkan lokasi lapak Anda.
+              Tiga langkah singkat: buat akun, isi data usaha, lalu pilih event yang ingin diikuti.
             </p>
           </div>
 
@@ -478,12 +415,12 @@ export default function DaftarLapakPage() {
               {/* Tombol "Kembali" ke langkah 1 dihapus: akun sudah dibuat &
                   login di langkah 1, jadi kirim ulang langkah 1 selalu gagal
                   "email sudah terdaftar". */}
-              <SubmitButton loading={loading} label="Dapatkan Nomor Stan" />
+              <SubmitButton loading={loading} label="Simpan & Lanjut Pilih Event" />
             </form>
           )}
 
-          {/* ===================== STEP 3: HASIL ===================== */}
-          {step === 3 && hasil && (
+          {/* ===================== STEP 3: SELESAI -> PILIH EVENT ===================== */}
+          {step === 3 && (
             <div className="flex flex-col gap-4">
               <div className="w-full bg-[#e3f8ee] border border-[#bfeed7] rounded-xl px-4 py-3 flex items-start gap-3">
                 <div className="w-6 h-6 rounded-full bg-[#16a34a] flex items-center justify-center shrink-0 mt-0.5">
@@ -492,57 +429,45 @@ export default function DaftarLapakPage() {
                 <div>
                   <p className="text-[13.5px] font-semibold text-[#0f7a44]">Pendaftaran Berhasil!</p>
                   <p className="text-[12.5px] text-[#1a7a52]">
-                    Akun, data usaha, dan lokasi lapak Anda sudah tersimpan.
+                    Akun dan data usaha Anda sudah tersimpan. Langkah terakhir: pilih event yang ingin diikuti.
                   </p>
                 </div>
               </div>
 
-              <div className="w-full bg-white rounded-2xl border border-[#e7e8f1] shadow-[0_2px_8px_-2px_rgba(23,29,64,0.06)] overflow-hidden">
-                <div className="h-1 w-full bg-[#00288e]" />
-                <div className="px-5 py-5 text-center">
-                  <p className="text-[10.5px] font-semibold text-[#00288e] tracking-wide uppercase mb-1">
-                    Nomor Stan
-                  </p>
-                  <p className="text-[32px] font-bold text-[#00288e] leading-none mb-4">
-                    {hasil.nomorStand}
-                  </p>
-                  <div className="w-full h-px bg-[#ececf3] mb-4" />
-                  <div className="flex flex-col gap-2 text-left">
-                    <div className="flex items-center justify-between">
-                      <span className="text-[12px] text-[#a3743f]">Kecamatan</span>
-                      <span className="text-[13px] font-semibold text-[#1a1d29]">{hasil.kecamatan}</span>
-                    </div>
-                    <div className="flex items-center justify-between">
-                      <span className="text-[12px] text-[#a3743f]">Nama Jalan</span>
-                      <span className="text-[13px] font-semibold text-[#1a1d29]">{hasil.namaJalan}</span>
-                    </div>
-                    {/* Baris Ruas cuma muncul kalau lapaknya memang punya ruas. */}
-                    {hasil.namaRuas && (
-                      <div className="flex items-center justify-between">
-                        <span className="text-[12px] text-[#a3743f]">Ruas</span>
-                        <span className="text-[13px] font-semibold text-[#1a1d29]">{hasil.namaRuas}</span>
-                      </div>
-                    )}
-                  </div>
+              <div className="w-full bg-white rounded-2xl border border-[#e7e8f1] shadow-[0_2px_8px_-2px_rgba(23,29,64,0.06)] p-5">
+                <div className="flex items-center gap-2 mb-2">
+                  <CalendarDays size={17} className="text-[#00288e]" />
+                  <h3 className="text-[14px] font-semibold text-[#1a1d29]">Event yang bisa diikuti</h3>
                 </div>
-              </div>
-
-              <div className="w-full bg-white rounded-2xl border border-[#e7e8f1] shadow-[0_2px_8px_-2px_rgba(23,29,64,0.06)] p-5 text-center">
-                <h3 className="text-[14px] font-semibold text-[#1a1d29] mb-3">Verifikasi Pedagang</h3>
-                <div className="w-full aspect-square max-w-[180px] mx-auto rounded-xl overflow-hidden border border-[#e7e8f1] bg-[#f3f4f8] flex items-center justify-center mb-3">
-                  {pedagangId ? (
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img
-                      src={qrCodeUrl(pedagangId)}
-                      alt="Kode QR verifikasi pedagang"
-                      className="w-full h-full object-cover"
-                    />
-                  ) : (
-                    <QrCode size={56} className="text-[#a3a5b3]" />
-                  )}
-                </div>
-                <p className="text-[12px] text-[#767884]">
-                  Tunjukkan kode QR ini ke petugas di lokasi CFD untuk check-in.
+                {eventDibuka === null ? (
+                  <p className="text-[12.5px] text-[#767884]">Memuat event...</p>
+                ) : eventDibuka.length === 0 ? (
+                  <p className="text-[12.5px] text-[#767884]">
+                    Belum ada event yang pendaftarannya dibuka. Anda bisa kembali kapan saja lewat menu pedagang untuk
+                    memilih event begitu dibuka.
+                  </p>
+                ) : (
+                  <ul className="flex flex-col divide-y divide-[#ececf3]">
+                    {eventDibuka.slice(0, 5).map((ev) => (
+                      <li key={ev.id} className="flex items-center justify-between gap-3 py-2">
+                        <div className="min-w-0">
+                          <p className="text-[13px] font-medium text-[#1a1d29] truncate">{ev.nama}</p>
+                          <p className="text-[12px] text-[#767884]">
+                            {new Date(`${ev.tanggal}T00:00:00`).toLocaleDateString("id-ID", {
+                              weekday: "long",
+                              day: "numeric",
+                              month: "long",
+                            })}{" "}
+                            · {ev.jamMulai.replace(":", ".")} – {ev.jamSelesai.replace(":", ".")} WIB
+                          </p>
+                        </div>
+                        <span className="shrink-0 text-[12px] font-semibold text-[#0f7a44]">sisa {ev.sisa}</span>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+                <p className="mt-3 text-[12px] text-[#767884]">
+                  Lokasi dan nomor stan diacak otomatis oleh sistem saat Anda ikut event.
                 </p>
               </div>
 
@@ -551,7 +476,7 @@ export default function DaftarLapakPage() {
                 onClick={() => router.push("/pedagang/nomer-stand")}
                 className="h-11 px-5 bg-[#00288e] text-white text-[13px] font-medium rounded-lg hover:bg-[#173bab] active:scale-[0.98] transition-all"
               >
-                Buka Dasbor Pedagang
+                Pilih Event Sekarang
               </button>
             </div>
           )}

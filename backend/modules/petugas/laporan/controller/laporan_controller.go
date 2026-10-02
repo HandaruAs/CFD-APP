@@ -22,6 +22,7 @@ func (c *LaporanController) GetLaporan(ctx fiber.Ctx) error {
 	startDate := ctx.Query("startDate", "")
 	endDate := ctx.Query("endDate", "")
 	search := ctx.Query("search", "")
+	eventID := ctx.Query("eventId", "")
 	page, _ := strconv.Atoi(ctx.Query("page", "1"))
 	limit, _ := strconv.Atoi(ctx.Query("limit", "20"))
 
@@ -35,6 +36,7 @@ func (c *LaporanController) GetLaporan(ctx fiber.Ctx) error {
 	req := &entity.LaporanRequest{
 		StartDate: startDate,
 		EndDate:   endDate,
+		EventID:   eventID,
 		Search:    search,
 		Page:      page,
 		Limit:     limit,
@@ -55,7 +57,7 @@ func (c *LaporanController) GetStats(ctx fiber.Ctx) error {
 	startDate := ctx.Query("startDate", "")
 	endDate := ctx.Query("endDate", "")
 
-	resp, err := c.laporanUsecase.GetStatsKehadiran(ctx.Context(), startDate, endDate)
+	resp, err := c.laporanUsecase.GetStatsKehadiran(ctx.Context(), startDate, endDate, ctx.Query("eventId", ""))
 	if err != nil {
 		return ctx.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
 			"error": "gagal mengambil statistik: " + err.Error(),

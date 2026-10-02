@@ -5,7 +5,6 @@ import (
 	"errors"
 
 	"cfd-backend/modules/petugas/sisa-lapak/entity"
-	"cfd-backend/modules/shared/sesi"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -33,33 +32,51 @@ func NewRepository(db *pgxpool.Pool) *Repository {
 	return &Repository{db: db}
 }
 
-// GetSisaLapak ambil data kuota + terisi + id & kode_jalan
+// GetSisaLapak: semua jalan (data master) + keterisian hari ini dari data
+// EVENT. terisi = pedagang yang ikut event hari ini (WIB) di titik lokasi
+// jalan itu; kuotaHariIni = kapasitas titik-titik event hari ini di jalan
+// itu. Event draft & dibatalkan tidak dihitung.
+//
+// Dulu angka terisi diambil dari sesi lama (cfd_sessions) lewat
+// ResolveSesiHariIni, yang juga diam-diam MEMBUAT sesi lama kalau belum
+// ada -- sekarang tidak lagi.
 func (r *Repository) GetSisaLapak(ctx context.Context) ([]entity.KecamatanData, error) {
-	// Pakai resolver bersama -- BUKAN filter is_active=true sendiri --
-	// biar sesi yang kebaca di sini SELALU sama dengan sesi tempat
-	// klaim pedagang beneran nempel (lihat modules/shared/sesi).
-	sessionID, err := sesi.ResolveSesiHariIni(ctx, r.db)
-	if err != nil {
-		return nil, err
-	}
-
 	query := `
-		SELECT 
+		WITH hari_ini AS (
+			SELECT el.id AS lapak_id, r.jalan_id, el.kapasitas
+			FROM event_lapak el
+			JOIN events e ON e.id = el.event_id
+			JOIN master_ruas r ON r.id = el.ruas_id
+			WHERE el.deleted_at IS NULL AND e.deleted_at IS NULL
+			  AND e.status NOT IN ('draft', 'dibatalkan')
+			  AND e.tanggal = (now() AT TIME ZONE 'Asia/Jakarta')::date
+		),
+		per_jalan AS (
+			SELECT h.jalan_id,
+			       SUM(h.kapasitas)::int AS kuota_hari_ini,
+			       (SELECT COUNT(*) FROM event_participants p
+			        WHERE p.event_lapak_id = ANY(array_agg(h.lapak_id))
+			          AND p.status <> 'batal' AND p.deleted_at IS NULL)::int AS terisi
+			FROM hari_ini h
+			GROUP BY h.jalan_id
+		)
+		SELECT
 			mi.id AS kecamatan_id,
 			COALESCE(mi.nama_instansi, 'Tanpa Kecamatan') AS kecamatan,
 			mj.id,
 			mj.kode_jalan,
 			mj.nama_jalan,
 			mj.kapasitas AS kuota,
-			COALESCE(jks.terisi, 0) AS terisi
+			COALESCE(pj.terisi, 0) AS terisi,
+			COALESCE(pj.kuota_hari_ini, 0) AS kuota_hari_ini
 		FROM master_jalan mj
 		LEFT JOIN jalan_instansi ji ON mj.id = ji.jalan_id
 		LEFT JOIN master_instansi mi ON ji.instansi_id = mi.id
-		LEFT JOIN jalan_kapasitas_sesi jks ON mj.id = jks.jalan_id AND jks.session_id = $1
+		LEFT JOIN per_jalan pj ON pj.jalan_id = mj.id
 		WHERE mj.deleted_at IS NULL
 		ORDER BY mi.nama_instansi, mj.nama_jalan
 	`
-	rows, err := r.db.Query(ctx, query, sessionID)
+	rows, err := r.db.Query(ctx, query)
 	if err != nil {
 		return nil, err
 	}
@@ -71,8 +88,8 @@ func (r *Repository) GetSisaLapak(ctx context.Context) ([]entity.KecamatanData, 
 	for rows.Next() {
 		var kecID *string
 		var kec, id, kodeJalan, namaJalan string
-		var kuota, terisi int
-		if err := rows.Scan(&kecID, &kec, &id, &kodeJalan, &namaJalan, &kuota, &terisi); err != nil {
+		var kuota, terisi, kuotaHariIni int
+		if err := rows.Scan(&kecID, &kec, &id, &kodeJalan, &namaJalan, &kuota, &terisi, &kuotaHariIni); err != nil {
 			return nil, err
 		}
 		if _, sudahAda := mapData[kec]; !sudahAda {
@@ -83,8 +100,9 @@ func (r *Repository) GetSisaLapak(ctx context.Context) ([]entity.KecamatanData, 
 			ID:        id,
 			KodeJalan: kodeJalan,
 			Nama:      namaJalan,
-			Kuota:     kuota,
-			Terisi:    terisi,
+			Kuota:        kuota,
+			Terisi:       terisi,
+			KuotaHariIni: kuotaHariIni,
 		})
 	}
 

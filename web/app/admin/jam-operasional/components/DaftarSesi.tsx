@@ -3,8 +3,9 @@
 // Sesi Terjadwal -- sesi yang belum selesai (draft, terjadwal, berlangsung).
 // Status diambil dari backend (scheduler tiap menit), jadi sesi otomatis
 // pindah dari terjadwal -> berlangsung -> Riwayat Sesi sesuai jamnya.
-// Aksi per sesi: lihat titik lokasi, tambah titik (acak lagi), peserta,
-// dan hapus/batalkan. Sesi yang keliru cukup dihapus lalu dibuat ulang;
+// Aksi per sesi: lihat titik lokasi, tambah titik (acak lagi), ubah kuota,
+// peserta, dan hapus/batalkan. Kuota diatur PER SESI (total & jatah pedagang
+// lama); setiap titik punya kapasitas tempat. Sesi yang keliru cukup dihapus lalu dibuat ulang;
 // kalau sudah ada pedagang yang ikut, sesi dibatalkan (bukan dihapus).
 
 import { useState } from "react";
@@ -16,12 +17,14 @@ import {
   ChevronUp,
   Loader2,
   MapPin,
+  Pencil,
   Plus,
   Send,
   Trash2,
   Users,
 } from "lucide-react";
 import { useConfirmDialog } from "../../manajemen-lapak/components/confirm-dialog";
+import UbahKuotaModal from "./UbahKuotaModal";
 import {
   apiEvent,
   jamTampil,
@@ -57,6 +60,7 @@ export default function DaftarSesi({ sesiList, loading, error, onTambah, onTamba
   const hariIni = todayISO();
   const [terbuka, setTerbuka] = useState<Record<string, boolean>>({});
   const [detail, setDetail] = useState<Record<string, SesiDetail | "memuat" | "gagal">>({});
+  const [ubahKuota, setUbahKuota] = useState<SesiEvent | null>(null);
 
   async function toggleTitik(s: SesiEvent) {
     const buka = !terbuka[s.id];
@@ -204,9 +208,15 @@ export default function DaftarSesi({ sesiList, loading, error, onTambah, onTamba
                       {jamTampil(s.jamMulai)} – {jamTampil(s.jamSelesai)} WIB
                     </p>
                     <p className="text-label-sm text-on-surface-variant">
-                      {s.jumlahTitik} titik · {terisi}/{s.kuotaLama + s.kuotaBaru} terisi (lama {s.terisiLama}/{s.kuotaLama}, baru{" "}
-                      {s.terisiBaru}/{s.kuotaBaru})
+                      {terisi}/{s.kuotaTotal} pedagang (lama {s.terisiLama}/{s.kuotaLama}, baru {s.terisiBaru}/{s.kuotaBaru}) ·{" "}
+                      {s.jumlahTitik} titik, {s.kapasitasTitik} tempat
                     </p>
+                    {bisaAtur && s.kuotaTotal > s.kapasitasTitik && (
+                      <p className="text-label-sm font-medium text-error">
+                        Tempat di titik lokasi ({s.kapasitasTitik}) kurang dari kuota sesi ({s.kuotaTotal}). Tambah titik atau
+                        turunkan kuota.
+                      </p>
+                    )}
                     {s.status === "terjadwal" && (s.pendaftaranBukaAt || s.pendaftaranTutupAt || s.lepasKuotaAt) && (
                       <p className="text-label-sm text-on-surface-variant">
                         {s.pendaftaranBukaAt && `Buka ${waktuTampil(s.pendaftaranBukaAt)}`}
@@ -218,7 +228,7 @@ export default function DaftarSesi({ sesiList, loading, error, onTambah, onTamba
                   </div>
 
                   <div className="flex shrink-0 flex-wrap items-center gap-xs">
-                    {s.status === "draft" && s.jumlahTitik > 0 && (
+                    {s.status === "draft" && s.jumlahTitik > 0 && s.kuotaTotal <= s.kapasitasTitik && (
                       <button type="button" onClick={() => terbitkan(s)} className="pt-btn pt-btn-primary">
                         <Send className="h-4 w-4" />
                         Terbitkan
@@ -233,6 +243,17 @@ export default function DaftarSesi({ sesiList, loading, error, onTambah, onTamba
                       >
                         <Plus className="h-4 w-4" />
                         Titik
+                      </button>
+                    )}
+                    {bisaAtur && (
+                      <button
+                        type="button"
+                        onClick={() => setUbahKuota(s)}
+                        className="pt-btn pt-btn-ghost"
+                        title="Ubah kuota sesi"
+                      >
+                        <Pencil className="h-4 w-4" />
+                        Kuota
                       </button>
                     )}
                     <button
@@ -287,7 +308,7 @@ export default function DaftarSesi({ sesiList, loading, error, onTambah, onTamba
                               {l.namaKecamatan && <span className="text-on-surface-variant">(Kec. {l.namaKecamatan})</span>}
                             </span>
                             <span className="shrink-0 text-label-sm tabular-nums text-on-surface-variant">
-                              lama {l.terisiLama}/{l.kuotaLama} · baru {l.terisiBaru}/{l.kuotaBaru}
+                              {l.terisi}/{l.kapasitas} terisi
                             </span>
                           </li>
                         ))}
@@ -299,6 +320,16 @@ export default function DaftarSesi({ sesiList, loading, error, onTambah, onTamba
             );
           })}
         </ul>
+      )}
+      {ubahKuota && (
+        <UbahKuotaModal
+          sesi={ubahKuota}
+          onClose={() => setUbahKuota(null)}
+          onSaved={async (pesan) => {
+            setUbahKuota(null);
+            await onBerubah(pesan);
+          }}
+        />
       )}
     </div>
   );

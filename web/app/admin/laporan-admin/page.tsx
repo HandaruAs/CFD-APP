@@ -90,6 +90,7 @@ type KehadiranRow = {
   checkOut: string;
   omset: number | null;
   dicatatOleh: string;
+  namaEvent?: string; // event tempat pedagang hadir
 };
 type Tab = "pedagang" | "petugas" | "kehadiran";
 
@@ -226,7 +227,7 @@ async function unduhPdf(data: Laporan) {
       utama: angka(r.kehadiran.total),
       baris: [
         `${angka(r.kehadiran.pedagangUnik)} pedagang berbeda`,
-        `${angka(r.kehadiran.jumlahSesi)} hari CFD`,
+        `${angka(r.kehadiran.jumlahSesi)} event`,
         `Check-out ${persen(r.kehadiran.checkout, r.kehadiran.total)}% (${angka(r.kehadiran.belumCheckout)} belum)`,
       ],
       aksen: W.hijau,
@@ -238,7 +239,7 @@ async function unduhPdf(data: Laporan) {
       aksen: W.hijau,
     },
     {
-      judul: "Klaim lapak",
+      judul: "Ikut event",
       utama: angka(r.klaim.total),
       baris: [
         `${angka(r.klaim.aktif)} aktif, ${angka(r.klaim.batal)} dibatalkan`,
@@ -392,14 +393,14 @@ async function unduhPdf(data: Laporan) {
   }
 
   // 2. Petugas
-  judulBagian("Petugas", data.petugas.length, "Jumlah scan QR per petugas. Pedagang berbeda = pedagang yang pernah di-scan; hari bertugas = hari CFD dengan minimal satu scan.");
+  judulBagian("Petugas", data.petugas.length, "Jumlah scan QR per petugas. Pedagang berbeda = pedagang yang pernah di-scan; event bertugas = event dengan minimal satu scan.");
   if (data.petugas.length === 0) {
     kosong("Belum ada akun petugas.");
   } else {
     autoTable(doc, {
       ...gaya,
       startY: y,
-      head: [["#", "Nama", "Email", "Telepon", "Akun", "Terdaftar", "Jumlah scan", "Pedagang berbeda", "Hari bertugas", "Scan terakhir"]],
+      head: [["#", "Nama", "Email", "Telepon", "Akun", "Terdaftar", "Jumlah scan", "Pedagang berbeda", "Event bertugas", "Scan terakhir"]],
       body: data.petugas.map((p, i) => [
         String(i + 1),
         p.nama,
@@ -452,7 +453,7 @@ async function unduhPdf(data: Laporan) {
         k.namaUsaha,
         k.pemilik,
         LABEL_KATEGORI[k.kategori] ?? k.kategori,
-        k.namaJalan ? `${k.namaJalan}\n${k.nomorLapak}` : "Belum klaim lapak",
+        k.namaJalan ? `${k.namaEvent ? `${k.namaEvent}\n` : ""}${k.namaJalan}\nNo. ${k.nomorLapak}` : "-",
         k.checkIn,
         k.checkOut || "Belum check-out",
         k.omset != null ? rp(k.omset) : "-",
@@ -585,7 +586,11 @@ export default function LaporanAdminPage() {
   const barisKehadiran = useMemo(
     () =>
       (data?.kehadiran ?? []).filter(
-        (k) => !q || [k.namaUsaha, k.pemilik, k.namaJalan, k.nomorLapak, k.dicatatOleh].some((v) => v.toLowerCase().includes(q))
+        (k) =>
+          !q ||
+          [k.namaUsaha, k.pemilik, k.namaJalan, k.nomorLapak, k.dicatatOleh, k.namaEvent ?? ""].some((v) =>
+            v.toLowerCase().includes(q)
+          )
       ),
     [data, q]
   );
@@ -710,7 +715,7 @@ export default function LaporanAdminPage() {
             warna="bg-secondary-container/60 text-on-secondary-container"
             judul="Kehadiran"
             utama={angka(r.kehadiran.total)}
-            sub={`${angka(r.kehadiran.pedagangUnik)} pedagang berbeda · ${angka(r.kehadiran.jumlahSesi)} hari CFD`}
+            sub={`${angka(r.kehadiran.pedagangUnik)} pedagang berbeda · ${angka(r.kehadiran.jumlahSesi)} event`}
             rincian={[
               [`Check-out (${persen(r.kehadiran.checkout, r.kehadiran.total)}%)`, r.kehadiran.checkout],
               ["Belum check-out", r.kehadiran.belumCheckout],
@@ -730,7 +735,7 @@ export default function LaporanAdminPage() {
           <KartuRingkas
             ikon={MapPin}
             warna="bg-primary-fixed text-on-primary-fixed"
-            judul="Klaim lapak"
+            judul="Ikut event"
             utama={angka(r.klaim.total)}
             sub={`${persen(r.klaim.total - r.klaim.tanpaCheckin, r.klaim.total)}% diikuti check-in`}
             rincian={[
@@ -1021,7 +1026,7 @@ function TabelPetugas({ baris }: { baris: PetugasRow[] }) {
           <th className={TH}>Akun</th>
           <th className={`${TH} text-right`}>Jumlah scan</th>
           <th className={`${TH} text-right`} title="Jumlah pedagang berbeda yang pernah di-scan petugas ini">Pedagang berbeda</th>
-          <th className={`${TH} text-right`} title="Jumlah hari CFD di mana petugas ini melakukan scan">Hari bertugas</th>
+          <th className={`${TH} text-right`} title="Jumlah event di mana petugas ini melakukan scan">Event bertugas</th>
           <th className={`${TH} pr-lg`}>Scan terakhir</th>
         </tr>
       </thead>
@@ -1087,11 +1092,12 @@ function TabelKehadiran({ baris }: { baris: KehadiranRow[] }) {
             <td className={TD}>
               {k.namaJalan ? (
                 <>
+                  {k.namaEvent && <p className="text-label-sm font-semibold text-primary">{k.namaEvent}</p>}
                   <p className="text-on-surface">{k.namaJalan}</p>
-                  <p className="text-on-surface-variant">{k.nomorLapak}</p>
+                  <p className="text-on-surface-variant">No. {k.nomorLapak}</p>
                 </>
               ) : (
-                <span className="text-on-surface-variant">Tanpa klaim lapak</span>
+                <span className="text-on-surface-variant">-</span>
               )}
             </td>
             <td className={`${TD} tabular-nums`}>{k.checkIn}</td>

@@ -13,7 +13,6 @@ import {
   UserCheck,
   LogOut,
   DollarSign,
-  TrendingUp,
   CheckCircle2,
   XCircle,
   Loader2,
@@ -35,6 +34,16 @@ import {
 // ============================================================
 
 type StatusKehadiran = "check-in" | "check-out" | "belum-hadir";
+
+// Opsi dropdown filter event (GET /api/petugas/events).
+type EventPilihan = {
+  id: string;
+  nama: string;
+  tanggal: string;
+  jamMulai: string;
+  jamSelesai: string;
+  status: string;
+};
 
 type KehadiranItem = {
   id: string;
@@ -230,6 +239,10 @@ export default function LaporanPage() {
   const [filterSiap, setFilterSiap] = useState(false);
   const [page, setPage] = useState(1);
   const [limit] = useState(20);
+
+  // Filter event: "" = semua event di rentang tanggal.
+  const [eventId, setEventId] = useState("");
+  const [pilihanEvent, setPilihanEvent] = useState<EventPilihan[]>([]);
   const [toast, setToast] = useState<{ message: string; type: "success" | "error" } | null>(null);
 
   const [lapakTerisi, setLapakTerisi] = useState(0);
@@ -239,7 +252,8 @@ export default function LaporanPage() {
 
   // ========== REAL-TIME POLLING ==========
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
-  const [isPolling, setIsPolling] = useState(true);
+  // Polling selalu aktif (belum ada tombol jeda), jadi setter tidak dipakai.
+  const [isPolling] = useState(true);
   const pollingIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
   const showToast = (message: string, type: "success" | "error" = "success") => {
@@ -263,6 +277,7 @@ export default function LaporanPage() {
         page: String(page),
         limit: String(limit),
       });
+      if (eventId) queryParams.set("eventId", eventId);
 
       const laporanData = await apiFetch<LaporanResponse>(
         `/api/petugas/laporan?${queryParams.toString()}`
@@ -280,7 +295,7 @@ export default function LaporanPage() {
       setLapakTerisi(uniqueLokasi.size);
 
       const statsData = await apiFetch<StatsResponse>(
-        `/api/petugas/laporan/stats?startDate=${startDate}&endDate=${endDate}`
+        `/api/petugas/laporan/stats?startDate=${startDate}&endDate=${endDate}${eventId ? `&eventId=${eventId}` : ""}`
       );
       setStats(statsData);
 
@@ -322,7 +337,9 @@ export default function LaporanPage() {
   useEffect(() => {
     if (!filterSiap) return;
 
-    // Fetch pertama kali
+    // Fetch pertama kali. fetchData baru memanggil setState setelah request
+    // selesai (await), jadi aman -- aturan lint ini belum bisa membedakannya.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     fetchData(true);
 
     // Setup interval polling setiap 30 detik
@@ -342,7 +359,30 @@ export default function LaporanPage() {
         clearInterval(pollingIntervalRef.current);
       }
     };
-  }, [startDate, endDate, page, searchTerm, isPolling, filterSiap]);
+    // fetchData sengaja tidak dimasukkan: fungsinya dibuat ulang tiap render,
+    // kalau dimasukkan polling akan di-reset terus-menerus.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [startDate, endDate, page, searchTerm, isPolling, filterSiap, eventId]);
+
+  // Pilihan event mengikuti rentang tanggal. Kalau event yang dipilih tidak
+  // ada di rentang baru, filter kembali ke "Semua event".
+  useEffect(() => {
+    if (!filterSiap) return;
+    let batal = false;
+    apiFetch<{ data: EventPilihan[] }>(`/api/petugas/events?startDate=${startDate}&endDate=${endDate}`)
+      .then((res) => {
+        if (batal) return;
+        const list = res.data ?? [];
+        setPilihanEvent(list);
+        setEventId((id) => (id && !list.some((e) => e.id === id) ? "" : id));
+      })
+      .catch(() => {
+        if (!batal) setPilihanEvent([]);
+      });
+    return () => {
+      batal = true;
+    };
+  }, [startDate, endDate, filterSiap]);
 
   // ============================================================
   // HANDLERS
@@ -380,10 +420,13 @@ export default function LaporanPage() {
       page: "1",
       limit: "10000",
     });
+    if (eventId) queryParams.set("eventId", eventId);
     return apiFetch<LaporanResponse>(`/api/petugas/laporan?${queryParams.toString()}`);
   };
 
-  const periodeLabel = startDate === endDate ? startDate : `${startDate} s/d ${endDate}`;
+  const eventTerpilih = pilihanEvent.find((e) => e.id === eventId);
+  const periodeLabel =
+    (startDate === endDate ? startDate : `${startDate} s/d ${endDate}`) + (eventTerpilih ? ` · ${eventTerpilih.nama}` : "");
   const sedangHariIni = startDate === tanggalHariIni() && endDate === tanggalHariIni();
   const namaFile = `laporan-kehadiran-${startDate}${startDate === endDate ? "" : `_${endDate}`}`;
 
@@ -577,6 +620,29 @@ export default function LaporanPage() {
             className="rounded-lg border border-outline bg-surface-container-lowest px-md py-sm text-body-md text-on-surface outline-none focus:border-primary focus:ring-2 focus:ring-primary/20"
           />
         </div>
+        <div className="flex items-center gap-sm">
+          <label htmlFor="filter-event" className="text-label-sm text-on-surface-variant">
+            Event:
+          </label>
+          <select
+            id="filter-event"
+            value={eventId}
+            onChange={(e) => {
+              setEventId(e.target.value);
+              setPage(1);
+            }}
+            className="max-w-[16rem] rounded-lg border border-outline bg-surface-container-lowest px-md py-sm text-body-md text-on-surface outline-none focus:border-primary focus:ring-2 focus:ring-primary/20"
+          >
+            <option value="">Semua event ({pilihanEvent.length})</option>
+            {pilihanEvent.map((ev) => (
+              <option key={ev.id} value={ev.id}>
+                {ev.nama}
+                {startDate !== endDate ? ` · ${ev.tanggal}` : ""} · {ev.jamMulai}–{ev.jamSelesai}
+                {ev.status === "dibatalkan" ? " (dibatalkan)" : ""}
+              </option>
+            ))}
+          </select>
+        </div>
         {/* Tombol "Hari Ini": menonjol (biru penuh) kalau yang sedang dilihat
             BUKAN hari ini, supaya gampang kembali ke laporan hari ini. */}
         <button
@@ -615,7 +681,7 @@ export default function LaporanPage() {
               <UserCheck className="h-[18px] w-[18px]" strokeWidth={2} />
             </span>
             <p className="mt-md text-label-sm uppercase tracking-wide text-on-surface-variant">
-              Total Pedagang
+              Terdaftar di Event
             </p>
             <p className="text-headline-md text-on-surface">{stats.totalTerdaftar}</p>
           </div>
@@ -980,7 +1046,7 @@ function DetailPedagangModal({ kehadiranId, onClose }: { kehadiranId: string; on
             <div className="flex flex-col gap-md">
               <DetailSection icon={ClipboardList} title="Kehadiran">
                 <DetailRow label="Tanggal" value={formatTanggalIndo(detail.kehadiran.tanggal)} />
-                <DetailRow label="Sesi" value={detail.kehadiran.namaSesi} />
+                <DetailRow label="Event" value={detail.kehadiran.namaSesi} />
                 <DetailRow
                   label="Status"
                   value={

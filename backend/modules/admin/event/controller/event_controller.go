@@ -22,7 +22,10 @@ func NewEventController(uc usecase.EventUsecase) *EventController {
 
 func mapError(c fiber.Ctx, err error) error {
 	var ve *usecase.ValidationError
+	var kurang *usecase.ErrKapasitasKurang
 	switch {
+	case errors.As(err, &kurang):
+		return c.Status(fiber.StatusConflict).JSON(fiber.Map{"error": kurang.Error(), "code": "KAPASITAS_KURANG"})
 	case errors.As(err, &ve):
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": ve.Pesan})
 	case errors.Is(err, repository.ErrEventTidakDitemukan),
@@ -41,6 +44,8 @@ func mapError(c fiber.Ctx, err error) error {
 		errors.Is(err, usecase.ErrJadwalTerkunci),
 		errors.Is(err, usecase.ErrKuotaTurun),
 		errors.Is(err, usecase.ErrKuotaDiBawahTerisi),
+		errors.Is(err, usecase.ErrKuotaBelumDiisi),
+		errors.Is(err, usecase.ErrKapasitasDiBawahIsi),
 		errors.Is(err, usecase.ErrKuotaTerkunci),
 		errors.Is(err, usecase.ErrLapakMasihDipakai),
 		errors.Is(err, usecase.ErrEventMasihAdaPeserta):
@@ -145,7 +150,7 @@ func (ctrl *EventController) DeleteEvent(c fiber.Ctx) error {
 // AcakLokasi - POST /api/admin/events/:id/acak-lokasi
 // body: {"scope": "kota|kecamatan|jalan|ruas", "kecamatanIds": [...], "jalanIds": [...],
 //
-//	"ruasIds": [...], "jumlahTitik": 3, "persenLama": 50}
+//	"ruasIds": [...], "jumlahTitik": 3}
 func (ctrl *EventController) AcakLokasi(c fiber.Ctx) error {
 	userID, ok := actor(c)
 	if !ok {
@@ -162,22 +167,22 @@ func (ctrl *EventController) AcakLokasi(c fiber.Ctx) error {
 	return c.JSON(fiber.Map{"message": "lokasi berhasil diacak", "data": res})
 }
 
-// UpdateKuota - PATCH /api/admin/events/:id/lapak/:lapakId
-// body: {"kuotaLama": 5, "kuotaBaru": 5}
-func (ctrl *EventController) UpdateKuota(c fiber.Ctx) error {
+// UpdateKapasitas - PATCH /api/admin/events/:id/lapak/:lapakId
+// body: {"kapasitas": 12}
+func (ctrl *EventController) UpdateKapasitas(c fiber.Ctx) error {
 	userID, ok := actor(c)
 	if !ok {
 		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "unauthorized"})
 	}
-	var req entity.UpdateKuotaRequest
+	var req entity.UpdateKapasitasRequest
 	if err := c.Bind().Body(&req); err != nil {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "format request tidak valid"})
 	}
-	l, err := ctrl.usecase.UpdateKuota(c.Context(), userID, c.Params("id"), c.Params("lapakId"), &req)
+	l, err := ctrl.usecase.UpdateKapasitas(c.Context(), userID, c.Params("id"), c.Params("lapakId"), &req)
 	if err != nil {
 		return mapError(c, err)
 	}
-	return c.JSON(fiber.Map{"message": "kuota berhasil diperbarui", "data": l})
+	return c.JSON(fiber.Map{"message": "kapasitas titik berhasil diperbarui", "data": l})
 }
 
 // DeleteLapak - DELETE /api/admin/events/:id/lapak/:lapakId

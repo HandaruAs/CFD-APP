@@ -20,9 +20,29 @@ type HariIniDTO struct {
 	Sesi    SesiHariIni  `json:"sesi"`
 	Lapak   LapakHariIni `json:"lapak"`
 	Hadir   HadirHariIni `json:"hadir"`
+	// Events: SEMUA event hari ini (satu hari boleh banyak event).
+	// Sesi/Lapak/Hadir di atas = ringkasan untuk tampilan lama (mobile).
+	Events []EventHariIni `json:"events"`
 }
 
-// SesiHariIni: status sesi CFD hari ini.
+// EventHariIni: 1 event di tanggal hari ini.
+type EventHariIni struct {
+	ID         string `json:"id"`
+	Nama       string `json:"nama"`
+	Status     string `json:"status"` // terjadwal | berjalan | selesai | dibatalkan (sama dengan SesiHariIni)
+	JamMulai   string `json:"jamMulai"`
+	JamSelesai string `json:"jamSelesai"`
+	SisaMenit  int    `json:"sisaMenit"`
+	Titik      int    `json:"titik"`
+	Kapasitas  int    `json:"kapasitas"`
+	Klaim      int    `json:"klaim"`
+	CheckIn    int    `json:"checkIn"`
+	CheckOut   int    `json:"checkOut"`
+	Omset      int64  `json:"omset"`
+}
+
+// SesiHariIni: ringkasan event hari ini yang paling relevan -- yang sedang
+// berjalan, lalu yang akan mulai paling dekat, lalu yang terakhir selesai.
 // Status: "belum_ada" | "terjadwal" | "berjalan" | "selesai" | "dibatalkan"
 type SesiHariIni struct {
 	Status     string  `json:"status"`
@@ -32,16 +52,16 @@ type SesiHariIni struct {
 	SisaMenit  int     `json:"sisaMenit"`  // cuma terisi kalau status "berjalan"
 }
 
-// LapakHariIni: kapasitas = total kapasitas semua jalan aktif, terisi =
-// total terisi di sesi hari ini -- rumusnya SAMA dengan widget Sisa Lapak
-// supaya angkanya gak beda antar halaman.
+// LapakHariIni: kapasitas = total kuota titik lokasi semua event hari ini,
+// terisi = pedagang yang dapat lapak (tidak batal) di event-event itu.
 type LapakHariIni struct {
 	Terisi    int     `json:"terisi"`
 	Kapasitas int     `json:"kapasitas"`
 	Persen    float64 `json:"persen"`
 }
 
-// HadirHariIni: pedagang yang sudah check-in dibanding yang sudah klaim.
+// HadirHariIni: pedagang yang sudah check-in dibanding yang dapat lapak,
+// dijumlah untuk semua event hari ini.
 type HadirHariIni struct {
 	Klaim    int `json:"klaim"`
 	CheckIn  int `json:"checkIn"`
@@ -57,7 +77,7 @@ type TrenDTO struct {
 	Minggu []TrenMinggu `json:"minggu"` // 8 minggu terakhir, urut terlama ke terbaru
 }
 
-// TrenSesi: 1 titik di grafik kehadiran & omset.
+// TrenSesi: 1 titik di grafik kehadiran & omset = 1 event.
 type TrenSesi struct {
 	SesiID   string `json:"sesiId"`
 	Tanggal  string `json:"tanggal"` // YYYY-MM-DD

@@ -4,9 +4,19 @@ import { Store, Wallet, MapPin, User, Loader2, CheckCircle2, AlertTriangle, Cloc
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 
+// Data dari GET /api/pedagang/events/checkout -- checkout sekarang PER EVENT.
+// Backend memilih satu event: yang wajib di-checkout (event sudah selesai)
+// didahulukan, lalu yang sedang berjalan, lalu checkout terakhir hari ini.
 interface DataCheckout {
+  eventId: string;
+  namaEvent: string;
+  tanggal: string;
+  jamMulai: string;
+  jamSelesai: string;
+  wajibCheckout: boolean;
   kecamatan: string;
   namaJalan: string;
+  namaRuas: string;
   nomorStan: string;
   nik: string;
   namaLengkap: string;
@@ -22,8 +32,15 @@ interface DataCheckout {
 }
 
 const EMPTY_DATA: DataCheckout = {
+  eventId: "",
+  namaEvent: "",
+  tanggal: "",
+  jamMulai: "",
+  jamSelesai: "",
+  wajibCheckout: false,
   kecamatan: "",
   namaJalan: "",
+  namaRuas: "",
   nomorStan: "",
   nik: "",
   namaLengkap: "",
@@ -46,6 +63,13 @@ const LAPAK_LABEL: Record<string, string> = {
   rombong: "Rombong",
   meja: "Meja",
 };
+
+function formatTanggal(iso: string) {
+  if (!iso) return "";
+  const d = new Date(`${iso.slice(0, 10)}T00:00:00`);
+  if (Number.isNaN(d.getTime())) return iso;
+  return d.toLocaleDateString("id-ID", { weekday: "long", day: "numeric", month: "long", year: "numeric" });
+}
 
 function apiUrl(path: string) {
   return `${process.env.NEXT_PUBLIC_API_URL}${path}`;
@@ -82,22 +106,35 @@ export default function MerchantCheckoutPage() {
     }
 
     try {
-      const res = await fetch(apiUrl("/api/pedagang/checkout"), {
+      const res = await fetch(apiUrl("/api/pedagang/events/checkout"), {
         headers: authHeaders(),
       });
-      const json = await res.json();
+      const body = await res.json().catch(() => ({}));
 
       if (!res.ok) {
-        setLoadError(json?.error ?? "Gagal mengambil data checkout.");
+        setLoadError(body?.error ?? "Gagal mengambil data checkout.");
         setLoading(false);
         return;
       }
 
       setLoadError(null);
+      // data null = belum check-in di event mana pun (dan belum ada checkout hari ini)
+      const json = body?.data;
+      if (!json) {
+        setDataPedagang(EMPTY_DATA);
+        return;
+      }
       setDataPedagang({
-        kecamatan: json.kecamatan ?? "",
+        eventId: json.eventId ?? "",
+        namaEvent: json.namaEvent ?? "",
+        tanggal: json.tanggal ?? "",
+        jamMulai: json.jamMulai ?? "",
+        jamSelesai: json.jamSelesai ?? "",
+        wajibCheckout: !!json.wajibCheckout,
+        kecamatan: json.namaKecamatan ?? "",
         namaJalan: json.namaJalan ?? "",
-        nomorStan: json.nomorStan ?? "",
+        namaRuas: json.namaRuas ?? "",
+        nomorStan: json.nomor != null ? String(json.nomor) : "",
         nik: json.nik ?? "",
         namaLengkap: json.namaLengkap ?? "",
         tanggalLahir: json.tanggalLahir ?? "",
@@ -201,13 +238,13 @@ export default function MerchantCheckoutPage() {
     setSubmitError(null);
 
     if (!canCheckout) {
-      setSubmitError("Check-out belum dapat dilakukan. Tunggu hingga sesi berakhir.");
+      setSubmitError("Check-out belum dapat dilakukan. Tunggu hingga event berakhir.");
       return;
     }
 
     const omsetNumber = Number(omset.replace(/\./g, ""));
     if (!omsetNumber || omsetNumber <= 0) {
-      setSubmitError("Isi total omset hari ini terlebih dahulu.");
+      setSubmitError("Isi total omset event ini terlebih dahulu.");
       return;
     }
 
@@ -220,7 +257,7 @@ export default function MerchantCheckoutPage() {
 
     setSubmitting(true);
     try {
-      const res = await fetch(apiUrl("/api/pedagang/checkout"), {
+      const res = await fetch(apiUrl(`/api/pedagang/events/${dataPedagang.eventId}/checkout`), {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -228,7 +265,7 @@ export default function MerchantCheckoutPage() {
         },
         body: JSON.stringify({ omset: omsetNumber }),
       });
-      const json = await res.json();
+      const json = await res.json().catch(() => ({}));
 
       if (!res.ok) {
         setSubmitError(json?.error ?? "Gagal menyimpan cek-out.");
@@ -279,13 +316,19 @@ export default function MerchantCheckoutPage() {
           <CheckCircle2 className="w-10 h-10 text-emerald-600" />
           <h2 className="font-semibold text-[#0b1c30] text-lg">Cek-out Berhasil</h2>
           <p className="text-sm text-[#5b5e6d]">
-            Terima kasih sudah berjualan hari ini di {dataPedagang.namaJalan || "lapak kamu"}.
+            Terima kasih sudah berjualan di {dataPedagang.namaEvent || "event ini"}
+            {dataPedagang.namaJalan ? ` (${dataPedagang.namaJalan})` : ""}.
           </p>
+          {dataPedagang.omset != null && (
+            <p className="text-sm text-[#0b1c30]">
+              Omset tercatat: <strong>Rp {Number(dataPedagang.omset).toLocaleString("id-ID")}</strong>
+            </p>
+          )}
           <button
-            onClick={() => router.push("/pedagang/profil")}
+            onClick={() => router.push("/pedagang/nomer-stand")}
             className="mt-2 h-9 px-5 rounded-full text-sm font-medium text-white bg-[#00288e] hover:bg-[#1e40af] transition-colors"
           >
-            Kembali ke Profil
+            Kembali ke Event Saya
           </button>
         </div>
       </div>
@@ -298,9 +341,15 @@ export default function MerchantCheckoutPage() {
         <div className="max-w-[420px] w-full bg-white rounded-xl border border-[#E2E8F0] shadow-sm p-6 text-center flex flex-col items-center gap-3">
           <AlertTriangle className="w-8 h-8 text-amber-500" />
           <p className="text-sm text-[#0b1c30]">
-            Kamu belum check-in hari ini. Minta petugas untuk scan QR kamu terlebih dahulu
-            sebelum bisa cek-out.
+            Kamu belum check-in di event mana pun. Minta petugas memindai QR di kartu event kamu terlebih
+            dahulu sebelum bisa cek-out.
           </p>
+          <button
+            onClick={() => router.push("/pedagang/nomer-stand")}
+            className="mt-2 h-9 px-5 rounded-full text-sm font-medium text-white bg-[#00288e] hover:bg-[#1e40af] transition-colors"
+          >
+            Ke Event Saya
+          </button>
         </div>
       </div>
     );
@@ -312,8 +361,10 @@ export default function MerchantCheckoutPage() {
         <div className="max-w-[600px] mx-auto flex items-center justify-between gap-4">
           <div className="flex-1 text-center">
             <h1 className="text-xl font-bold text-[#0b1c30]">Cek-out Pedagang</h1>
+            <p className="text-sm font-semibold text-[#00288e]">{dataPedagang.namaEvent}</p>
             <p className="text-sm text-[#5b5e6d]">
-              Selesaikan sesi jualan hari ini dengan mencatat total pendapatan kotor.
+              {formatTanggal(dataPedagang.tanggal)} · {dataPedagang.jamMulai.replace(":", ".")} –{" "}
+              {dataPedagang.jamSelesai.replace(":", ".")} WIB
             </p>
           </div>
         </div>
@@ -321,6 +372,16 @@ export default function MerchantCheckoutPage() {
 
       <main className="flex-1 overflow-y-auto p-4 md:p-6 flex justify-center bg-[#f8f9ff]">
         <form onSubmit={handleSubmit} className="w-full max-w-[600px] flex flex-col gap-4">
+          {dataPedagang.wajibCheckout && (
+            <div role="alert" className="flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 p-4">
+              <AlertTriangle className="w-5 h-5 shrink-0 text-amber-500" />
+              <p className="text-sm text-amber-800">
+                Event ini sudah selesai tapi kamu belum cek-out. Isi omset dulu supaya kamu bisa ikut dan check-in di event
+                berikutnya.
+              </p>
+            </div>
+          )}
+
           <div className="bg-white rounded-xl border border-[#E2E8F0] shadow-[0_2px_10px_-4px_rgba(11,28,48,0.08)] p-4">
             <div className="flex items-center gap-2 mb-3">
               <MapPin className="w-4 h-4 text-[#00288e]" />
@@ -335,7 +396,11 @@ export default function MerchantCheckoutPage() {
                 <label className="block text-xs font-semibold text-[#00288e] mb-1">Nama Jalan</label>
                 <input type="text" value={dataPedagang.namaJalan} readOnly placeholder="-" className="w-full h-9 px-3 rounded-lg border border-[#c9d6f5] bg-[#eaf0ff] text-sm cursor-not-allowed" />
               </div>
-              <div className="md:col-span-2 max-w-[200px]">
+              <div>
+                <label className="block text-xs font-semibold text-[#00288e] mb-1">Ruas</label>
+                <input type="text" value={dataPedagang.namaRuas} readOnly placeholder="-" className="w-full h-9 px-3 rounded-lg border border-[#c9d6f5] bg-[#eaf0ff] text-sm cursor-not-allowed" />
+              </div>
+              <div>
                 <label className="block text-xs font-semibold text-[#00288e] mb-1">Nomor Stan</label>
                 <input type="text" value={dataPedagang.nomorStan} readOnly placeholder="-" className="w-full h-9 px-3 rounded-lg border border-[#c9d6f5] bg-[#eaf0ff] text-sm font-medium cursor-not-allowed" />
               </div>
@@ -391,11 +456,11 @@ export default function MerchantCheckoutPage() {
           <div className="bg-[#eff4ff] rounded-xl border border-[#dbe4ff] p-4">
             <div className="flex items-center gap-2 mb-3">
               <Wallet className="w-4 h-4 text-[#00288e]" />
-              <h2 className="font-semibold text-[#0b1c30] text-base">Laporan Akhir Sesi</h2>
+              <h2 className="font-semibold text-[#0b1c30] text-base">Laporan Akhir Event</h2>
             </div>
             <div className="flex flex-col gap-1.5">
               <label htmlFor="omset" className="text-sm font-semibold text-[#0b1c30]">
-                Total Omset Hari Ini (Rp)
+                Total Omset Event Ini (Rp)
               </label>
               <div className="relative">
                 <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">

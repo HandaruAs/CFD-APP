@@ -12,6 +12,12 @@
 // Mode "Tambah Titik" (prop `sesi` diisi): form data sesi disembunyikan, cuma
 // cakupan + acak, untuk menambah titik lokasi ke sesi yang sudah ada.
 //
+// Kuota PER EVENT: admin mengisi kuota sesi (mis. 50) dan jatah pedagang
+// lama (mis. 20); jatah pedagang baru = sisanya (30). Setiap titik lokasi
+// punya kapasitas fisik (dari kuota ruas di Manajemen Lapak). Sesi baru bisa
+// diterbitkan kalau total kapasitas titiknya >= kuota sesi -- kalau kurang,
+// sesi tetap tersimpan sebagai draft dan admin bisa mengacak titik tambahan.
+//
 // Cakupan boleh lebih dari satu kecamatan / jalan / ruas sekaligus.
 // Nomor stan TIDAK dibuat di sini -- nomor diacak saat pedagang ikut sesi.
 
@@ -19,7 +25,15 @@ import { useMemo, useState } from "react";
 import { ChevronDown, ChevronUp, Info, Landmark, Loader2, MapPin, Milestone, Route, Search, Shuffle, X } from "lucide-react";
 import type { KecamatanLengkapData } from "../../manajemen-lapak/types";
 import TimeStepper from "./TimeStepper";
-import { apiEvent, todayISO, type Cakupan, type HasilAcakLokasi, type SesiEvent } from "./sesi-utils";
+import {
+  ApiEventError,
+  apiEvent,
+  todayISO,
+  type Cakupan,
+  type HasilAcakLokasi,
+  type SesiEvent,
+  type TitikLokasi,
+} from "./sesi-utils";
 
 interface Props {
   wilayah: KecamatanLengkapData[];
@@ -52,13 +66,14 @@ export default function TambahSesiModal({ wilayah, sesi, onClose, onSaved }: Pro
   const [pendaftaranBuka, setPendaftaranBuka] = useState("");
   const [pendaftaranTutup, setPendaftaranTutup] = useState("");
   const [lepasKuota, setLepasKuota] = useState("");
+  const [kuotaTotal, setKuotaTotal] = useState("");
+  const [kuotaLama, setKuotaLama] = useState("0");
 
   // --- cakupan acak ---
   const [cakupan, setCakupan] = useState<Cakupan>("kota");
   const [pilihan, setPilihan] = useState<Record<Cakupan, string[]>>({ kota: [], kecamatan: [], jalan: [], ruas: [] });
   const [cari, setCari] = useState("");
   const [jumlahTitik, setJumlahTitik] = useState("0");
-  const [persenLama, setPersenLama] = useState("50");
 
   // --- proses ---
   const [menyimpan, setMenyimpan] = useState(false);
@@ -69,8 +84,35 @@ export default function TambahSesiModal({ wilayah, sesi, onClose, onSaved }: Pro
   // hasil acak yang sudah tersimpan tapi sesi belum berhasil diterbitkan
   // (supaya "Coba Lagi" tidak mengacak dua kali)
   const [acakTersimpan, setAcakTersimpan] = useState<HasilAcakLokasi | null>(null);
+  // semua titik yang sudah ditambahkan selama modal ini terbuka
+  const [titikTerkumpul, setTitikTerkumpul] = useState<TitikLokasi[]>([]);
+  const [scopeTerakhir, setScopeTerakhir] = useState("");
 
   const kecamatanList = useMemo(() => wilayah.filter((k) => k.kecamatanId), [wilayah]);
+
+  // Perkiraan jumlah tempat di cakupan terpilih (kalau semua ruasnya diambil).
+  // Cuma panduan: ruas yang sudah dipakai sesi lain yang jamnya bentrok
+  // tidak ikut diacak, jadi hasil sebenarnya bisa lebih kecil.
+  const perkiraanTempat = useMemo(() => {
+    const dipilih = new Set(pilihan[cakupan]);
+    let total = 0;
+    for (const k of wilayah) {
+      for (const j of k.jalan ?? []) {
+        for (const r of j.ruas ?? []) {
+          const masuk =
+            cakupan === "kota" ||
+            (cakupan === "kecamatan" && !!k.kecamatanId && dipilih.has(k.kecamatanId)) ||
+            (cakupan === "jalan" && dipilih.has(j.id)) ||
+            (cakupan === "ruas" && dipilih.has(r.id));
+          if (masuk) total += r.kuota;
+        }
+      }
+    }
+    return total;
+  }, [wilayah, cakupan, pilihan]);
+  const kuotaTotalAngka = parseInt(kuotaTotal, 10) || 0;
+  const kuotaLamaAngka = parseInt(kuotaLama, 10) || 0;
+  const tempatTerkumpul = titikTerkumpul.reduce((n, t) => n + t.kapasitas, 0);
   const q = cari.trim().toLowerCase();
   const cocok = (...teks: string[]) => !q || teks.some((t) => t.toLowerCase().includes(q));
   const terpilih = new Set(pilihan[cakupan]);
@@ -99,13 +141,15 @@ export default function TambahSesiModal({ wilayah, sesi, onClose, onSaved }: Pro
       if (new Date(`${tanggal}T${jamSelesai}:00`).getTime() <= Date.now()) {
         return "Jam selesai sesi ini sudah lewat. Pilih tanggal atau jam selesai yang akan datang.";
       }
+      const total = parseInt(kuotaTotal, 10);
+      const lama = parseInt(kuotaLama, 10);
+      if (isNaN(total) || total < 1) return "Isi kuota sesi, minimal 1.";
+      if (isNaN(lama) || lama < 0 || lama > total) return "Jatah pedagang lama harus antara 0 dan kuota sesi.";
     }
     if (acakTersimpan) return null; // tinggal menerbitkan
     if (cakupan !== "kota" && pilihan[cakupan].length === 0) return `Pilih minimal satu ${LABEL_CAKUPAN[cakupan]}.`;
     const jumlah = parseInt(jumlahTitik, 10);
     if (isNaN(jumlah) || jumlah < 0) return "Jumlah titik harus 0 atau lebih (0 = semua).";
-    const persen = parseInt(persenLama, 10);
-    if (isNaN(persen) || persen < 0 || persen > 100) return "Porsi kuota pedagang lama harus 0 sampai 100.";
     return null;
   }
 
@@ -130,6 +174,8 @@ export default function TambahSesiModal({ wilayah, sesi, onClose, onSaved }: Pro
             pendaftaranBukaAt: pendaftaranBuka || null,
             pendaftaranTutupAt: pendaftaranTutup || null,
             lepasKuotaAt: lepasKuota || null,
+            kuotaTotal: parseInt(kuotaTotal, 10),
+            kuotaLama: parseInt(kuotaLama, 10),
           }),
         });
         id = res.data.id;
@@ -142,7 +188,6 @@ export default function TambahSesiModal({ wilayah, sesi, onClose, onSaved }: Pro
         const body: Record<string, unknown> = {
           scope: cakupan,
           jumlahTitik: parseInt(jumlahTitik, 10),
-          persenLama: parseInt(persenLama, 10),
         };
         if (cakupan === "kecamatan") body.kecamatanIds = pilihan.kecamatan;
         if (cakupan === "jalan") body.jalanIds = pilihan.jalan;
@@ -153,6 +198,9 @@ export default function TambahSesiModal({ wilayah, sesi, onClose, onSaved }: Pro
         });
         acakData = acak.data;
         setAcakTersimpan(acakData);
+        const baru = acakData.ditambahkan;
+        setTitikTerkumpul((t) => [...t, ...baru]);
+        setScopeTerakhir(acakData.scopeLabel);
       }
 
       // 3. Terbitkan (sesi baru, atau sesi lama yang masih draft)
@@ -165,11 +213,18 @@ export default function TambahSesiModal({ wilayah, sesi, onClose, onSaved }: Pro
       setHasil(acakData);
     } catch (err) {
       const pesanErr = err instanceof Error ? err.message : "Gagal menyimpan sesi.";
-      setError(
-        id && !modeTambahTitik
-          ? `${pesanErr} Sesi sudah tersimpan sebagai draft -- ubah cakupan lalu klik "Coba Lagi".`
-          : pesanErr,
-      );
+      if (err instanceof ApiEventError && err.code === "KAPASITAS_KURANG") {
+        // Titik sudah tersimpan tapi tempatnya belum cukup untuk kuota:
+        // acak berikutnya MENAMBAH titik, lalu sesi dicoba diterbitkan lagi.
+        setAcakTersimpan(null);
+        setError(`${pesanErr}. Sesi tersimpan sebagai draft -- pilih cakupan tambahan lalu klik "Acak Titik Tambahan".`);
+      } else {
+        setError(
+          id && !modeTambahTitik
+            ? `${pesanErr} Sesi sudah tersimpan sebagai draft -- ubah cakupan lalu klik "Coba Lagi".`
+            : pesanErr,
+        );
+      }
     } finally {
       setMenyimpan(false);
     }
@@ -210,17 +265,17 @@ export default function TambahSesiModal({ wilayah, sesi, onClose, onSaved }: Pro
           <div className="flex items-center justify-between border-b border-outline-variant px-lg py-md">
             <div>
               <h2 className="text-title-lg text-on-surface">{modeTambahTitik ? "Titik Lokasi Ditambahkan" : "Sesi Tersimpan"}</h2>
-              <p className="text-body-sm text-on-surface-variant">Cakupan {hasil.scopeLabel}</p>
+              <p className="text-body-sm text-on-surface-variant">Cakupan terakhir: {scopeTerakhir || hasil.scopeLabel}</p>
             </div>
           </div>
           <div className="min-h-0 flex-1 overflow-y-auto px-lg py-md">
             <p className="text-body-md text-on-surface-variant">
-              <strong className="text-on-surface">{hasil.ditambahkan.length} titik</strong> terpilih acak dari{" "}
-              {hasil.jumlahKandidat} ruas yang tersedia.{" "}
-              {modeTambahTitik ? "" : "Sesi sudah diterbitkan dan terlihat oleh pedagang."}
+              <strong className="text-on-surface">{titikTerkumpul.length} titik</strong> ditambahkan, total{" "}
+              <strong className="text-on-surface">{tempatTerkumpul} tempat</strong>.{" "}
+              {modeTambahTitik && sesi?.status !== "draft" ? "" : "Sesi sudah diterbitkan dan terlihat oleh pedagang."}
             </p>
             <ul className="mt-sm divide-y divide-outline-variant/50 rounded-xl border border-outline-variant">
-              {hasil.ditambahkan.map((t) => (
+              {titikTerkumpul.map((t) => (
                 <li key={t.id} className="flex items-center justify-between gap-sm px-md py-sm">
                   <div className="min-w-0">
                     <p className="text-body-md font-medium text-on-surface">
@@ -228,9 +283,7 @@ export default function TambahSesiModal({ wilayah, sesi, onClose, onSaved }: Pro
                     </p>
                     <p className="text-label-sm text-on-surface-variant">{t.namaKecamatan ? `Kec. ${t.namaKecamatan}` : "-"}</p>
                   </div>
-                  <p className="shrink-0 text-label-sm tabular-nums text-on-surface-variant">
-                    Lama {t.kuotaLama} · Baru {t.kuotaBaru}
-                  </p>
+                  <p className="shrink-0 text-label-sm tabular-nums text-on-surface-variant">{t.kapasitas} tempat</p>
                 </li>
               ))}
             </ul>
@@ -241,8 +294,8 @@ export default function TambahSesiModal({ wilayah, sesi, onClose, onSaved }: Pro
               onClick={() =>
                 onSaved(
                   modeTambahTitik
-                    ? `✅ ${hasil.ditambahkan.length} titik ditambahkan ke "${sesi?.nama}".`
-                    : `✅ Sesi "${namaSesi.trim()}" tersimpan dengan ${hasil.ditambahkan.length} titik lokasi.`,
+                    ? `✅ ${titikTerkumpul.length} titik ditambahkan ke "${sesi?.nama}".`
+                    : `✅ Sesi "${namaSesi.trim()}" diterbitkan dengan ${titikTerkumpul.length} titik lokasi.`,
                 )
               }
               className="pt-btn pt-btn-primary"
@@ -310,6 +363,36 @@ export default function TambahSesiModal({ wilayah, sesi, onClose, onSaved }: Pro
                     </Field>
                   </div>
                   <p className="mt-sm text-label-sm text-on-surface-variant">Sesi otomatis mulai dan selesai sesuai jam ini.</p>
+
+                  {/* Kuota sesi */}
+                  <div className="mt-md grid grid-cols-1 gap-md sm:grid-cols-2">
+                    <Field label="Kuota sesi (jumlah pedagang)" htmlFor="sesi-kuota">
+                      <input
+                        id="sesi-kuota"
+                        type="number"
+                        min={1}
+                        value={kuotaTotal}
+                        onChange={(e) => setKuotaTotal(e.target.value)}
+                        placeholder="mis. 50"
+                        className="pt-input"
+                      />
+                    </Field>
+                    <Field label="Jatah pedagang lama" htmlFor="sesi-kuota-lama">
+                      <input
+                        id="sesi-kuota-lama"
+                        type="number"
+                        min={0}
+                        value={kuotaLama}
+                        onChange={(e) => setKuotaLama(e.target.value)}
+                        className="pt-input"
+                      />
+                    </Field>
+                  </div>
+                  <p className="mt-xs text-label-sm text-on-surface-variant">
+                    Jatah pedagang baru:{" "}
+                    <strong className="text-on-surface">{Math.max(0, kuotaTotalAngka - kuotaLamaAngka)}</strong>
+                    {kuotaTotalAngka > 0 && ` dari ${kuotaTotalAngka}`}.
+                  </p>
 
                   {/* Pendaftaran pedagang -- opsional */}
                   <div className="mt-md rounded-xl border border-outline-variant">
@@ -478,20 +561,16 @@ export default function TambahSesiModal({ wilayah, sesi, onClose, onSaved }: Pro
                     />
                     <p className="mt-xs text-label-sm text-on-surface-variant">0 = semua ruas yang tersedia di cakupan.</p>
                   </Field>
-                  <Field label="Porsi kuota pedagang lama (%)" htmlFor="sesi-persen">
-                    <input
-                      id="sesi-persen"
-                      type="number"
-                      min={0}
-                      max={100}
-                      value={persenLama}
-                      onChange={(e) => setPersenLama(e.target.value)}
-                      className="pt-input"
-                    />
-                    <p className="mt-xs text-label-sm text-on-surface-variant">
-                      Sisanya ({Math.max(0, 100 - (parseInt(persenLama, 10) || 0))}%) untuk pedagang baru.
+                  <div className="rounded-xl bg-surface-container-low px-md py-sm">
+                    <p className="pt-field-label">Perkiraan tempat di cakupan ini</p>
+                    <p className="text-title-lg font-semibold tabular-nums text-on-surface">{perkiraanTempat} lapak</p>
+                    <p className="text-label-sm text-on-surface-variant">
+                      {titikTerkumpul.length > 0
+                        ? `Sudah ditambahkan: ${tempatTerkumpul} tempat.`
+                        : "Kalau semua ruasnya terambil."}
+                      {!modeTambahTitik && kuotaTotalAngka > 0 && ` Kuota sesi: ${kuotaTotalAngka}.`}
                     </p>
-                  </Field>
+                  </div>
                 </div>
 
                 <p className="mt-md flex items-start gap-1.5 text-label-sm text-on-surface-variant">
@@ -517,9 +596,11 @@ export default function TambahSesiModal({ wilayah, sesi, onClose, onSaved }: Pro
                 ? "Mengacak..."
                 : modeTambahTitik
                   ? "Acak & Tambahkan"
-                  : sesiIdTerbuat
-                    ? "Coba Lagi"
-                    : "Simpan & Acak Lokasi"}
+                  : sesiIdTerbuat && !acakTersimpan && titikTerkumpul.length > 0
+                    ? "Acak Titik Tambahan"
+                    : sesiIdTerbuat
+                      ? "Coba Lagi"
+                      : "Simpan & Acak Lokasi"}
             </button>
           </div>
         </form>

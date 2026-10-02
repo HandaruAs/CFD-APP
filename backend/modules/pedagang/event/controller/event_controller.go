@@ -4,6 +4,7 @@ import (
 	"errors"
 	"log"
 
+	"cfd-backend/modules/pedagang/event/entity"
 	"cfd-backend/modules/pedagang/event/repository"
 	"cfd-backend/modules/pedagang/event/usecase"
 	"cfd-backend/modules/shared/eventaturan"
@@ -21,7 +22,18 @@ func NewEventController(uc usecase.EventUsecase) *EventController {
 
 func mapError(c fiber.Ctx, err error) error {
 	var bentrok *repository.ErrJadwalBentrok
+	var belumCheckout *repository.ErrBelumCheckout
 	switch {
+	case errors.As(err, &belumCheckout):
+		return c.Status(fiber.StatusConflict).JSON(fiber.Map{"error": belumCheckout.Error(), "code": "BELUM_CHECKOUT"})
+	case errors.Is(err, repository.ErrBelumCheckIn):
+		return c.Status(fiber.StatusConflict).JSON(fiber.Map{"error": err.Error(), "code": "BELUM_CHECK_IN"})
+	case errors.Is(err, repository.ErrSudahCheckout):
+		return c.Status(fiber.StatusConflict).JSON(fiber.Map{"error": err.Error(), "code": "SUDAH_CHECKOUT"})
+	case errors.Is(err, repository.ErrEventBelumSelesai):
+		return c.Status(fiber.StatusConflict).JSON(fiber.Map{"error": err.Error(), "code": "EVENT_BELUM_SELESAI"})
+	case errors.Is(err, repository.ErrOmsetTidakValid):
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": err.Error(), "code": "OMSET_TIDAK_VALID"})
 	case errors.As(err, &bentrok):
 		return c.Status(fiber.StatusConflict).JSON(fiber.Map{"error": bentrok.Error(), "code": "JADWAL_BENTROK"})
 	case errors.Is(err, repository.ErrBelumPunyaProfil):
@@ -107,4 +119,37 @@ func (ctrl *EventController) ListSaya(c fiber.Ctx) error {
 		return mapError(c, err)
 	}
 	return c.JSON(fiber.Map{"data": list})
+}
+
+// DataCheckout - GET /api/pedagang/events/checkout
+// data: event yang perlu di-checkout (atau checkout terakhir hari ini),
+// atau null kalau tidak ada.
+func (ctrl *EventController) DataCheckout(c fiber.Ctx) error {
+	uid, ok := userID(c)
+	if !ok {
+		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "unauthorized"})
+	}
+	d, err := ctrl.usecase.DataCheckout(c.Context(), uid)
+	if err != nil {
+		return mapError(c, err)
+	}
+	return c.JSON(fiber.Map{"data": d})
+}
+
+// Checkout - POST /api/pedagang/events/:id/checkout
+// body: {"omset": 250000}
+func (ctrl *EventController) Checkout(c fiber.Ctx) error {
+	uid, ok := userID(c)
+	if !ok {
+		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "unauthorized"})
+	}
+	var req entity.CheckoutRequest
+	if err := c.Bind().Body(&req); err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "format request tidak valid"})
+	}
+	d, err := ctrl.usecase.Checkout(c.Context(), uid, c.Params("id"), req.Omset)
+	if err != nil {
+		return mapError(c, err)
+	}
+	return c.JSON(fiber.Map{"message": "checkout berhasil, terima kasih sudah berjualan", "data": d})
 }
