@@ -41,6 +41,7 @@ type PedagangItem = {
   lokasi: string;
   status: string;
   statusPedagang: "lama" | "baru";
+  avatarUrl?: string | null;
 };
 
 type Kecamatan = {
@@ -523,9 +524,15 @@ export default function ManajemenUserPedagangPage() {
                   <tr key={it.pedagangId}>
                     <td className="px-lg py-sm">
                       <div className="flex items-center gap-sm">
-                        <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-primary/10 text-label-md font-semibold text-primary">
-                          {inisial(it.namaLengkap)}
-                        </span>
+                      <span className="flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-full bg-primary/10 text-label-md font-semibold text-primary">
+    
+    {it.avatarUrl ? (
+    // eslint-disable-next-line @next/next/no-img-element
+    <img src={`${API_URL}${it.avatarUrl}`} alt={it.namaLengkap} className="h-full w-full object-cover" />
+  ) : (
+    inisial(it.namaLengkap)
+  )}
+</span>
                         <div className="min-w-0">
                           <p className="truncate text-body-md font-semibold text-on-surface">{it.namaLengkap}</p>
                           <p className="truncate text-label-sm font-normal text-on-surface-variant">{it.email}</p>
