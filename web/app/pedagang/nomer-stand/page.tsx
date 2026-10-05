@@ -73,6 +73,7 @@ type Keikutsertaan = {
   namaJalan: string;
   namaRuas: string;
   nomor: number;
+  kodeStan: string; // nomor stan yang ditampilkan, mis. "CFD-012361"
   kategori: "lama" | "baru";
   kuotaDipakai: "lama" | "baru";
   status: StatusPeserta;
@@ -483,7 +484,7 @@ export default function EventDanNomorStanPage() {
                       <div className="min-w-0">
                         <p className="truncate text-[13px] font-medium text-[#1a1d29]">{k.namaEvent}</p>
                         <p className="text-[12px] text-[#767884]">
-                          {formatTanggal(k.tanggal)} · {k.namaJalan} · {k.namaRuas} · No. {k.nomor}
+                          {formatTanggal(k.tanggal)} · {k.namaJalan} · {k.namaRuas} · {k.kodeStan}
                         </p>
                       </div>
                       <span
@@ -704,7 +705,7 @@ export default function EventDanNomorStanPage() {
             <h3 className="mt-3 text-[16px] font-bold text-[#1a1d29]">Kamu Terdaftar!</h3>
             <p className="text-[12.5px] text-[#767884]">{hasilIkut.namaEvent}</p>
             <p className="mt-4 text-[10.5px] font-semibold uppercase tracking-wide text-[#00288e]">Nomor Stan</p>
-            <p className="text-[40px] font-bold leading-none text-[#00288e]">{hasilIkut.nomor}</p>
+            <p className="text-[34px] font-bold leading-none tracking-tight text-[#00288e]">{hasilIkut.kodeStan}</p>
             <p className="mt-2 text-[13px] font-medium text-[#1a1d29]">
               {hasilIkut.namaJalan} · {hasilIkut.namaRuas}
             </p>
@@ -726,7 +727,7 @@ export default function EventDanNomorStanPage() {
             <p className="text-[12.5px] text-[#767884] mt-1">{konfirmasiBatal.namaEvent}</p>
           </div>
           <div className="px-5 py-4 text-[12.5px] text-[#4b4d5a]">
-            Nomor stan <strong>{konfirmasiBatal.nomor}</strong> di {konfirmasiBatal.namaJalan} · {konfirmasiBatal.namaRuas} akan
+            Nomor stan <strong>{konfirmasiBatal.kodeStan}</strong> di {konfirmasiBatal.namaJalan} · {konfirmasiBatal.namaRuas} akan
             dilepas, dan kamu <strong>tidak bisa ikut event ini lagi</strong>.
             {errorAksi && <p className="mt-2 text-[#ba1a1a]">{errorAksi}</p>}
           </div>
@@ -772,7 +773,7 @@ function KartuEventSaya({ k, onBatal }: { k: Keikutsertaan; onBatal: () => void 
           </p>
 
           <p className="mt-4 text-[10.5px] font-semibold uppercase tracking-wide text-[#00288e]">Nomor Stan</p>
-          <p className="text-[36px] font-bold leading-none text-[#00288e]">{k.nomor}</p>
+          <p className="text-[30px] font-bold leading-none tracking-tight text-[#00288e]">{k.kodeStan}</p>
 
           <div className="mt-4 flex flex-col gap-1.5">
             <Baris label="Kecamatan" value={k.namaKecamatan ?? "-"} />

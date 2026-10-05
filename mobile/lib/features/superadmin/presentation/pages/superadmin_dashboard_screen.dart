@@ -59,8 +59,15 @@ class SuperadminDashboardScreen extends ConsumerWidget {
               padding: const EdgeInsets.symmetric(horizontal: 16),
               child: Column(
                 children: [
-                  _SesiCard(sesi: d.sesi),
+                  _SesiCard(
+                    sesi: d.sesi,
+                    jumlahEvent: d.events.where((e) => e.status != 'dibatalkan').length,
+                  ),
                   const SizedBox(height: 12),
+                  if (d.events.length > 1) ...[
+                    _DaftarEventCard(events: d.events),
+                    const SizedBox(height: 12),
+                  ],
                   _LapakCard(lapak: d.lapak),
                   const SizedBox(height: 12),
                   _HadirCard(hadir: d.hadir),
@@ -245,7 +252,7 @@ String _labelSesi(String s) {
     case 'dibatalkan':
       return 'Dibatalkan';
     default:
-      return 'Belum Ada Sesi';
+      return 'Belum Ada Event';
   }
 }
 
@@ -313,7 +320,8 @@ class _Card extends StatelessWidget {
 
 class _SesiCard extends StatelessWidget {
   final SesiHariIni sesi;
-  const _SesiCard({required this.sesi});
+  final int jumlahEvent;
+  const _SesiCard({required this.sesi, this.jumlahEvent = 0});
 
   @override
   Widget build(BuildContext context) {
@@ -322,7 +330,7 @@ class _SesiCard extends StatelessWidget {
 
     return _Card(
       icon: Icons.event_available_rounded,
-      title: 'Sesi CFD Hari Ini',
+      title: jumlahEvent > 1 ? 'Event CFD Hari Ini · $jumlahEvent event' : 'Event CFD Hari Ini',
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -357,6 +365,68 @@ class _SesiCard extends StatelessWidget {
           ],
         ],
       ),
+    );
+  }
+}
+
+/// Daftar semua event hari ini -- muncul kalau ada lebih dari satu event,
+/// karena kartu di atasnya cuma meringkas.
+class _DaftarEventCard extends StatelessWidget {
+  final List<EventHariIni> events;
+  const _DaftarEventCard({required this.events});
+
+  @override
+  Widget build(BuildContext context) {
+    return _Card(
+      icon: Icons.view_list_rounded,
+      title: 'Daftar Event Hari Ini',
+      child: Column(
+        children: [
+          for (var i = 0; i < events.length; i++) ...[
+            if (i > 0) const Divider(height: 20),
+            _BarisEvent(e: events[i]),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+class _BarisEvent extends StatelessWidget {
+  final EventHariIni e;
+  const _BarisEvent({required this.e});
+
+  @override
+  Widget build(BuildContext context) {
+    final warna = _warnaSesi(e.status);
+    final label = e.status == 'berjalan' ? 'Berlangsung · sisa ${_sisaWaktu(e.sisaMenit)}' : _labelSesi(e.status);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Expanded(
+              child: Text(e.nama, style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600)),
+            ),
+            const SizedBox(width: 8),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+              decoration: BoxDecoration(
+                color: warna.withValues(alpha: 0.12),
+                borderRadius: BorderRadius.circular(20),
+              ),
+              child: Text(label, style: TextStyle(color: warna, fontWeight: FontWeight.w700, fontSize: 11.5)),
+            ),
+          ],
+        ),
+        const SizedBox(height: 4),
+        Text(
+          '${_jam(e.jamMulai)} – ${_jam(e.jamSelesai)} · ${e.klaim}/${e.kapasitas} pedagang · '
+          '${e.checkIn} hadir · ${e.checkOut} check-out',
+          style: const TextStyle(fontSize: 12.5, color: Colors.black54),
+        ),
+      ],
     );
   }
 }
@@ -419,7 +489,7 @@ class _HadirCard extends StatelessWidget {
       title: 'Kehadiran Pedagang',
       child: Row(
         children: [
-          _Stat('Klaim', hadir.klaim, Icons.bookmark_added_rounded,
+          _Stat('Ikut event', hadir.klaim, Icons.bookmark_added_rounded,
               const Color(0xFFB45309)),
           _Stat('Check-in', hadir.checkIn, Icons.login_rounded,
               const Color(0xFF15803D)),

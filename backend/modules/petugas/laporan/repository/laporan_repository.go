@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	"cfd-backend/modules/petugas/laporan/entity"
+	"cfd-backend/modules/shared/eventaturan"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -91,7 +92,7 @@ func (r *laporanRepository) GetKehadiranByDateRange(ctx context.Context, startDa
 			),
 			COALESCE(p.jenis_dagangan::text, ''),
 			-- "Jalan Darmo · Ruas 2 / No. 7 (CFD Genteng)"
-			mj.nama_jalan || ' · ' || r.nama_ruas || ' / No. ' || ep.nomor || ' (' || e.nama || ')',
+			mj.nama_jalan || ' · ' || r.nama_ruas || ' / ' || `+eventaturan.SQLKodeStan("ep.nomor")+` || ' (' || e.nama || ')',
 			COALESCE(TO_CHAR(ep.check_in_at AT TIME ZONE 'Asia/Jakarta', 'HH24:MI'), '-'),
 			TO_CHAR(ep.check_out_at AT TIME ZONE 'Asia/Jakarta', 'HH24:MI'),
 			ep.omset,
@@ -187,7 +188,7 @@ func (r *laporanRepository) GetDetailKehadiran(ctx context.Context, kehadiranID 
 				JOIN master_instansi mi ON mi.id = ji.instansi_id AND mi.deleted_at IS NULL
 				WHERE ji.jalan_id = mj.id
 			), ''),
-			ep.nomor::text,
+			`+eventaturan.SQLKodeStan("ep.nomor")+`,
 			COALESCE(p.lokasi_lapak, ''),
 			COALESCE(p.nama_usaha, ''),
 			COALESCE(p.jenis_dagangan::text, ''),
