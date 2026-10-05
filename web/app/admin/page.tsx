@@ -229,7 +229,6 @@ export default function AdminDashboardPage() {
         <>
           <Seksi judul="Hari Ini">
             <BagianHariIni data={data.hariIni} />
-            <DaftarEventHariIni events={data.hariIni.events ?? []} />
           </Seksi>
 
           <Seksi
@@ -353,19 +352,84 @@ const TAMPILAN_SESI: Record<StatusSesi, { label: string; kartu: string; ikon: Lu
   },
 };
 
+// Event yang dipilih otomatis (atau saat event pilihan admin sudah tidak
+// ada): berjalan > terjadwal paling awal > selesai paling akhir > dibatalkan.
+function pilihEventUtama(events: EventHariIni[]): EventHariIni | null {
+  const urutan: StatusSesi[] = ["berjalan", "terjadwal", "selesai", "dibatalkan"];
+  for (const st of urutan) {
+    const cocok = events.filter((e) => e.status === st);
+    if (cocok.length === 0) continue;
+    return st === "selesai" || st === "dibatalkan" ? cocok[cocok.length - 1] : cocok[0];
+  }
+  return null;
+}
+
+// Kondisi hari ini SELALU per satu event. Satu hari boleh punya beberapa
+// event (bahkan berjalan bersamaan), jadi status & sisa waktu, lapak terisi,
+// dan pedagang hadir diambil dari event yang dipilih admin -- tidak lagi
+// digabung dari semua event (ringkasan gabungan sesi/lapak/hadir dari
+// backend sengaja tidak dipakai di sini).
 function BagianHariIni({ data }: { data: DashboardData["hariIni"] }) {
-  const { sesi, lapak, hadir } = data;
+  const events = data.events ?? [];
+  // null = ikut pilihan otomatis; tetap dipertahankan walau data di-refresh.
+  const [pilihanId, setPilihanId] = useState<string | null>(null);
+  const ev = events.find((e) => e.id === pilihanId) ?? pilihEventUtama(events);
+
+  const status: StatusSesi = ev ? ev.status : "belum_ada";
+  const lapak = ev
+    ? { terisi: ev.klaim, kapasitas: ev.kapasitas, persen: persenAman(ev.klaim, ev.kapasitas) }
+    : { terisi: 0, kapasitas: 0, persen: 0 };
+  const hadir = ev ? { klaim: ev.klaim, checkIn: ev.checkIn, checkOut: ev.checkOut } : { klaim: 0, checkIn: 0, checkOut: 0 };
   // Klaim bisa berubah jadi "batal" kalau sesi sempat ditutup, sementara
   // pedagangnya sudah check-in -- penyebut minimal = jumlah check-in supaya
   // tidak tampil "1 / 0".
   const penyebutHadir = Math.max(hadir.klaim, hadir.checkIn);
   const belumCheckout = Math.max(0, hadir.checkIn - hadir.checkOut);
-  const tampilan = TAMPILAN_SESI[sesi.status] ?? TAMPILAN_SESI.belum_ada;
+  const tampilan = TAMPILAN_SESI[status] ?? TAMPILAN_SESI.belum_ada;
   const IkonSesi = tampilan.ikon;
-  const gelap = sesi.status === "berjalan";
-  const jumlahEvent = (data.events ?? []).filter((e) => e.status !== "dibatalkan").length;
+  const gelap = status === "berjalan";
 
   return (
+    <div className="flex flex-col gap-md">
+      {/* Pilih event -- muncul kalau hari ini lebih dari satu event. Semua
+          kartu di bawahnya mengikuti event yang dipilih di sini. */}
+      {events.length > 1 && (
+        <Kartu>
+          <JudulKartu icon={CalendarClock} judul="Pilih event yang ingin dipantau" keterangan={`${events.length} event hari ini`} />
+          <div role="tablist" aria-label="Event hari ini" className="mt-md grid grid-cols-1 gap-sm sm:grid-cols-2 xl:grid-cols-3">
+            {events.map((e) => {
+              const aktif = e.id === ev?.id;
+              const st = LABEL_STATUS_EVENT[e.status] ?? LABEL_STATUS_EVENT.belum_ada;
+              return (
+                <button
+                  key={e.id}
+                  type="button"
+                  role="tab"
+                  aria-selected={aktif}
+                  onClick={() => setPilihanId(e.id)}
+                  className={`flex min-h-[64px] flex-col items-start gap-1 rounded-xl border px-md py-sm text-left transition-colors ${
+                    aktif
+                      ? "border-primary bg-primary/10 shadow-[inset_3px_0_0_var(--color-primary)]"
+                      : "border-outline-variant bg-surface-container-lowest hover:bg-surface-container-low"
+                  }`}
+                >
+                  <span className="flex w-full items-center justify-between gap-sm">
+                    <span className="truncate text-body-md font-medium text-on-surface">{e.nama}</span>
+                    <span className={`pt-pill ${st.pill} shrink-0 py-0.5`}>
+                      <span className={`pt-pill-dot ${e.status === "berjalan" ? "is-pulse" : ""}`} />
+                      {st.label}
+                    </span>
+                  </span>
+                  <span className="text-label-sm tabular-nums text-on-surface-variant">
+                    {e.jamMulai} – {e.jamSelesai} · {e.checkIn}/{e.klaim} hadir · {formatRupiah(e.omset)}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+        </Kartu>
+      )}
+
     <div className="grid grid-cols-1 gap-md lg:grid-cols-3">
       {/* Status sesi */}
       <div
@@ -377,20 +441,20 @@ function BagianHariIni({ data }: { data: DashboardData["hariIni"] }) {
           </span>
           <div className="min-w-0">
             <p className={`text-label-md ${gelap ? "text-on-primary/80" : "text-on-surface-variant"}`}>
-              Event CFD{jumlahEvent > 1 ? ` · ${jumlahEvent} event hari ini` : ""}
+              Event CFD
             </p>
             <p className="mt-1 text-headline-md">{tampilan.label}</p>
-            {sesi.namaSesi && (
+            {ev && (
               <p className={`mt-1 truncate text-body-sm ${gelap ? "text-on-primary/80" : "text-on-surface-variant"}`}>
-                {sesi.namaSesi}
+                {ev.nama}
               </p>
             )}
           </div>
         </div>
         <p className={`text-body-sm ${gelap ? "text-on-primary/90" : "text-on-surface-variant"}`}>
-          {sesi.jamMulai
-            ? `Pukul ${sesi.jamMulai} – ${sesi.jamSelesai ?? "selesai"}${
-                sesi.status === "berjalan" ? ` · berakhir ${formatSisaWaktu(sesi.sisaMenit)}` : ""
+          {ev
+            ? `Pukul ${ev.jamMulai} – ${ev.jamSelesai}${
+                ev.status === "berjalan" ? ` · berakhir ${formatSisaWaktu(ev.sisaMenit)}` : ""
               }`
             : ""}
         </p>
@@ -400,7 +464,7 @@ function BagianHariIni({ data }: { data: DashboardData["hariIni"] }) {
       <Kartu className="flex flex-col justify-between gap-md">
         <div className="flex items-start justify-between gap-sm">
           <div>
-            <p className="text-label-md text-on-surface-variant">Lapak Terisi</p>
+            <p className="text-label-md text-on-surface-variant">Lapak Terisi di Event Ini</p>
             <p className="mt-1 text-display-lg leading-none tabular-nums text-on-surface">
               {lapak.terisi}
               <span className="text-headline-md text-on-surface-variant"> / {lapak.kapasitas}</span>
@@ -427,7 +491,7 @@ function BagianHariIni({ data }: { data: DashboardData["hariIni"] }) {
       <Kartu className="flex flex-col justify-between gap-md">
         <div className="flex items-start justify-between gap-sm">
           <div>
-            <p className="text-label-md text-on-surface-variant">Pedagang Hadir</p>
+            <p className="text-label-md text-on-surface-variant">Pedagang Hadir di Event Ini</p>
             <p className="mt-1 text-display-lg leading-none tabular-nums text-on-surface">
               {hadir.checkIn}
               <span className="text-headline-md text-on-surface-variant"> / {penyebutHadir}</span>
@@ -441,19 +505,20 @@ function BagianHariIni({ data }: { data: DashboardData["hariIni"] }) {
           <BatangProgres persen={persenAman(hadir.checkIn, penyebutHadir)} warna="bg-secondary" />
           <p className="mt-sm text-body-sm text-on-surface-variant">
             {penyebutHadir === 0
-              ? "Belum ada pedagang yang ikut event hari ini."
+              ? ev
+                ? "Belum ada pedagang yang ikut event ini."
+                : "Belum ada event hari ini."
               : `${hadir.checkOut} sudah check-out${belumCheckout > 0 ? ` · ${belumCheckout} masih di lapak` : ""}`}
           </p>
         </div>
       </Kartu>
 
     </div>
+    </div>
   );
 }
 
-
-// Daftar semua event hari ini -- muncul kalau ada lebih dari satu event,
-// karena kartu di atas cuma meringkas.
+// Label status event di tombol pilihan event.
 const LABEL_STATUS_EVENT: Record<StatusSesi, { label: string; pill: string }> = {
   berjalan: { label: "Berjalan", pill: "pt-pill-success" },
   terjadwal: { label: "Terjadwal", pill: "pt-pill-warning" },
@@ -462,55 +527,6 @@ const LABEL_STATUS_EVENT: Record<StatusSesi, { label: string; pill: string }> = 
   belum_ada: { label: "-", pill: "pt-pill-neutral" },
 };
 
-function DaftarEventHariIni({ events }: { events: EventHariIni[] }) {
-  if (events.length <= 1) return null;
-  return (
-    <Kartu>
-      <JudulKartu icon={CalendarClock} judul="Event Hari Ini" keterangan={`${events.length} event`} />
-      <div className="mt-md overflow-x-auto">
-        <table className="w-full text-left">
-          <thead>
-            <tr className="border-b border-outline-variant text-label-sm text-on-surface-variant">
-              <th className="px-sm py-sm font-medium">Event</th>
-              <th className="px-sm py-sm font-medium">Jam</th>
-              <th className="px-sm py-sm text-right font-medium">Lapak</th>
-              <th className="px-sm py-sm text-right font-medium">Hadir</th>
-              <th className="px-sm py-sm text-right font-medium">Check-out</th>
-              <th className="px-sm py-sm text-right font-medium">Omset</th>
-            </tr>
-          </thead>
-          <tbody>
-            {events.map((e) => {
-              const st = LABEL_STATUS_EVENT[e.status] ?? LABEL_STATUS_EVENT.belum_ada;
-              return (
-                <tr key={e.id} className="border-b border-outline-variant last:border-0">
-                  <td className="px-sm py-sm">
-                    <p className="text-body-md font-medium text-on-surface">{e.nama}</p>
-                    <span className={`pt-pill ${st.pill} mt-0.5 py-0.5`}>
-                      <span className={`pt-pill-dot ${e.status === "berjalan" ? "is-pulse" : ""}`} />
-                      {st.label}
-                      {e.status === "berjalan" && ` · ${formatSisaWaktu(e.sisaMenit)}`}
-                    </span>
-                  </td>
-                  <td className="whitespace-nowrap px-sm py-sm text-body-sm tabular-nums text-on-surface-variant">
-                    {e.jamMulai} – {e.jamSelesai}
-                  </td>
-                  <td className="px-sm py-sm text-right text-body-sm tabular-nums text-on-surface">
-                    {e.klaim} / {e.kapasitas}
-                    <span className="block text-label-sm text-on-surface-variant">{e.titik} titik</span>
-                  </td>
-                  <td className="px-sm py-sm text-right text-body-sm tabular-nums text-on-surface">{e.checkIn}</td>
-                  <td className="px-sm py-sm text-right text-body-sm tabular-nums text-on-surface">{e.checkOut}</td>
-                  <td className="px-sm py-sm text-right text-body-sm tabular-nums text-on-surface">{formatRupiah(e.omset)}</td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
-      </div>
-    </Kartu>
-  );
-}
 
 function BatangProgres({ persen, warna = "bg-primary" }: { persen: number; warna?: string }) {
   return (

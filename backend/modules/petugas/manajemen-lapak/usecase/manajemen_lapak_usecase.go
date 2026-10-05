@@ -245,18 +245,20 @@ func (u *manajemenLapakUsecase) GetKuotaEvent(ctx context.Context, eventID strin
 // validasiRuasInput -- tag `validate:"..."` di entity gak pernah
 // dijalankan (Fiber belum dikasih StructValidator di main.go), jadi
 // batasan dasarnya dicek manual di sini.
-func validasiRuasInput(namaRuas string, kuota int) error {
+//
+// Kuota ruas TIDAK lagi diisi di Manajemen Lapak: kuota sekarang diatur per
+// sesi di Jam Operasional (Tambah Sesi), dan lokasi hasil undian dianggap
+// muat sebanyak kuota sesi. Manajemen Lapak cuma mengelola data wilayah
+// (kecamatan, jalan, ruas).
+func validasiRuasInput(namaRuas string) error {
 	if strings.TrimSpace(namaRuas) == "" {
 		return fmt.Errorf("nama ruas wajib diisi")
-	}
-	if kuota <= 0 {
-		return fmt.Errorf("kuota ruas harus lebih dari 0")
 	}
 	return nil
 }
 
 func (u *manajemenLapakUsecase) CreateRuas(ctx context.Context, req *entity.CreateRuasRequest) (string, error) {
-	if err := validasiRuasInput(req.NamaRuas, req.Kuota); err != nil {
+	if err := validasiRuasInput(req.NamaRuas); err != nil {
 		return "", err
 	}
 	ada, err := u.repo.JalanExists(ctx, req.JalanID)
@@ -283,8 +285,7 @@ func (u *manajemenLapakUsecase) CreateRuas(ctx context.Context, req *entity.Crea
 
 	newID := uuid.NewString()
 	list = append(list, entity.RuasData{
-		ID: newID, NamaRuas: req.NamaRuas, Urutan: urutanBaru,
-		Kuota: req.Kuota,
+		ID: newID, NamaRuas: strings.TrimSpace(req.NamaRuas), Urutan: urutanBaru,
 	})
 
 	if err := u.validasiDanSimpanUlangRuas(ctx, req.JalanID, list, nil); err != nil {
@@ -294,7 +295,7 @@ func (u *manajemenLapakUsecase) CreateRuas(ctx context.Context, req *entity.Crea
 }
 
 func (u *manajemenLapakUsecase) UpdateRuas(ctx context.Context, id string, req *entity.UpdateRuasRequest) error {
-	if err := validasiRuasInput(req.NamaRuas, req.Kuota); err != nil {
+	if err := validasiRuasInput(req.NamaRuas); err != nil {
 		return err
 	}
 	jalanID, err := u.repo.GetRuasJalanID(ctx, id)
@@ -310,10 +311,10 @@ func (u *manajemenLapakUsecase) UpdateRuas(ctx context.Context, id string, req *
 	ditemukan := false
 	for i := range list {
 		if list[i].ID == id {
-			list[i].NamaRuas = req.NamaRuas
+			list[i].NamaRuas = strings.TrimSpace(req.NamaRuas)
 			// Urutan SENGAJA gak disentuh -- tetap pakai nilai lama,
-			// gak lagi bisa diedit manual lewat form ini.
-			list[i].Kuota = req.Kuota
+			// gak lagi bisa diedit manual lewat form ini. Kuota juga
+			// gak disentuh (data lama dibiarkan apa adanya).
 			ditemukan = true
 			break
 		}
@@ -353,45 +354,26 @@ func (u *manajemenLapakUsecase) DeleteRuas(ctx context.Context, id string) error
 }
 
 // validasiDanSimpanUlangRuas -- inti dari fitur "urutan otomatis":
-// 1) validasi total kuota semua ruas gak lebih dari batas kuota jalan
-//    itu, 2) urutkan berdasarkan Urutan (stabil, jadi kalau ada urutan
-//    yang sama, yang lebih dulu dibuat tetap duluan), 3) hitung ulang
-//    NomorMulai/NomorSelesai tiap ruas secara berjalan (kumulatif),
-//    4) simpan seluruh daftar sekaligus.
+// urutkan ruas berdasarkan Urutan (stabil, jadi kalau ada urutan yang sama,
+// yang lebih dulu dibuat tetap duluan), lalu simpan seluruh daftar sekaligus.
 //
-// Batas kuota totalnya: kalau jalan ini SUDAH diikutkan ke event yang
-// lagi aktif, pakai kuota jalan itu di event tsb (biar ruas gak
-// melebihi apa yang dialokasikan buat event yang sedang jalan).
-// Sebelumnya, kalau belum ada event aktif SAMA SEKALI (atau jalan ini
-// belum diikutkan ke event aktif), ruas gak bisa diatur sama sekali --
-// padahal petugas perlu bisa nyiapin/nyusun ruas jalan dari awal
-// SEBELUM event-nya diaktifkan. Sekarang batasnya jatuh balik ke
-// kapasitas dasar jalan (master_jalan.kapasitas) buat kasus itu.
+// Batas kuota (total kuota ruas <= kapasitas/kuota jalan) sudah DIHAPUS:
+// kuota sekarang diatur per sesi di Jam Operasional, bukan di sini.
+// NomorMulai/NomorSelesai cuma dihitung untuk ruas lama yang masih punya
+// kuota (dipakai modul lama); ruas tanpa kuota diberi 0/0.
 func (u *manajemenLapakUsecase) validasiDanSimpanUlangRuas(ctx context.Context, jalanID string, list []entity.RuasData, _ *string) error {
-	batasKuota, err := u.repo.GetJalanKapasitas(ctx, jalanID)
-	if err != nil {
-		return err
-	}
-	if eventID, errAktif := u.repo.GetActiveEventID(ctx); errAktif == nil {
-		if kuotaJalan, errKuota := u.repo.KuotaJalanUntukEvent(ctx, jalanID, eventID); errKuota == nil && kuotaJalan > 0 {
-			batasKuota = kuotaJalan
-		}
-	}
-
-	totalKuota := 0
-	for _, ru := range list {
-		totalKuota += ru.Kuota
-	}
-	if totalKuota > batasKuota {
-		return ErrKuotaRuasLebihDariJalan
-	}
-
 	sort.SliceStable(list, func(i, j int) bool {
 		return list[i].Urutan < list[j].Urutan
 	})
 
 	nomorBerjalan := 1
 	for i := range list {
+		if list[i].Kuota <= 0 {
+			list[i].Kuota = 0
+			list[i].NomorMulai = 0
+			list[i].NomorSelesai = 0
+			continue
+		}
 		list[i].NomorMulai = nomorBerjalan
 		list[i].NomorSelesai = nomorBerjalan + list[i].Kuota - 1
 		nomorBerjalan = list[i].NomorSelesai + 1
@@ -477,24 +459,20 @@ func (u *manajemenLapakUsecase) CreateJalanBaru(ctx context.Context, req *entity
 	if req.NamaJalan == "" || req.KodeJalan == "" || req.KecamatanID == "" {
 		return "", fmt.Errorf("kecamatan, kode jalan, dan nama jalan wajib diisi")
 	}
+	// Kapasitas jalan TIDAK lagi diisi dari form (kuota diatur per sesi di
+	// Jam Operasional). Kolom master_jalan.kapasitas masih NOT NULL dengan
+	// CHECK > 0 di DB, jadi diisi 1 sebagai nilai bawaan.
 	if req.Kapasitas <= 0 {
-		return "", fmt.Errorf("kapasitas harus lebih dari 0")
+		req.Kapasitas = 1
 	}
 	return u.repo.CreateJalanBaru(ctx, req)
 }
 
-// UpdateJalanBaru -- edit kode/nama/kapasitas jalan yang sudah ada.
-// Sama kayak ruas: gak butuh event aktif, bisa dipakai kapan aja.
-// Kapasitas baru divalidasi dua arah -- gak boleh diturunkan sampai di
-// bawah total kuota ruas jalan ini (batas fallback), ATAUPUN di bawah
-// kuota jalan ini di event yang lagi aktif kalau memang lagi diikutkan
-// (biar konsisten sama validasi kuota <= kapasitas di tempat lain).
+// UpdateJalanBaru -- edit kode/nama jalan yang sudah ada. Kapasitas tidak
+// lagi diedit dari form: kalau tidak dikirim, nilai lamanya dipertahankan.
 func (u *manajemenLapakUsecase) UpdateJalanBaru(ctx context.Context, jalanID string, req *entity.UpdateJalanBaruRequest) error {
 	if req.NamaJalan == "" || req.KodeJalan == "" {
 		return fmt.Errorf("kode jalan dan nama jalan wajib diisi")
-	}
-	if req.Kapasitas <= 0 {
-		return fmt.Errorf("kapasitas harus lebih dari 0")
 	}
 
 	ada, err := u.repo.JalanExists(ctx, jalanID)
@@ -505,18 +483,12 @@ func (u *manajemenLapakUsecase) UpdateJalanBaru(ctx context.Context, jalanID str
 		return ErrJalanTidakDitemukan
 	}
 
-	kuotaRuas, err := u.repo.SumKuotaRuas(ctx, jalanID)
-	if err != nil {
-		return err
-	}
-	if req.Kapasitas < kuotaRuas {
-		return fmt.Errorf("kapasitas (%d) tidak boleh kurang dari total kuota ruas yang sudah dialokasikan di jalan ini (%d)", req.Kapasitas, kuotaRuas)
-	}
-
-	if eventID, errAktif := u.repo.GetActiveEventID(ctx); errAktif == nil {
-		if kuotaEvent, errKuota := u.repo.KuotaJalanUntukEvent(ctx, jalanID, eventID); errKuota == nil && req.Kapasitas < kuotaEvent {
-			return fmt.Errorf("kapasitas (%d) tidak boleh kurang dari kuota jalan ini di event yang aktif (%d)", req.Kapasitas, kuotaEvent)
+	if req.Kapasitas <= 0 {
+		kapasitasLama, err := u.repo.GetJalanKapasitas(ctx, jalanID)
+		if err != nil {
+			return err
 		}
+		req.Kapasitas = kapasitasLama
 	}
 
 	return u.repo.UpdateJalanBaru(ctx, jalanID, req)
