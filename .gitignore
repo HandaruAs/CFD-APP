@@ -19,7 +19,10 @@ backend/*.dylib
 backend/*.test
 backend/*.out
 backend/vendor/
- 
+
+# Foto profil yang diupload user
+backend/uploads/avatars/*
+!backend/uploads/avatars/.gitkeep
 # ============================
 # Next.js (frontend/)
 # ============================
