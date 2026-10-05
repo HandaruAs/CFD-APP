@@ -174,3 +174,69 @@ class DetailKehadiran {
     );
   }
 }
+
+/// Response GET /api/petugas/laporan/stats -- angka ringkasan kartu.
+/// [lapakTerisi] opsional supaya tetap jalan dengan backend lama.
+class StatsLaporan {
+  final int totalTerdaftar;
+  final int totalCheckin;
+  final int totalCheckout;
+  final int totalOmset;
+  final int rataOmset;
+  final double persenHadir;
+  final int? lapakTerisi;
+
+  StatsLaporan({
+    required this.totalTerdaftar,
+    required this.totalCheckin,
+    required this.totalCheckout,
+    required this.totalOmset,
+    required this.rataOmset,
+    required this.persenHadir,
+    this.lapakTerisi,
+  });
+
+  factory StatsLaporan.fromJson(Map<String, dynamic> json) {
+    int n(String key) => (json[key] as num? ?? 0).toInt();
+    return StatsLaporan(
+      totalTerdaftar: n('totalTerdaftar'),
+      totalCheckin: n('totalCheckin'),
+      totalCheckout: n('totalCheckout'),
+      totalOmset: n('totalOmset'),
+      rataOmset: n('rataOmset'),
+      persenHadir: (json['persenHadir'] as num? ?? 0).toDouble(),
+      lapakTerisi: json['lapakTerisi'] == null ? null : (json['lapakTerisi'] as num).toInt(),
+    );
+  }
+}
+
+/// Satu pilihan di dropdown filter Event (GET /api/petugas/events).
+class EventPilihan {
+  final String id;
+  final String nama;
+  final String tanggal;
+  final String jamMulai;
+  final String jamSelesai;
+  final String status;
+
+  EventPilihan({
+    required this.id,
+    required this.nama,
+    required this.tanggal,
+    required this.jamMulai,
+    required this.jamSelesai,
+    required this.status,
+  });
+
+  factory EventPilihan.fromJson(Map<String, dynamic> json) {
+    String s(String key) => json[key] as String? ?? '';
+    return EventPilihan(
+      id: s('id'),
+      nama: s('nama'),
+      tanggal: s('tanggal'),
+      jamMulai: s('jamMulai'),
+      jamSelesai: s('jamSelesai'),
+      status: s('status'),
+    );
+  }
+}
