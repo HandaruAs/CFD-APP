@@ -1,9 +1,8 @@
-// features/pedagang/presentation/pages/checkout_screen.dart
-
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:mobile/features/pedagang/domain/entities/event_pedagang.dart';
 import 'package:mobile/features/pedagang/presentation/providers/pedagang_provider.dart';
 
 const _brandColor = Color(0xFF1C3F7C);
@@ -43,12 +42,13 @@ String _formatRibuan(int n) {
   return buffer.toString();
 }
 
-/// CATATAN ARSITEKTUR: screen ini BUKAN tab bottom nav -- dia cuma
-/// dicapai lewat auto-redirect polling dari LapakScreen setelah
-/// check-in berhasil (lihat _maybeStartPolling di lapak_screen.dart).
-/// Karena itu dia tetap punya Scaffold+AppBar sendiri (di-push di atas
-/// shell MainLayout), beda sama screen tab lain yang sekarang cuma
-/// return body doang.
+/// Cek-out PER EVENT (sama dengan web /pedagang/CekOut). Data dari
+/// GET /api/pedagang/events/checkout -- backend memilih event yang WAJIB
+/// di-checkout dulu (event sudah selesai), lalu yang sedang berjalan.
+///
+/// CATATAN ARSITEKTUR: screen ini BUKAN tab bottom nav -- dibuka dari
+/// LapakScreen (otomatis kalau wajib checkout, atau lewat banner "Ke
+/// halaman Cek-out"). Karena itu punya Scaffold+AppBar sendiri.
 class CheckoutScreen extends ConsumerStatefulWidget {
   const CheckoutScreen({super.key});
 
@@ -63,10 +63,17 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
   Timer? _tickTimer;
   DateTime _now = DateTime.now();
 
+  // Spinner sampai data checkout pertama selesai dimuat, supaya data lama
+  // (kunjungan sebelumnya) tidak sempat tampil.
+  bool _dimuat = false;
+
   @override
   void initState() {
     super.initState();
-    Future.microtask(() => ref.read(pedagangProvider.notifier).loadCheckoutData());
+    Future.microtask(() async {
+      await ref.read(pedagangProvider.notifier).loadCheckoutData();
+      if (mounted) setState(() => _dimuat = true);
+    });
   }
 
   @override
@@ -124,18 +131,19 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
 
     if (!canCheckout) {
       setState(() =>
-          _submitError = 'Check-out belum dapat dilakukan. Tunggu hingga sesi berakhir.');
+          _submitError = 'Check-out belum dapat dilakukan. Tunggu hingga event berakhir.');
       return;
     }
 
     final digits = _omsetController.text.replaceAll('.', '');
     final omset = int.tryParse(digits) ?? 0;
     if (omset <= 0) {
-      setState(() => _submitError = 'Isi total omset hari ini terlebih dahulu.');
+      setState(() => _submitError = 'Isi total omset event ini terlebih dahulu.');
       return;
     }
 
-    final success = await ref.read(pedagangProvider.notifier).submitCheckout(omset);
+    final eventId = ref.read(pedagangProvider).checkout?.eventId ?? '';
+    final success = await ref.read(pedagangProvider.notifier).submitCheckout(eventId, omset);
     if (!mounted) return;
 
     if (success) {
@@ -163,7 +171,7 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
   Widget build(BuildContext context) {
     final state = ref.watch(pedagangProvider);
 
-    if (state.isLoadingCheckout && state.checkout == null) {
+    if (!_dimuat || (state.isLoadingCheckout && state.checkout == null)) {
       return _scaffold(
         title: 'Cek-out Pedagang',
         body: const Center(child: CircularProgressIndicator()),
@@ -171,6 +179,23 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
     }
 
     final data = state.checkout;
+
+    // Tidak ada event yang perlu di-checkout (belum check-in di mana pun).
+    if (data == null && state.error == null) {
+      return _scaffold(
+        title: 'Cek-out Pedagang',
+        body: const Center(
+          child: Padding(
+            padding: EdgeInsets.all(24),
+            child: Text(
+              'Kamu belum check-in di event mana pun. Minta petugas memindai QR di kartu event kamu '
+              'terlebih dahulu sebelum bisa cek-out.',
+              textAlign: TextAlign.center,
+            ),
+          ),
+        ),
+      );
+    }
 
     if (data == null) {
       return _scaffold(
@@ -209,8 +234,8 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
                 Icon(Icons.warning_amber_rounded, color: Colors.amber, size: 48),
                 SizedBox(height: 12),
                 Text(
-                  'Kamu belum check-in hari ini. Minta petugas untuk scan QR kamu terlebih '
-                  'dahulu sebelum bisa cek-out.',
+                  'Kamu belum check-in di event ini. Minta petugas memindai QR di kartu event kamu '
+                  'terlebih dahulu sebelum bisa cek-out.',
                   textAlign: TextAlign.center,
                 ),
               ],
@@ -235,16 +260,22 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
                     style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
                 const SizedBox(height: 8),
                 Text(
-                  'Terima kasih sudah berjualan hari ini di '
-                  '${data.namaJalan.isNotEmpty ? data.namaJalan : "lapak kamu"}.',
+                  'Terima kasih sudah berjualan di '
+                  '${data.namaEvent.isNotEmpty ? data.namaEvent : "event ini"}'
+                  '${data.namaJalan.isNotEmpty ? " (${data.namaJalan})" : ""}.',
                   textAlign: TextAlign.center,
                   style: const TextStyle(color: Colors.black54),
                 ),
+                if (data.omset != null) ...[
+                  const SizedBox(height: 8),
+                  Text('Omset tercatat: Rp ${_formatRibuan(data.omset!)}',
+                      style: const TextStyle(fontWeight: FontWeight.w600)),
+                ],
                 const SizedBox(height: 16),
                 ElevatedButton(
-                  onPressed: () => Navigator.of(context).popUntil((r) => r.isFirst),
+                  onPressed: () => Navigator.of(context).pop(),
                   style: ElevatedButton.styleFrom(backgroundColor: _brandColor),
-                  child: const Text('Kembali ke Profil', style: TextStyle(color: Colors.white)),
+                  child: const Text('Kembali ke Event Saya', style: TextStyle(color: Colors.white)),
                 ),
               ],
             ),
@@ -264,6 +295,38 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
+            Text(data.namaEvent,
+                style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: _brandColor)),
+            Text(
+              '${tanggalEvent(data.tanggal)} · ${jamEvent(data.jamMulai)} – ${jamEvent(data.jamSelesai)} WIB',
+              style: const TextStyle(color: Colors.black54),
+            ),
+            const SizedBox(height: 12),
+            if (data.wajibCheckout) ...[
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFFFFBEB),
+                  border: Border.all(color: const Color(0xFFFDE68A)),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: const Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Icon(Icons.warning_amber_rounded, color: Color(0xFFB45309)),
+                    SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        'Event ini sudah selesai tapi kamu belum cek-out. Isi omset dulu supaya kamu bisa '
+                        'ikut dan check-in di event berikutnya.',
+                        style: TextStyle(color: Color(0xFF92400E)),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 12),
+            ],
             Card(
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
               child: Padding(
@@ -330,10 +393,10 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Text('Laporan Akhir Sesi',
+                  const Text('Laporan Akhir Event',
                       style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold)),
                   const SizedBox(height: 12),
-                  const Text('Total Omset Hari Ini (Rp)',
+                  const Text('Total Omset Event Ini (Rp)',
                       style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
                   const SizedBox(height: 6),
                   TextField(

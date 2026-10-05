@@ -1,10 +1,23 @@
-/// Mirror dari DataCheckout di web (MerchantCheckoutPage.tsx),
-/// biar kontrak datanya konsisten antara web dan mobile.
+/// Data halaman Cek-out pedagang PER EVENT (GET /api/pedagang/events/checkout),
+/// sama dengan web /pedagang/CekOut. Backend memilih satu event: yang
+/// WAJIB di-checkout (event sudah selesai) didahulukan, lalu yang sedang
+/// berjalan, lalu checkout terakhir hari ini.
 class CheckoutData {
+  final String eventId;
+  final String namaEvent;
+  final String tanggal;
+  final String jamMulai;
+  final String jamSelesai;
+
+  /// Check-in di event yang SUDAH selesai tapi omset belum diisi. Selama
+  /// true, pedagang tidak bisa ikut / check-in event lain.
+  final bool wajibCheckout;
+
   final String kecamatan;
   final String namaJalan;
-  /// Kosong kalau lapaknya dari jalan yang belum dibagi ruas.
   final String namaRuas;
+
+  /// Nomor stan, mis. "CFD-012361".
   final String nomorStan;
   final String nik;
   final String namaLengkap;
@@ -15,15 +28,20 @@ class CheckoutData {
   final bool sudahCheckIn;
   final bool sudahCheckOut;
   final int? omset;
-  // Timestamp ISO lengkap (tanggal hari ini + jam selesai sesi),
-  // dipakai cuma buat nampilin hitung mundur di layar.
+
+  /// Tanggal + jam selesai event (ISO), cuma untuk hitung mundur di layar.
   final String? jamSelesaiSesi;
-  // Sumber kebenaran boleh/tidaknya submit checkout. Ini yang
-  // dipakai buat nyalain tombol, bukan hasil hitungan
-  // `now >= jamSelesaiSesi` di client.
+
+  /// Sumber kebenaran boleh/tidaknya submit checkout.
   final bool sesiSudahSelesai;
 
   CheckoutData({
+    required this.eventId,
+    required this.namaEvent,
+    required this.tanggal,
+    required this.jamMulai,
+    required this.jamSelesai,
+    required this.wajibCheckout,
     required this.kecamatan,
     required this.namaJalan,
     this.namaRuas = '',
@@ -43,10 +61,16 @@ class CheckoutData {
 
   factory CheckoutData.fromJson(Map<String, dynamic> json) {
     return CheckoutData(
-      kecamatan: json['kecamatan'] as String? ?? '',
+      eventId: json['eventId']?.toString() ?? '',
+      namaEvent: json['namaEvent'] as String? ?? '',
+      tanggal: json['tanggal'] as String? ?? '',
+      jamMulai: json['jamMulai'] as String? ?? '',
+      jamSelesai: json['jamSelesai'] as String? ?? '',
+      wajibCheckout: json['wajibCheckout'] as bool? ?? false,
+      kecamatan: json['namaKecamatan'] as String? ?? '',
       namaJalan: json['namaJalan'] as String? ?? '',
       namaRuas: json['namaRuas'] as String? ?? '',
-      nomorStan: json['nomorStan'] as String? ?? '',
+      nomorStan: json['kodeStan'] as String? ?? '',
       nik: json['nik'] as String? ?? '',
       namaLengkap: json['namaLengkap'] as String? ?? '',
       tanggalLahir: json['tanggalLahir'] as String? ?? '',
@@ -55,7 +79,7 @@ class CheckoutData {
       jenisLapak: json['jenisLapak'] as String? ?? '',
       sudahCheckIn: json['sudahCheckIn'] as bool? ?? false,
       sudahCheckOut: json['sudahCheckOut'] as bool? ?? false,
-      omset: json['omset'] as int?,
+      omset: (json['omset'] as num?)?.toInt(),
       jamSelesaiSesi: json['jamSelesaiSesi'] as String?,
       sesiSudahSelesai: json['sesiSudahSelesai'] as bool? ?? false,
     );
