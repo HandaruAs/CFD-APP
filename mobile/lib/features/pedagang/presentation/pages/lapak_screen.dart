@@ -418,7 +418,9 @@ class _LapakScreenState extends ConsumerState<LapakScreen> {
           ),
           const SizedBox(height: 8),
           if (aktif.isEmpty)
-            _kotakKosong('Kamu belum ikut event apa pun. Pilih event di bawah.')
+            _kotakKosong(lainnya.isNotEmpty
+                ? 'Tidak ada event yang sedang kamu ikuti. Pilih event di bawah untuk ikut lagi.'
+                : 'Kamu belum ikut event apa pun. Pilih event di bawah.')
           else
             ...aktif.map((k) => Padding(
                   padding: const EdgeInsets.only(bottom: 12),
