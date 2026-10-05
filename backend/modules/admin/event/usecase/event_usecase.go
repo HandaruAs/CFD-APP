@@ -456,7 +456,7 @@ func (u *eventUsecase) UpdateKapasitas(ctx context.Context, actorID, eventID, la
 	if err != nil {
 		return nil, err
 	}
-	if req.Kapasitas < l.Terisi || req.Kapasitas < l.NomorTerbesar {
+	if req.Kapasitas < l.Terisi {
 		return nil, ErrKapasitasDiBawahIsi
 	}
 	if ev.Status == eventaturan.StatusTerjadwal {

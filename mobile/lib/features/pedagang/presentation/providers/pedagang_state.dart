@@ -1,10 +1,9 @@
-import 'package:mobile/features/pedagang/domain/entities/pengajuan_status.dart';
 import 'package:mobile/features/pedagang/domain/entities/checkout_data.dart';
-import 'package:mobile/features/pedagang/domain/entities/lapak_data.dart';
+import 'package:mobile/features/pedagang/domain/entities/event_pedagang.dart';
+import 'package:mobile/features/pedagang/domain/entities/pengajuan_status.dart';
 
-/// Sentinel internal, sama persis alasannya kayak di AuthState -- biar
-/// `copyWith(error: null)` beneran bisa ngosongin error, bukan malah
-/// dipertahankan ke nilai lama.
+/// Sentinel internal supaya `copyWith(error: null)` benar-benar
+/// mengosongkan nilai, bukan mempertahankan nilai lama.
 class _Unset {
   const _Unset();
 }
@@ -12,30 +11,39 @@ class _Unset {
 const _unset = _Unset();
 
 class PedagangState {
+  // --- data usaha ---
   final bool isLoadingPengajuan;
   final bool isSubmittingPengajuan;
-  final bool isLoadingCheckout;
   final PengajuanStatus? pengajuan;
-  final CheckoutData? checkout;
   final String? error;
 
-  // --- Modul Lapak (klaim nomor stand) ---
-  final bool isLoadingLapakStatus;
-  final LapakStatus? lapakStatus;
-  final bool isClaiming;
-  final HasilKlaim? hasilKlaim;
+  // --- event ---
+  final bool isLoadingEvent;
+  final String? errorEvent;
+
+  /// "lama" | "baru" (dari /api/pedagang/events)
+  final String? kategori;
+  final List<EventTersedia> events;
+  final List<Keikutsertaan> eventSaya;
+
+  // --- checkout ---
+  final bool isLoadingCheckout;
+
+  /// Null = belum dimuat ATAU tidak ada event yang perlu di-checkout.
+  final CheckoutData? checkout;
 
   PedagangState({
     this.isLoadingPengajuan = false,
     this.isSubmittingPengajuan = false,
-    this.isLoadingCheckout = false,
     this.pengajuan,
-    this.checkout,
     this.error,
-    this.isLoadingLapakStatus = false,
-    this.lapakStatus,
-    this.isClaiming = false,
-    this.hasilKlaim,
+    this.isLoadingEvent = false,
+    this.errorEvent,
+    this.kategori,
+    this.events = const [],
+    this.eventSaya = const [],
+    this.isLoadingCheckout = false,
+    this.checkout,
   });
 
   factory PedagangState.initial() => PedagangState();
@@ -43,30 +51,28 @@ class PedagangState {
   PedagangState copyWith({
     bool? isLoadingPengajuan,
     bool? isSubmittingPengajuan,
-    bool? isLoadingCheckout,
     Object? pengajuan = _unset,
-    Object? checkout = _unset,
     Object? error = _unset,
-    bool? isLoadingLapakStatus,
-    Object? lapakStatus = _unset,
-    bool? isClaiming,
-    Object? hasilKlaim = _unset,
+    bool? isLoadingEvent,
+    Object? errorEvent = _unset,
+    Object? kategori = _unset,
+    List<EventTersedia>? events,
+    List<Keikutsertaan>? eventSaya,
+    bool? isLoadingCheckout,
+    Object? checkout = _unset,
   }) {
     return PedagangState(
       isLoadingPengajuan: isLoadingPengajuan ?? this.isLoadingPengajuan,
       isSubmittingPengajuan: isSubmittingPengajuan ?? this.isSubmittingPengajuan,
-      isLoadingCheckout: isLoadingCheckout ?? this.isLoadingCheckout,
-      pengajuan:
-          identical(pengajuan, _unset) ? this.pengajuan : pengajuan as PengajuanStatus?,
-      checkout:
-          identical(checkout, _unset) ? this.checkout : checkout as CheckoutData?,
+      pengajuan: identical(pengajuan, _unset) ? this.pengajuan : pengajuan as PengajuanStatus?,
       error: identical(error, _unset) ? this.error : error as String?,
-      isLoadingLapakStatus: isLoadingLapakStatus ?? this.isLoadingLapakStatus,
-      lapakStatus:
-          identical(lapakStatus, _unset) ? this.lapakStatus : lapakStatus as LapakStatus?,
-      isClaiming: isClaiming ?? this.isClaiming,
-      hasilKlaim:
-          identical(hasilKlaim, _unset) ? this.hasilKlaim : hasilKlaim as HasilKlaim?,
+      isLoadingEvent: isLoadingEvent ?? this.isLoadingEvent,
+      errorEvent: identical(errorEvent, _unset) ? this.errorEvent : errorEvent as String?,
+      kategori: identical(kategori, _unset) ? this.kategori : kategori as String?,
+      events: events ?? this.events,
+      eventSaya: eventSaya ?? this.eventSaya,
+      isLoadingCheckout: isLoadingCheckout ?? this.isLoadingCheckout,
+      checkout: identical(checkout, _unset) ? this.checkout : checkout as CheckoutData?,
     );
   }
 }

@@ -326,6 +326,7 @@ func (r *EventRepository) Ikut(ctx context.Context, eventID, pedagangID, kategor
 	// Pemakaian kuota per jatah (lama/baru) di tingkat EVENT, dan nomor yang
 	// sudah dipakai per titik.
 	terisi := map[string]int{}
+	nomorDipakai := map[int]bool{} // nomor stan yang sudah dipakai di event ini (semua titik)
 	rows, err = tx.Query(ctx, `
 		SELECT event_lapak_id, kuota_dipakai::text, nomor FROM event_participants
 		WHERE event_id = $1 AND status <> 'batal' AND deleted_at IS NULL`, eventID)
@@ -340,6 +341,7 @@ func (r *EventRepository) Ikut(ctx context.Context, eventID, pedagangID, kategor
 			return "", err
 		}
 		terisi[pool]++
+		nomorDipakai[nomor] = true
 		if l, ok := byID[lapakID]; ok {
 			l.terpakai[nomor] = true
 		}
@@ -402,17 +404,23 @@ func (r *EventRepository) Ikut(ctx context.Context, eventID, pedagangID, kategor
 		n -= l.sisa()
 	}
 
-	kosong := make([]int, 0, pilih.kapasitas)
-	for nomor := 1; nomor <= pilih.kapasitas; nomor++ {
-		if !pilih.terpakai[nomor] {
-			kosong = append(kosong, nomor)
+	// Nomor stan 6 digit acak (tampil sebagai "CFD-012361"), tidak boleh
+	// kembar di event ini. Ruangnya 999.999 angka, jadi cukup diundi ulang
+	// kalau kebetulan sudah dipakai.
+	nomor := 0
+	for percobaan := 0; percobaan < 50; percobaan++ {
+		n, err := eventaturan.RandIntn(eventaturan.NomorStanMaks)
+		if err != nil {
+			return "", err
+		}
+		if !nomorDipakai[n+1] {
+			nomor = n + 1
+			break
 		}
 	}
-	idx, err := eventaturan.RandIntn(len(kosong))
-	if err != nil {
-		return "", err
+	if nomor == 0 {
+		return "", errors.New("gagal membuat nomor stan unik, coba lagi")
 	}
-	nomor := kosong[idx]
 
 	var pesertaID string
 	err = tx.QueryRow(ctx, `
@@ -432,13 +440,13 @@ func (r *EventRepository) Ikut(ctx context.Context, eventID, pedagangID, kategor
 	// Bukti pengacakan: ukuran kumpulan saat diacak dan hasilnya.
 	if err := eventaturan.Audit(ctx, tx, &userID, "peserta.ikut", "event_participants", &pesertaID, &eventID, nil,
 		map[string]any{
-			"pedagangId":        pedagangID,
-			"kategori":          kategori,
-			"kuotaDipakai":      poolDipakai,
-			"ukuranKumpulan":    ukuranKumpulan,
-			"eventLapakId":      pilih.id,
-			"jumlahNomorKosong": len(kosong),
-			"nomor":             nomor,
+			"pedagangId":     pedagangID,
+			"kategori":       kategori,
+			"kuotaDipakai":   poolDipakai,
+			"ukuranKumpulan": ukuranKumpulan,
+			"eventLapakId":   pilih.id,
+			"nomor":          nomor,
+			"kodeStan":       eventaturan.KodeStan(nomor),
 		}, nil); err != nil {
 		return "", err
 	}
@@ -529,6 +537,7 @@ func scanKeikutsertaan(row pgx.Row) (*entity.Keikutsertaan, error) {
 	if err != nil {
 		return nil, err
 	}
+	k.KodeStan = eventaturan.KodeStan(k.Nomor)
 	return &k, nil
 }
 
@@ -600,6 +609,7 @@ func scanCheckout(row pgx.Row) (*entity.DataCheckout, error) {
 	if err != nil {
 		return nil, err
 	}
+	d.KodeStan = eventaturan.KodeStan(d.Nomor)
 	return &d, nil
 }
 

@@ -10,6 +10,7 @@ import (
 	"crypto/rand"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"math/big"
 	"time"
 
@@ -76,6 +77,30 @@ func StatusPendaftaran(status string, bukaAt, tutupAt *time.Time, selesaiAt, now
 	default:
 		return PendaftaranDibuka
 	}
+}
+
+// ============================================================
+// NOMOR STAN
+// ============================================================
+
+// PrefixStan: kode jenis event di depan nomor stan. Sekarang fokus CFD;
+// nanti kalau ada jenis event lain (mis. marathon "MRT") prefix ini
+// dipindah ke data event.
+const PrefixStan = "CFD"
+
+// NomorStanMaks: nomor stan 6 digit, diacak 1..999999.
+const NomorStanMaks = 999_999
+
+// KodeStan: nomor stan yang ditampilkan, mis. 12361 -> "CFD-012361"
+// (format sama dengan sistem lama). Di DB yang disimpan cuma angkanya
+// (event_participants.nomor), unik per event.
+func KodeStan(nomor int) string {
+	return fmt.Sprintf("%s-%06d", PrefixStan, nomor)
+}
+
+// SQLKodeStan: versi SQL dari KodeStan untuk kolom nomor (alias tabel bebas).
+func SQLKodeStan(kolom string) string {
+	return "'" + PrefixStan + "-' || lpad(" + kolom + "::text, 6, '0')"
 }
 
 // SelesaiAt: tanggal ("2006-01-02") + jam selesai ("15:04" / "15:04:05")

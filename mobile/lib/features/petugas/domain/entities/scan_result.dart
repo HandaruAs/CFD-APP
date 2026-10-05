@@ -1,128 +1,154 @@
-/// Model buat response POST /api/petugas/scan, POST /api/petugas/check-in,
-/// dan GET /api/petugas/riwayat-scan.
+/// Model untuk check-in pedagang PER EVENT oleh petugas:
+///   POST /api/petugas/event-checkin/periksa  -> [PesertaScan] (hanya baca)
+///   POST /api/petugas/event-checkin          -> [PesertaScan] setelah check-in
+///   GET  /api/petugas/event-checkin/riwayat  -> [RiwayatCheckIn]
+///
+/// QR yang dipindai = QR di kartu event pedagang (id keikutsertaan). QR
+/// lama (id pedagang) masih diterima backend: kalau pedagang cuma ikut satu
+/// event yang sedang buka, langsung diarahkan ke event itu.
 
-class PedagangDetail {
-  final String id;
-  final String namaUsaha;
-  final String pemilik;
-  final String inisial;
-  final String kategori;
-  final String lokasiLapak;
-  final String? nik;
-  final String? alamat;
-  final String? perkiraanHarga;
-
-  PedagangDetail({
-    required this.id,
-    required this.namaUsaha,
-    required this.pemilik,
-    required this.inisial,
-    required this.kategori,
-    required this.lokasiLapak,
-    this.nik,
-    this.alamat,
-    this.perkiraanHarga,
-  });
-
-  factory PedagangDetail.fromJson(Map<String, dynamic> json) {
-    return PedagangDetail(
-      id: json['id'] as String,
-      namaUsaha: json['nama_usaha'] as String? ?? '-',
-      pemilik: json['pemilik'] as String? ?? '-',
-      inisial: json['inisial'] as String? ?? '??',
-      kategori: json['kategori'] as String? ?? '-',
-      // Kosong kalau pedagang belum klaim lapak (UI: "Lokasi belum diisi").
-      lokasiLapak: json['lokasi_lapak'] as String? ?? '',
-      nik: json['nik'] as String?,
-      alamat: json['alamat'] as String?,
-      perkiraanHarga: json['perkiraan_harga'] as String?,
-    );
-  }
+String? _strN(dynamic v) {
+  if (v == null) return null;
+  final s = v.toString().trim();
+  return s.isEmpty ? null : s;
 }
 
-/// Hasil verifikasi QR (belum nyimpen kehadiran -- itu baru kejadian
-/// pas [CheckInResult] dipanggil lewat endpoint check-in terpisah).
-class VerifyQRResult {
-  final bool valid;
-  final String message;
-  final PedagangDetail? pedagang;
-  final bool sudahCheckIn;
+String _str(dynamic v) => v?.toString() ?? '';
+
+DateTime? _waktu(dynamic v) => v is String ? DateTime.tryParse(v) : null;
+
+class PesertaScan {
+  final String pesertaId;
+  final String pedagangId;
+  final String? namaLengkap;
+  final String? namaUsaha;
+  final String? jenisDagangan;
+
+  /// "lama" | "baru"
+  final String kategori;
+
+  final String namaEvent;
+  final String tanggal;
+  final String jamMulai;
+  final String jamSelesai;
+  final String? namaKecamatan;
+  final String namaJalan;
+  final String namaRuas;
+
+  /// Nomor stan, mis. "CFD-012361".
+  final String kodeStan;
+
+  /// terdaftar | check_in | check_out | batal | tidak_hadir
+  final String status;
   final DateTime? checkInAt;
 
-  VerifyQRResult({
-    required this.valid,
-    required this.message,
-    this.pedagang,
-    this.sudahCheckIn = false,
+  /// Boleh di-check-in sekarang? Kalau tidak, [alasan] berisi penjelasannya
+  /// (mis. "Check-in dibuka mulai 05:00 WIB", "belum checkout di event X").
+  final bool bisaCheckIn;
+  final String? alasan;
+
+  const PesertaScan({
+    required this.pesertaId,
+    required this.pedagangId,
+    this.namaLengkap,
+    this.namaUsaha,
+    this.jenisDagangan,
+    required this.kategori,
+    required this.namaEvent,
+    required this.tanggal,
+    required this.jamMulai,
+    required this.jamSelesai,
+    this.namaKecamatan,
+    required this.namaJalan,
+    required this.namaRuas,
+    required this.kodeStan,
+    required this.status,
+    this.checkInAt,
+    required this.bisaCheckIn,
+    this.alasan,
+  });
+
+  bool get sudahCheckIn => status == 'check_in' || status == 'check_out';
+
+  String get inisial {
+    final kata = (namaLengkap ?? namaUsaha ?? '').trim().split(RegExp(r'\s+')).where((k) => k.isNotEmpty).toList();
+    final hasil = kata.take(2).map((k) => k[0].toUpperCase()).join();
+    return hasil.isEmpty ? '??' : hasil;
+  }
+
+  String get labelDagangan {
+    switch (jenisDagangan) {
+      case 'makanan_minuman':
+        return 'Makanan & Minuman';
+      case 'bukan_makanan_minuman':
+        return 'Bukan Makanan & Minuman';
+      default:
+        return jenisDagangan ?? '-';
+    }
+  }
+
+  factory PesertaScan.fromJson(Map<String, dynamic> json) => PesertaScan(
+        pesertaId: _str(json['pesertaId']),
+        pedagangId: _str(json['pedagangId']),
+        namaLengkap: _strN(json['namaLengkap']),
+        namaUsaha: _strN(json['namaUsaha']),
+        jenisDagangan: _strN(json['jenisDagangan']),
+        kategori: _str(json['kategori']),
+        namaEvent: _str(json['namaEvent']),
+        tanggal: _str(json['tanggal']),
+        jamMulai: _str(json['jamMulai']),
+        jamSelesai: _str(json['jamSelesai']),
+        namaKecamatan: _strN(json['namaKecamatan']),
+        namaJalan: _str(json['namaJalan']),
+        namaRuas: _str(json['namaRuas']),
+        kodeStan: _str(json['kodeStan']),
+        status: _str(json['status']),
+        checkInAt: _waktu(json['checkInAt']),
+        bisaCheckIn: json['bisaCheckIn'] == true,
+        alasan: _strN(json['alasan']),
+      );
+}
+
+/// Satu check-in yang dicatat petugas ini hari ini.
+class RiwayatCheckIn {
+  final String pesertaId;
+  final String? namaLengkap;
+  final String? namaUsaha;
+  final String namaEvent;
+  final String namaJalan;
+  final String namaRuas;
+  final String kodeStan;
+  final DateTime? checkInAt;
+
+  const RiwayatCheckIn({
+    required this.pesertaId,
+    this.namaLengkap,
+    this.namaUsaha,
+    required this.namaEvent,
+    required this.namaJalan,
+    required this.namaRuas,
+    required this.kodeStan,
     this.checkInAt,
   });
 
-  factory VerifyQRResult.fromJson(Map<String, dynamic> json) {
-    return VerifyQRResult(
-      valid: json['valid'] as bool,
-      message: json['message'] as String? ?? '',
-      pedagang: json['pedagang'] == null
-          ? null
-          : PedagangDetail.fromJson(json['pedagang'] as Map<String, dynamic>),
-      sudahCheckIn: json['sudah_check_in'] as bool? ?? false,
-      checkInAt: json['check_in_at'] == null
-          ? null
-          : DateTime.parse(json['check_in_at'] as String),
-    );
-  }
+  factory RiwayatCheckIn.fromJson(Map<String, dynamic> json) => RiwayatCheckIn(
+        pesertaId: _str(json['pesertaId']),
+        namaLengkap: _strN(json['namaLengkap']),
+        namaUsaha: _strN(json['namaUsaha']),
+        namaEvent: _str(json['namaEvent']),
+        namaJalan: _str(json['namaJalan']),
+        namaRuas: _str(json['namaRuas']),
+        kodeStan: _str(json['kodeStan']),
+        checkInAt: _waktu(json['checkInAt']),
+      );
 }
 
-class CheckInResult {
-  final bool success;
-  final String message;
-  final DateTime checkInAt;
-  final String pedagangId;
-  final String namaUsaha;
+/// "06:00" -> "06.00"
+String jamTitikScan(String jam) => jam.length >= 5 ? jam.substring(0, 5).replaceAll(':', '.') : jam;
 
-  CheckInResult({
-    required this.success,
-    required this.message,
-    required this.checkInAt,
-    required this.pedagangId,
-    required this.namaUsaha,
-  });
-
-  factory CheckInResult.fromJson(Map<String, dynamic> json) {
-    return CheckInResult(
-      success: json['success'] as bool,
-      message: json['message'] as String? ?? '',
-      checkInAt: DateTime.parse(json['check_in_at'] as String),
-      pedagangId: json['pedagang_id'] as String,
-      namaUsaha: json['nama_usaha'] as String? ?? '-',
-    );
-  }
-}
-
-class RiwayatScanItem {
-  final String waktu;
-  final String namaUsaha;
-  final String status; // "berhasil" | "gagal"
-  final String? pedagangId;
-
-  /// "Jalan Gubeng, Ruas 1 - CFD-160139". String kosong kalau pedagang
-  /// belum klaim lapak -- UI yang nampilin "Lokasi belum diisi".
-  final String lokasiLapak;
-
-  RiwayatScanItem({
-    required this.waktu,
-    required this.namaUsaha,
-    required this.status,
-    this.pedagangId,
-    this.lokasiLapak = '',
-  });
-
-  factory RiwayatScanItem.fromJson(Map<String, dynamic> json) {
-    return RiwayatScanItem(
-      waktu: json['waktu'] as String? ?? '-',
-      namaUsaha: json['nama_usaha'] as String? ?? '-',
-      status: json['status'] as String? ?? 'berhasil',
-      pedagangId: json['pedagang_id'] as String?,
-      lokasiLapak: json['lokasi_lapak'] as String? ?? '',
-    );
-  }
+/// DateTime (UTC dari server) -> "07.15" waktu HP.
+String jamLokal(DateTime? t) {
+  if (t == null) return '-';
+  final l = t.toLocal();
+  return '${l.hour.toString().padLeft(2, '0')}.${l.minute.toString().padLeft(2, '0')}';
 }

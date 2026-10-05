@@ -35,7 +35,8 @@ type PesertaScan struct {
 	NamaJalan     string     `json:"namaJalan"`
 	NamaRuas      string     `json:"namaRuas"`
 	Nomor         int        `json:"nomor"`
-	Status        string     `json:"status"` // status keikutsertaan
+	KodeStan      string     `json:"kodeStan"` // nomor stan untuk ditampilkan, mis. "CFD-012361"
+	Status        string     `json:"status"`   // status keikutsertaan
 	CheckInAt     *time.Time `json:"checkInAt"`
 	BisaCheckIn   bool       `json:"bisaCheckIn"`
 	Alasan        *string    `json:"alasan"` // kenapa tidak bisa check-in
@@ -53,5 +54,6 @@ type RiwayatItem struct {
 	NamaJalan   string    `json:"namaJalan"`
 	NamaRuas    string    `json:"namaRuas"`
 	Nomor       int       `json:"nomor"`
+	KodeStan    string    `json:"kodeStan"` 
 	CheckInAt   time.Time `json:"checkInAt"`
 }

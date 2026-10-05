@@ -1,7 +1,3 @@
-/// Model buat GET /api/admin/dashboard. Backend juga ngirim `tren`
-/// (grafik per sesi & per minggu) -- sengaja belum dipakai di v1 mobile,
-/// jadi belum di-parse di sini.
-
 int _int(dynamic v) => (v as num?)?.toInt() ?? 0;
 
 class SesiHariIni {
@@ -26,6 +22,48 @@ class SesiHariIni {
         jamMulai: json['jamMulai'] as String?,
         jamSelesai: json['jamSelesai'] as String?,
         sisaMenit: _int(json['sisaMenit']),
+      );
+}
+
+/// Satu event di tanggal hari ini (hariIni.events).
+class EventHariIni {
+  final String id;
+  final String nama;
+
+  /// "terjadwal" | "berjalan" | "selesai" | "dibatalkan"
+  final String status;
+  final String jamMulai;
+  final String jamSelesai;
+  final int sisaMenit;
+  final int kapasitas;
+  final int klaim;
+  final int checkIn;
+  final int checkOut;
+
+  const EventHariIni({
+    required this.id,
+    required this.nama,
+    required this.status,
+    required this.jamMulai,
+    required this.jamSelesai,
+    required this.sisaMenit,
+    required this.kapasitas,
+    required this.klaim,
+    required this.checkIn,
+    required this.checkOut,
+  });
+
+  factory EventHariIni.fromJson(Map<String, dynamic> json) => EventHariIni(
+        id: json['id']?.toString() ?? '',
+        nama: json['nama'] as String? ?? '-',
+        status: json['status'] as String? ?? 'terjadwal',
+        jamMulai: json['jamMulai'] as String? ?? '',
+        jamSelesai: json['jamSelesai'] as String? ?? '',
+        sisaMenit: _int(json['sisaMenit']),
+        kapasitas: _int(json['kapasitas']),
+        klaim: _int(json['klaim']),
+        checkIn: _int(json['checkIn']),
+        checkOut: _int(json['checkOut']),
       );
 }
 
@@ -70,12 +108,14 @@ class AdminDashboard {
   final SesiHariIni sesi;
   final LapakHariIni lapak;
   final HadirHariIni hadir;
+  final List<EventHariIni> events;
 
   const AdminDashboard({
     required this.tanggal,
     required this.sesi,
     required this.lapak,
     required this.hadir,
+    this.events = const [],
   });
 
   factory AdminDashboard.fromJson(Map<String, dynamic> json) {
@@ -85,6 +125,9 @@ class AdminDashboard {
       sesi: SesiHariIni.fromJson(h['sesi'] as Map<String, dynamic>),
       lapak: LapakHariIni.fromJson(h['lapak'] as Map<String, dynamic>),
       hadir: HadirHariIni.fromJson(h['hadir'] as Map<String, dynamic>),
+      events: h['events'] is List
+          ? (h['events'] as List).whereType<Map<String, dynamic>>().map(EventHariIni.fromJson).toList()
+          : const [],
     );
   }
 }
