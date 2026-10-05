@@ -8,14 +8,15 @@ import 'package:mobile/features/auth/presentation/pages/register_screen.dart';
 import 'package:mobile/features/landing/data/datasources/public_event_datasource.dart';
 import 'package:mobile/features/landing/domain/entities/event_publik.dart';
 
-/// Beranda publik -- halaman pertama yang dilihat pengguna yang BELUM login,
-/// sama isinya dengan beranda web (web/app/page.tsx):
-///   1. Hero "E-Event Surabaya" + tombol bulat "Daftar & Dapat Nomor Stan"
-///   2. Event CFD & sisa lapak (GET /api/public/sisa-lapak, tanpa login,
-///      diperbarui otomatis tiap 30 detik)
-///   3. Fitur untuk pedagang
-///   4. Alur pendaftaran pedagang (4 tahap)
-/// Tombol "Masuk" di atas membuka LoginScreen.
+/// Beranda publik versi aplikasi -- halaman pertama untuk pengguna yang
+/// BELUM login. Isinya sejalan dengan beranda web, tapi disusun ulang untuk
+/// HP dan disesuaikan dengan alur sistem yang sebenarnya:
+///   1. Kartu sambutan + tombol Daftar / Masuk
+///   2. Event terdekat -- kartu geser dari GET /api/public/sisa-lapak
+///      (tanpa login, diperbarui otomatis tiap 30 detik)
+///   3. Layanan yang tersedia di aplikasi
+///   4. Langkah mendaftar sampai berjualan (bisa diketuk untuk detail)
+/// Tombol "Daftar & Ikut Event" selalu terlihat di bawah layar.
 ///
 /// Pengguna yang sudah login tidak melihat halaman ini -- SplashScreen
 /// langsung mengarahkannya ke home sesuai role.
@@ -27,24 +28,24 @@ class LandingScreen extends StatefulWidget {
 }
 
 const _kLeaf = Color(0xFF0F7A44);
+const _kRed = Color(0xFFBA1A1A);
+const _kAmber = Color(0xFFB45309);
 const _kInk = Color(0xFF1A1D29);
 const _kInkSoft = Color(0xFF6B6F80);
 const _kLine = Color(0xFFE4E6EE);
-const _kPaper = Color(0xFFF5F7FB);
+const _kBg = Color(0xFFF5F7FB);
 
 class _LandingScreenState extends State<LandingScreen> {
   List<EventPublik> _events = const [];
   bool _loading = true;
   String? _error;
   DateTime? _diperbarui;
-  String? _terbuka; // id event yang lokasinya sedang dibuka
   Timer? _timer;
 
   @override
   void initState() {
     super.initState();
     _muat();
-    // Sama dengan web: data sisa lapak diperbarui otomatis tiap 30 detik.
     _timer = Timer.periodic(const Duration(seconds: 30), (_) => _muat(diam: true));
   }
 
@@ -60,13 +61,14 @@ class _LandingScreenState extends State<LandingScreen> {
       final data = await PublicEventDatasource.sisaLapak();
       if (!mounted) return;
       setState(() {
-        _events = data;
+        // Event yang sudah selesai / dibatalkan tidak perlu ditawarkan.
+        _events = data.where((e) => e.status != 'selesai' && e.status != 'dibatalkan').toList();
         _error = null;
         _diperbarui = DateTime.now();
       });
     } catch (_) {
       if (!mounted) return;
-      setState(() => _error = 'Gagal memuat data sisa lapak. Coba muat ulang.');
+      setState(() => _error = 'Data event belum bisa dimuat. Periksa koneksi lalu coba lagi.');
     } finally {
       if (mounted) setState(() => _loading = false);
     }
@@ -77,12 +79,27 @@ class _LandingScreenState extends State<LandingScreen> {
   }
 
   // Daftar dibuka di atas halaman Login: setelah akun berhasil dibuat,
-  // RegisterScreen menutup dirinya sendiri dan pengguna langsung berada di
-  // halaman Login (bukan kembali ke beranda).
+  // RegisterScreen menutup dirinya dan pengguna langsung berada di Login.
   void _keDaftar() {
     final nav = Navigator.of(context);
     nav.push(MaterialPageRoute(builder: (_) => const LoginScreen()));
     nav.push(MaterialPageRoute(builder: (_) => const RegisterScreen()));
+  }
+
+  void _lihatLokasi(EventPublik ev) {
+    showModalBottomSheet<void>(
+      context: context,
+      showDragHandle: true,
+      isScrollControlled: true,
+      backgroundColor: Colors.white,
+      builder: (ctx) => _SheetLokasi(
+        ev: ev,
+        onDaftar: () {
+          Navigator.of(ctx).pop();
+          _keDaftar();
+        },
+      ),
+    );
   }
 
   @override
@@ -90,7 +107,7 @@ class _LandingScreenState extends State<LandingScreen> {
     return AnnotatedRegion<SystemUiOverlayStyle>(
       value: SystemUiOverlayStyle.light,
       child: Scaffold(
-        backgroundColor: Colors.white,
+        backgroundColor: _kBg,
         body: RefreshIndicator(
           onRefresh: () => _muat(diam: true),
           color: kBrandColor,
@@ -109,8 +126,8 @@ class _LandingScreenState extends State<LandingScreen> {
                         padding: const EdgeInsets.all(3),
                         child: const Image(
                           image: AssetImage('assets/images/logo.png'),
-                          width: 28,
-                          height: 28,
+                          width: 26,
+                          height: 26,
                         ),
                       ),
                     ),
@@ -119,153 +136,129 @@ class _LandingScreenState extends State<LandingScreen> {
                   ],
                 ),
                 actions: [
-                  Padding(
-                    padding: const EdgeInsets.only(right: 12),
-                    child: FilledButton(
-                      onPressed: _keLogin,
-                      style: FilledButton.styleFrom(
-                        backgroundColor: Colors.white,
-                        foregroundColor: kBrandColor,
-                        minimumSize: const Size(0, 40),
-                        padding: const EdgeInsets.symmetric(horizontal: 18),
-                      ),
-                      child: const Text('Masuk', style: TextStyle(fontWeight: FontWeight.w700)),
-                    ),
+                  TextButton(
+                    onPressed: _keLogin,
+                    style: TextButton.styleFrom(foregroundColor: Colors.white),
+                    child: const Text('Masuk', style: TextStyle(fontWeight: FontWeight.w700)),
                   ),
+                  const SizedBox(width: 6),
                 ],
               ),
-              SliverToBoxAdapter(child: _Hero(onDaftar: _keDaftar)),
-              SliverToBoxAdapter(child: _bagianSisaLapak()),
-              const SliverToBoxAdapter(child: _BagianFitur()),
-              const SliverToBoxAdapter(child: _BagianAlur()),
-              SliverToBoxAdapter(child: _Footer(onDaftar: _keDaftar, onMasuk: _keLogin)),
+              SliverToBoxAdapter(child: _KartuSambutan(onDaftar: _keDaftar, onMasuk: _keLogin)),
+              SliverToBoxAdapter(child: _bagianEvent()),
+              const SliverToBoxAdapter(child: _BagianLayanan()),
+              const SliverToBoxAdapter(child: _BagianLangkah()),
+              const SliverToBoxAdapter(child: _Penutup()),
             ],
+          ),
+        ),
+        // Ajakan utama selalu terlihat, tidak perlu menggulir ke atas.
+        bottomNavigationBar: Container(
+          decoration: const BoxDecoration(
+            color: Colors.white,
+            border: Border(top: BorderSide(color: _kLine)),
+          ),
+          child: SafeArea(
+            top: false,
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(16, 10, 16, 10),
+              child: FilledButton.icon(
+                onPressed: _keDaftar,
+                icon: const Icon(Icons.storefront_outlined),
+                label: const Text('Daftar & Ikut Event', style: TextStyle(fontWeight: FontWeight.w700)),
+                style: FilledButton.styleFrom(
+                  backgroundColor: kBrandColor,
+                  minimumSize: const Size.fromHeight(50),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                ),
+              ),
+            ),
           ),
         ),
       ),
     );
   }
 
-  // ===================== EVENT CFD & SISA LAPAK =====================
-  Widget _bagianSisaLapak() {
-    // Angka besar: sisa tempat di event yang pendaftarannya dibuka.
-    final dibuka = _events.where((e) => e.pendaftaranDibuka);
-    final totalSisa = dibuka.fold<int>(0, (t, e) => t + (e.sisa < 0 ? 0 : e.sisa));
-    final totalKuota = dibuka.fold<int>(0, (t, e) => t + e.kuotaTotal);
-
+  // ===================== EVENT TERDEKAT =====================
+  Widget _bagianEvent() {
     Widget isi;
     if (_loading && _events.isEmpty) {
-      isi = const _KotakInfo(teks: 'Memuat data sisa lapak...');
-    } else if (_error != null && _events.isEmpty) {
-      isi = _KotakInfo(teks: _error!);
-    } else if (_events.isEmpty) {
-      isi = const _KotakInfo(teks: 'Belum ada event CFD yang dijadwalkan dalam 2 minggu ke depan.');
-    } else {
-      isi = Container(
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: _kLine),
+      isi = SizedBox(
+        height: 190,
+        child: ListView.separated(
+          scrollDirection: Axis.horizontal,
+          padding: const EdgeInsets.symmetric(horizontal: 16),
+          itemCount: 2,
+          separatorBuilder: (_, i) => const SizedBox(width: 12),
+          itemBuilder: (_, i) => Container(
+            width: 270,
+            decoration: BoxDecoration(color: const Color(0xFFE9ECF3), borderRadius: BorderRadius.circular(20)),
+          ),
         ),
-        child: Column(
-          children: [
-            for (var i = 0; i < _events.length; i++) ...[
-              if (i > 0) const Divider(height: 1, color: _kLine),
-              _KartuEvent(
-                ev: _events[i],
-                terbuka: _terbuka == _events[i].id,
-                onTap: () => setState(() => _terbuka = _terbuka == _events[i].id ? null : _events[i].id),
-              ),
-            ],
-          ],
+      );
+    } else if (_error != null && _events.isEmpty) {
+      isi = _KotakKosong(
+        ikon: Icons.wifi_off_rounded,
+        teks: _error!,
+        aksi: TextButton(onPressed: () => _muat(), child: const Text('Coba lagi')),
+      );
+    } else if (_events.isEmpty) {
+      isi = const _KotakKosong(
+        ikon: Icons.event_busy_outlined,
+        teks: 'Belum ada event CFD yang dijadwalkan dalam 2 minggu ke depan. Cek lagi nanti, ya.',
+      );
+    } else {
+      isi = SizedBox(
+        height: 196,
+        child: ListView.separated(
+          scrollDirection: Axis.horizontal,
+          padding: const EdgeInsets.symmetric(horizontal: 16),
+          itemCount: _events.length,
+          separatorBuilder: (_, i) => const SizedBox(width: 12),
+          itemBuilder: (_, i) => _KartuEvent(ev: _events[i], onTap: () => _lihatLokasi(_events[i])),
         ),
       );
     }
 
-    return Container(
-      color: _kPaper,
-      padding: const EdgeInsets.fromLTRB(20, 40, 20, 40),
+    return Padding(
+      padding: const EdgeInsets.only(top: 28),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const _LabelSeksi('DATA LANGSUNG'),
-          const SizedBox(height: 8),
-          const Text(
-            'Event CFD & sisa lapak',
-            style: TextStyle(fontSize: 26, fontWeight: FontWeight.w700, color: _kInk, height: 1.15),
-          ),
-          const SizedBox(height: 10),
-          const Text(
-            'Event hari ini sampai 2 minggu ke depan. Diperbarui otomatis tiap 30 detik. '
-            'Ketuk event untuk melihat lokasinya.',
-            style: TextStyle(fontSize: 14.5, color: _kInkSoft, height: 1.5),
-          ),
-          const SizedBox(height: 16),
-          Row(
-            children: [
-              if (!_loading || _events.isNotEmpty)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 0, 8, 10),
+            child: Row(
+              children: [
                 Expanded(
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      borderRadius: BorderRadius.circular(16),
-                      border: Border.all(color: _kLine),
-                    ),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text.rich(
-                          TextSpan(
-                            text: '$totalSisa',
-                            style: const TextStyle(fontSize: 24, fontWeight: FontWeight.w700, color: _kInk),
-                            children: [
-                              TextSpan(
-                                text: ' / $totalKuota',
-                                style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w400, color: _kInkSoft),
-                              ),
-                            ],
-                          ),
-                        ),
-                        const Text('lapak tersisa (pendaftaran dibuka)',
-                            style: TextStyle(fontSize: 12, color: _kInkSoft)),
-                      ],
-                    ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text('Event terdekat',
+                          style: TextStyle(fontSize: 19, fontWeight: FontWeight.w700, color: _kInk)),
+                      const SizedBox(height: 2),
+                      Text(
+                        _diperbarui == null
+                            ? 'Hari ini sampai 2 minggu ke depan'
+                            : 'Geser untuk melihat event lain · diperbarui ${_jam(_diperbarui!)}',
+                        style: const TextStyle(fontSize: 12.5, color: _kInkSoft),
+                      ),
+                    ],
                   ),
-                )
-              else
-                const Spacer(),
-              const SizedBox(width: 12),
-              SizedBox(
-                width: 48,
-                height: 48,
-                child: OutlinedButton(
+                ),
+                IconButton(
                   onPressed: _loading ? null : () => _muat(),
-                  style: OutlinedButton.styleFrom(
-                    shape: const CircleBorder(),
-                    padding: EdgeInsets.zero,
-                    side: const BorderSide(color: _kLine),
-                    backgroundColor: Colors.white,
-                  ),
-                  child: _loading
+                  tooltip: 'Muat ulang',
+                  icon: _loading
                       ? const SizedBox(
                           width: 18,
                           height: 18,
                           child: CircularProgressIndicator(strokeWidth: 2, color: kBrandColor),
                         )
-                      : const Icon(Icons.refresh, color: _kInkSoft),
+                      : const Icon(Icons.refresh_rounded, color: _kInkSoft),
                 ),
-              ),
-            ],
-          ),
-          if (_diperbarui != null && !_loading) ...[
-            const SizedBox(height: 8),
-            Text(
-              'Terakhir diperbarui ${_jam(_diperbarui!)} WIB',
-              style: const TextStyle(fontSize: 12, color: _kInkSoft),
+              ],
             ),
-          ],
-          const SizedBox(height: 20),
+          ),
           isi,
         ],
       ),
@@ -273,218 +266,88 @@ class _LandingScreenState extends State<LandingScreen> {
   }
 }
 
-// ===================== HERO =====================
-class _Hero extends StatefulWidget {
+// ===================== KARTU SAMBUTAN =====================
+class _KartuSambutan extends StatelessWidget {
   final VoidCallback onDaftar;
-  const _Hero({required this.onDaftar});
-
-  @override
-  State<_Hero> createState() => _HeroState();
-}
-
-class _HeroState extends State<_Hero> with SingleTickerProviderStateMixin {
-  late final AnimationController _ping =
-      AnimationController(vsync: this, duration: const Duration(milliseconds: 2400))..repeat();
-
-  @override
-  void dispose() {
-    _ping.dispose();
-    super.dispose();
-  }
+  final VoidCallback onMasuk;
+  const _KartuSambutan({required this.onDaftar, required this.onMasuk});
 
   @override
   Widget build(BuildContext context) {
-    final kurangiGerak = MediaQuery.of(context).disableAnimations;
-    return Container(
-      constraints: const BoxConstraints(minHeight: 520),
-      decoration: const BoxDecoration(
-        color: kBrandColor, // cadangan kalau gambar gagal dimuat
-        image: DecorationImage(
-          image: AssetImage('assets/images/cfd_surabaya.jpg'),
-          fit: BoxFit.cover,
-        ),
-      ),
-      child: Container(
-        color: Colors.black.withValues(alpha: 0.55),
-        padding: const EdgeInsets.fromLTRB(24, 56, 24, 64),
-        alignment: Alignment.center,
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const Text(
-              'E-Event Surabaya',
-              textAlign: TextAlign.center,
-              style: TextStyle(fontSize: 38, fontWeight: FontWeight.w700, color: Colors.white, height: 1.05),
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(24),
+        child: Container(
+          decoration: const BoxDecoration(
+            color: kBrandColor, // cadangan kalau gambar gagal dimuat
+            image: DecorationImage(
+              image: AssetImage('assets/images/cfd_surabaya.jpg'),
+              fit: BoxFit.cover,
             ),
-            const SizedBox(height: 16),
-            Text(
-              'Portal resmi pendaftaran pedagang Car Free Day se-Surabaya. Daftar, isi data usaha, dan '
-              'dapatkan nomor stan langsung dari HP -- tanpa antre ke posko.',
-              textAlign: TextAlign.center,
-              style: TextStyle(fontSize: 15.5, color: Colors.white.withValues(alpha: 0.85), height: 1.5),
-            ),
-            const SizedBox(height: 44),
-            SizedBox(
-              width: 196,
-              height: 196,
-              child: Stack(
-                alignment: Alignment.center,
-                children: [
-                  if (!kurangiGerak)
-                    AnimatedBuilder(
-                      animation: _ping,
-                      builder: (context, child) {
-                        // Cincin yang membesar lalu memudar, seperti animasi ping di web.
-                        final t = Curves.easeInOut.transform(_ping.value);
-                        return Opacity(
-                          opacity: (1 - t).clamp(0.0, 1.0),
-                          child: Transform.scale(
-                            scale: 1 + 0.15 * t,
-                            child: Container(
-                              width: 184,
-                              height: 184,
-                              decoration: BoxDecoration(
-                                shape: BoxShape.circle,
-                                border: Border.all(color: Colors.white.withValues(alpha: 0.4)),
-                              ),
-                            ),
-                          ),
-                        );
-                      },
-                    ),
-                  Material(
-                    color: Colors.white,
-                    shape: const CircleBorder(),
-                    elevation: 12,
-                    shadowColor: Colors.black54,
-                    child: InkWell(
-                      customBorder: const CircleBorder(),
-                      onTap: widget.onDaftar,
-                      child: const SizedBox(
-                        width: 160,
-                        height: 160,
-                        child: Column(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Icon(Icons.storefront_outlined, size: 36, color: kBrandColor),
-                            SizedBox(height: 8),
-                            Text(
-                              'Daftar &\nDapat Nomor Stan',
-                              textAlign: TextAlign.center,
-                              style: TextStyle(
-                                fontSize: 15,
-                                fontWeight: FontWeight.w700,
-                                color: kBrandColor,
-                                height: 1.2,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-                  ),
+          ),
+          child: Container(
+            padding: const EdgeInsets.fromLTRB(20, 22, 20, 20),
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.topCenter,
+                end: Alignment.bottomCenter,
+                colors: [
+                  kBrandColor.withValues(alpha: 0.55),
+                  kBrandColor.withValues(alpha: 0.95),
                 ],
               ),
             ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-// ===================== KARTU EVENT =====================
-class _KartuEvent extends StatelessWidget {
-  final EventPublik ev;
-  final bool terbuka;
-  final VoidCallback onTap;
-
-  const _KartuEvent({required this.ev, required this.terbuka, required this.onTap});
-
-  static const _labelPendaftaran = {
-    'belum_dibuka': 'Pendaftaran belum dibuka',
-    'dibuka': 'Pendaftaran dibuka',
-    'ditutup': 'Pendaftaran ditutup',
-  };
-
-  @override
-  Widget build(BuildContext context) {
-    final aktif = ev.berjalan || ev.pendaftaranDibuka;
-    return Column(
-      children: [
-        InkWell(
-          onTap: onTap,
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-            child: Row(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Container(
-                  width: 38,
-                  height: 38,
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                   decoration: BoxDecoration(
-                    color: kBrandColor.withValues(alpha: 0.1),
-                    borderRadius: BorderRadius.circular(10),
+                    color: Colors.white.withValues(alpha: 0.18),
+                    borderRadius: BorderRadius.circular(99),
                   ),
-                  child: const Icon(Icons.location_on_outlined, size: 20, color: kBrandColor),
+                  child: const Text('Car Free Day Surabaya',
+                      style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Colors.white)),
                 ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        ev.nama,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700, color: _kInk),
-                      ),
-                      const SizedBox(height: 2),
-                      Text(
-                        '${_formatTanggalEvent(ev.tanggal)} · ${_jamTitik(ev.jamMulai)}–${_jamTitik(ev.jamSelesai)} WIB',
-                        style: const TextStyle(fontSize: 12, color: _kInkSoft),
-                      ),
-                      const SizedBox(height: 3),
-                      Row(
-                        children: [
-                          Icon(Icons.circle, size: 8, color: aktif ? _kLeaf : _kInkSoft.withValues(alpha: 0.4)),
-                          const SizedBox(width: 6),
-                          Flexible(
-                            child: Text(
-                              ev.berjalan
-                                  ? 'Sedang berlangsung'
-                                  : (_labelPendaftaran[ev.statusPendaftaran] ?? ev.statusPendaftaran),
-                              style: const TextStyle(fontSize: 12, color: _kInkSoft),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ],
-                  ),
+                const SizedBox(height: 14),
+                const Text(
+                  'Mau jualan di CFD?\nDaftar cukup dari HP.',
+                  style: TextStyle(fontSize: 25, fontWeight: FontWeight.w700, color: Colors.white, height: 1.2),
                 ),
-                const SizedBox(width: 8),
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.end,
+                const SizedBox(height: 10),
+                Text(
+                  'Pilih event, dapatkan lokasi & nomor stan yang diacak adil oleh sistem, '
+                  'lalu tunjukkan kartu QR ke petugas saat check-in.',
+                  style: TextStyle(fontSize: 14, color: Colors.white.withValues(alpha: 0.9), height: 1.45),
+                ),
+                const SizedBox(height: 20),
+                Row(
                   children: [
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                      decoration: BoxDecoration(
-                        color: ev.penuh ? const Color(0xFFFDECEC) : _kLeaf.withValues(alpha: 0.1),
-                        borderRadius: BorderRadius.circular(99),
-                      ),
-                      child: Text(
-                        ev.penuh ? 'Penuh' : 'Sisa ${ev.sisa} / ${ev.kuotaTotal}',
-                        style: TextStyle(
-                          fontSize: 12,
-                          fontWeight: FontWeight.w600,
-                          color: ev.penuh ? const Color(0xFFBA1A1A) : _kLeaf,
+                    Expanded(
+                      child: FilledButton(
+                        onPressed: onDaftar,
+                        style: FilledButton.styleFrom(
+                          backgroundColor: Colors.white,
+                          foregroundColor: kBrandColor,
+                          minimumSize: const Size.fromHeight(48),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
                         ),
+                        child: const Text('Daftar Sekarang', style: TextStyle(fontWeight: FontWeight.w700)),
                       ),
                     ),
-                    const SizedBox(height: 4),
-                    AnimatedRotation(
-                      turns: terbuka ? 0.5 : 0,
-                      duration: const Duration(milliseconds: 200),
-                      child: const Icon(Icons.expand_more, color: _kInkSoft),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: OutlinedButton(
+                        onPressed: onMasuk,
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: Colors.white,
+                          side: BorderSide(color: Colors.white.withValues(alpha: 0.7)),
+                          minimumSize: const Size.fromHeight(48),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                        ),
+                        child: const Text('Sudah Punya Akun', style: TextStyle(fontWeight: FontWeight.w600)),
+                      ),
                     ),
                   ],
                 ),
@@ -492,269 +355,563 @@ class _KartuEvent extends StatelessWidget {
             ),
           ),
         ),
-        if (terbuka)
-          Container(
-            width: double.infinity,
-            padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
-            decoration: const BoxDecoration(
-              color: _kPaper,
-              border: Border(top: BorderSide(color: _kLine)),
+      ),
+    );
+  }
+}
+
+// ===================== KARTU EVENT (geser horizontal) =====================
+class _KartuEvent extends StatelessWidget {
+  final EventPublik ev;
+  final VoidCallback onTap;
+  const _KartuEvent({required this.ev, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    final tgl = DateTime.tryParse(ev.tanggal.length >= 10 ? ev.tanggal.substring(0, 10) : ev.tanggal);
+    final persenTerisi = ev.kuotaTotal > 0 ? (ev.terisi / ev.kuotaTotal).clamp(0.0, 1.0) : 0.0;
+    final (labelStatus, warnaStatus) = _statusEvent(ev);
+
+    return SizedBox(
+      width: 272,
+      child: Material(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(20),
+        child: InkWell(
+          borderRadius: BorderRadius.circular(20),
+          onTap: onTap,
+          child: Container(
+            padding: const EdgeInsets.all(14),
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(20),
+              border: Border.all(color: _kLine),
             ),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                if (ev.lokasi.isEmpty)
-                  const Text('Lokasi event ini belum ditentukan.',
-                      style: TextStyle(fontSize: 13.5, color: _kInkSoft))
-                else
-                  for (final l in ev.lokasi)
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    // Lencana tanggal
                     Container(
-                      margin: const EdgeInsets.only(bottom: 8),
-                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                      width: 48,
+                      padding: const EdgeInsets.symmetric(vertical: 6),
                       decoration: BoxDecoration(
-                        color: Colors.white,
+                        color: kBrandColor.withValues(alpha: 0.08),
                         borderRadius: BorderRadius.circular(12),
-                        border: Border.all(color: _kLine),
                       ),
-                      child: Row(
+                      child: Column(
                         children: [
-                          Expanded(
-                            child: Text.rich(
-                              TextSpan(
-                                text: l.namaJalan,
-                                style: const TextStyle(fontSize: 13, color: _kInk),
-                                children: [
-                                  if (l.kecamatan != null)
-                                    TextSpan(
-                                      text: ' · Kec. ${l.kecamatan}',
-                                      style: const TextStyle(color: _kInkSoft),
-                                    ),
-                                ],
-                              ),
-                            ),
-                          ),
-                          Text('${l.jumlahRuas} ruas', style: const TextStyle(fontSize: 11.5, color: _kInkSoft)),
+                          Text(tgl == null ? '-' : '${tgl.day}',
+                              style: const TextStyle(fontSize: 19, fontWeight: FontWeight.w700, color: kBrandColor)),
+                          Text(tgl == null ? '' : _bulanPendek[tgl.month - 1],
+                              style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: kBrandColor)),
                         ],
                       ),
                     ),
-                const SizedBox(height: 4),
-                const Text(
-                  'Lokasi lapak dan nomor stan diacak otomatis oleh sistem saat pedagang ikut event.',
-                  style: TextStyle(fontSize: 12, color: _kInkSoft),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(ev.nama,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700, color: _kInk)),
+                          const SizedBox(height: 2),
+                          Text(
+                            '${_hariRelatif(tgl)} · ${_jamTitik(ev.jamMulai)}–${_jamTitik(ev.jamSelesai)} WIB',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(fontSize: 12, color: _kInkSoft),
+                          ),
+                          const SizedBox(height: 6),
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                            decoration: BoxDecoration(
+                              color: warnaStatus.withValues(alpha: 0.1),
+                              borderRadius: BorderRadius.circular(99),
+                            ),
+                            child: Text(labelStatus,
+                                style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: warnaStatus)),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+                const Spacer(),
+                Row(
+                  children: [
+                    Text(
+                      ev.penuh ? 'Kuota penuh' : 'Sisa ${ev.sisa} lapak',
+                      style: TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w700,
+                        color: ev.penuh ? _kRed : _kLeaf,
+                      ),
+                    ),
+                    const Spacer(),
+                    Text('${ev.terisi}/${ev.kuotaTotal} terisi',
+                        style: const TextStyle(fontSize: 11.5, color: _kInkSoft)),
+                  ],
+                ),
+                const SizedBox(height: 6),
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(99),
+                  child: LinearProgressIndicator(
+                    value: persenTerisi,
+                    minHeight: 6,
+                    backgroundColor: const Color(0xFFE9ECF3),
+                    color: ev.penuh ? _kRed : kBrandColor,
+                  ),
+                ),
+                const SizedBox(height: 10),
+                Row(
+                  children: [
+                    const Icon(Icons.location_on_outlined, size: 15, color: _kInkSoft),
+                    const SizedBox(width: 4),
+                    Expanded(
+                      child: Text(
+                        ev.lokasi.isEmpty ? 'Lokasi belum ditentukan' : '${ev.lokasi.length} lokasi · ketuk untuk detail',
+                        style: const TextStyle(fontSize: 12, color: _kInkSoft),
+                      ),
+                    ),
+                    const Icon(Icons.chevron_right_rounded, size: 18, color: _kInkSoft),
+                  ],
                 ),
               ],
             ),
           ),
-      ],
-    );
-  }
-}
-
-// ===================== FITUR =====================
-class _BagianFitur extends StatelessWidget {
-  const _BagianFitur();
-
-  static const _fitur = [
-    (Icons.map_outlined, 'Titik Lapak di Peta',
-        'Lihat titik lapak Anda di peta, lengkap dengan status ketersediaan lapak sekitar secara langsung.'),
-    (Icons.schedule, 'Jam Operasional',
-        'Cek jadwal buka-tutup CFD tiap minggu dari HP, biar gak kepagian atau malah kesorean datang.'),
-    (Icons.fact_check_outlined, 'Verifikasi UMKM',
-        'Ajukan dan pantau status verifikasi usaha Anda langsung dari HP, tanpa perlu bolak-balik ke posko.'),
-    (Icons.history, 'Riwayat & Status Lapak',
-        'Lihat riwayat check-in dan status pendaftaran Anda kapan saja, gak perlu nanya-nanya ke petugas.'),
-  ];
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      color: Colors.white,
-      padding: const EdgeInsets.fromLTRB(20, 40, 20, 32),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const _LabelSeksi('BUAT PEDAGANG'),
-          const SizedBox(height: 8),
-          const Text(
-            'Semua yang Anda butuhkan buat jualan di CFD',
-            style: TextStyle(fontSize: 26, fontWeight: FontWeight.w700, color: _kInk, height: 1.15),
-          ),
-          const SizedBox(height: 20),
-          const Divider(height: 1, color: _kLine),
-          for (var i = 0; i < _fitur.length; i++) ...[
-            Padding(
-              padding: const EdgeInsets.symmetric(vertical: 18),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    children: [
-                      Text((i + 1).toString().padLeft(2, '0'),
-                          style: const TextStyle(fontSize: 13, color: _kInkSoft)),
-                      const SizedBox(width: 12),
-                      Container(
-                        width: 34,
-                        height: 34,
-                        decoration: BoxDecoration(
-                          color: kBrandColor.withValues(alpha: 0.1),
-                          borderRadius: BorderRadius.circular(9),
-                        ),
-                        child: Icon(_fitur[i].$1, size: 18, color: kBrandColor),
-                      ),
-                      const SizedBox(width: 10),
-                      Expanded(
-                        child: Text(_fitur[i].$2,
-                            style: const TextStyle(fontSize: 15.5, fontWeight: FontWeight.w700, color: _kInk)),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 8),
-                  Text(_fitur[i].$3, style: const TextStyle(fontSize: 14, color: _kInkSoft, height: 1.5)),
-                ],
-              ),
-            ),
-            const Divider(height: 1, color: _kLine),
-          ],
-        ],
+        ),
       ),
     );
   }
 }
 
-// ===================== ALUR PENDAFTARAN =====================
-class _BagianAlur extends StatelessWidget {
-  const _BagianAlur();
+(String, Color) _statusEvent(EventPublik ev) {
+  if (ev.berjalan) return ('Sedang berlangsung', _kLeaf);
+  switch (ev.statusPendaftaran) {
+    case 'dibuka':
+      return ('Pendaftaran dibuka', kBrandColor);
+    case 'belum_dibuka':
+      return ('Pendaftaran belum dibuka', _kAmber);
+    default:
+      return ('Pendaftaran ditutup', _kInkSoft);
+  }
+}
 
-  static const _tahap = [
-    ('01', 'Daftar akun', 'Buat akun dan isi data usaha Anda langsung dari aplikasi ini.'),
-    ('02', 'Pilih event', 'Pilih event CFD yang ingin diikuti -- lokasi lapak diacak otomatis oleh sistem.'),
-    ('03', 'Dapat nomor stan', 'Nomor stan langsung terbit beserta kode QR untuk event tersebut.'),
-    ('04', 'Check-in di lokasi', 'Tunjukkan QR ke petugas di lapangan untuk mulai berjualan.'),
-  ];
+// ===================== SHEET LOKASI EVENT =====================
+class _SheetLokasi extends StatelessWidget {
+  final EventPublik ev;
+  final VoidCallback onDaftar;
+  const _SheetLokasi({required this.ev, required this.onDaftar});
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      color: _kPaper,
-      padding: const EdgeInsets.fromLTRB(20, 40, 20, 40),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const _LabelSeksi('ALUR PENDAFTARAN PEDAGANG'),
-          const SizedBox(height: 8),
-          const Text(
-            'Empat tahap, dari pendaftaran hingga berjualan',
-            style: TextStyle(fontSize: 26, fontWeight: FontWeight.w700, color: _kInk, height: 1.15),
-          ),
-          const SizedBox(height: 24),
-          for (var i = 0; i < _tahap.length; i++)
-            IntrinsicHeight(
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  // Garis waktu vertikal (versi HP dari garis horizontal di web)
-                  SizedBox(
-                    width: 24,
-                    child: Column(
+    final tgl = DateTime.tryParse(ev.tanggal.length >= 10 ? ev.tanggal.substring(0, 10) : ev.tanggal);
+    final bisaDaftar = ev.pendaftaranDibuka && !ev.penuh;
+    return SafeArea(
+      child: ConstrainedBox(
+        constraints: BoxConstraints(maxHeight: MediaQuery.of(context).size.height * 0.75),
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(ev.nama, style: const TextStyle(fontSize: 19, fontWeight: FontWeight.w700, color: _kInk)),
+              const SizedBox(height: 4),
+              Text(
+                '${tgl == null ? ev.tanggal : _tanggalPanjang(tgl)} · ${_jamTitik(ev.jamMulai)}–${_jamTitik(ev.jamSelesai)} WIB',
+                style: const TextStyle(fontSize: 13, color: _kInkSoft),
+              ),
+              const SizedBox(height: 16),
+              const Text('Lokasi event',
+                  style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: _kInk)),
+              const SizedBox(height: 8),
+              if (ev.lokasi.isEmpty)
+                const Text('Lokasi event ini belum ditentukan.', style: TextStyle(fontSize: 13.5, color: _kInkSoft))
+              else
+                for (final l in ev.lokasi)
+                  Container(
+                    margin: const EdgeInsets.only(bottom: 8),
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                    decoration: BoxDecoration(
+                      color: _kBg,
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Row(
                       children: [
-                        const SizedBox(height: 3),
-                        Container(
-                          width: 16,
-                          height: 16,
-                          decoration: BoxDecoration(
-                            shape: BoxShape.circle,
-                            color: _kPaper,
-                            border: Border.all(color: kBrandColor, width: 2),
+                        const Icon(Icons.signpost_outlined, size: 18, color: kBrandColor),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(l.namaJalan, style: const TextStyle(fontSize: 13.5, color: _kInk)),
+                              if (l.kecamatan != null)
+                                Text('Kec. ${l.kecamatan}', style: const TextStyle(fontSize: 12, color: _kInkSoft)),
+                            ],
                           ),
-                          child: const Center(child: Icon(Icons.circle, size: 6, color: kBrandColor)),
                         ),
-                        if (i < _tahap.length - 1)
-                          Expanded(child: Container(width: 1, color: _kLine)),
+                        Text('${l.jumlahRuas} ruas', style: const TextStyle(fontSize: 12, color: _kInkSoft)),
                       ],
                     ),
                   ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Padding(
-                      padding: EdgeInsets.only(bottom: i < _tahap.length - 1 ? 24 : 0),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(_tahap[i].$1, style: const TextStyle(fontSize: 12, color: _kInkSoft)),
-                          const SizedBox(height: 2),
-                          Text(_tahap[i].$2,
-                              style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w700, color: _kInk)),
-                          const SizedBox(height: 4),
-                          Text(_tahap[i].$3,
-                              style: const TextStyle(fontSize: 14, color: _kInkSoft, height: 1.5)),
-                        ],
+              const SizedBox(height: 6),
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: kBrandColor.withValues(alpha: 0.06),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: const Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Icon(Icons.shuffle_rounded, size: 18, color: kBrandColor),
+                    SizedBox(width: 10),
+                    Expanded(
+                      child: Text(
+                        'Ruas dan nomor stan tidak dipilih sendiri -- sistem mengacaknya otomatis saat kamu '
+                        'menekan "Ikut Event", jadi semua pedagang punya peluang yang sama.',
+                        style: TextStyle(fontSize: 12.5, color: _kInk, height: 1.4),
                       ),
                     ),
-                  ),
-                ],
+                  ],
+                ),
               ),
-            ),
-        ],
-      ),
-    );
-  }
-}
-
-// ===================== FOOTER =====================
-class _Footer extends StatelessWidget {
-  final VoidCallback onDaftar;
-  final VoidCallback onMasuk;
-  const _Footer({required this.onDaftar, required this.onMasuk});
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      color: kBrandColor,
-      padding: EdgeInsets.fromLTRB(20, 32, 20, 24 + MediaQuery.of(context).padding.bottom),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Text('E-Event Surabaya',
-              style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700, color: Colors.white)),
-          const SizedBox(height: 6),
-          Text(
-            'Portal pendaftaran pedagang Car Free Day se-Surabaya.',
-            style: TextStyle(fontSize: 13, color: Colors.white.withValues(alpha: 0.75)),
-          ),
-          const SizedBox(height: 20),
-          Row(
-            children: [
-              Expanded(
-                child: FilledButton(
-                  onPressed: onDaftar,
-                  style: FilledButton.styleFrom(
-                    backgroundColor: Colors.white,
-                    foregroundColor: kBrandColor,
-                    minimumSize: const Size.fromHeight(48),
-                  ),
-                  child: const Text('Daftar & Dapat Nomor Stan', style: TextStyle(fontWeight: FontWeight.w700)),
+              const SizedBox(height: 16),
+              FilledButton(
+                onPressed: bisaDaftar ? onDaftar : null,
+                style: FilledButton.styleFrom(
+                  backgroundColor: kBrandColor,
+                  minimumSize: const Size.fromHeight(48),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                ),
+                child: Text(
+                  bisaDaftar
+                      ? 'Daftar untuk ikut event ini'
+                      : ev.penuh
+                          ? 'Kuota event ini sudah penuh'
+                          : 'Pendaftaran belum/tidak dibuka',
+                  style: const TextStyle(fontWeight: FontWeight.w700),
                 ),
               ),
             ],
           ),
-          const SizedBox(height: 10),
-          SizedBox(
-            width: double.infinity,
-            child: OutlinedButton(
-              onPressed: onMasuk,
-              style: OutlinedButton.styleFrom(
-                foregroundColor: Colors.white,
-                side: BorderSide(color: Colors.white.withValues(alpha: 0.6)),
-                minimumSize: const Size.fromHeight(48),
-              ),
-              child: const Text('Masuk ke Akun', style: TextStyle(fontWeight: FontWeight.w600)),
+        ),
+      ),
+    );
+  }
+}
+
+// ===================== LAYANAN =====================
+class _BagianLayanan extends StatelessWidget {
+  const _BagianLayanan();
+
+  static const _layanan = [
+    (Icons.event_note_outlined, 'Info event real-time', 'Jadwal event & sisa lapak, bisa dilihat tanpa login.'),
+    (Icons.badge_outlined, 'Daftar online', 'Buat akun & isi data usaha dari HP, langsung aktif.'),
+    (Icons.shuffle_rounded, 'Lokasi diacak adil', 'Ruas & nomor stan dipilih sistem, tanpa rebutan.'),
+    (Icons.qr_code_2_rounded, 'Kartu QR digital', 'Satu QR per event untuk check-in ke petugas.'),
+    (Icons.payments_outlined, 'Checkout & omset', 'Catat omset setelah event selesai berjualan.'),
+    (Icons.lock_reset_rounded, 'Lupa password', 'Atur ulang lewat kode OTP yang dikirim ke email.'),
+  ];
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 30, 16, 0),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const _JudulBagian(judul: 'Layanan untuk pedagang', sub: 'Semua bisa diurus dari aplikasi ini.'),
+          const SizedBox(height: 12),
+          LayoutBuilder(
+            builder: (context, c) {
+              final lebar = (c.maxWidth - 10) / 2;
+              return Wrap(
+                spacing: 10,
+                runSpacing: 10,
+                children: [
+                  for (final l in _layanan)
+                    Container(
+                      width: lebar,
+                      constraints: const BoxConstraints(minHeight: 132),
+                      padding: const EdgeInsets.all(14),
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(16),
+                        border: Border.all(color: _kLine),
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Container(
+                            width: 38,
+                            height: 38,
+                            decoration: BoxDecoration(
+                              color: kBrandColor.withValues(alpha: 0.08),
+                              borderRadius: BorderRadius.circular(11),
+                            ),
+                            child: Icon(l.$1, size: 20, color: kBrandColor),
+                          ),
+                          const SizedBox(height: 10),
+                          Text(l.$2, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: _kInk)),
+                          const SizedBox(height: 4),
+                          Text(l.$3, style: const TextStyle(fontSize: 12.5, color: _kInkSoft, height: 1.35)),
+                        ],
+                      ),
+                    ),
+                ],
+              );
+            },
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ===================== LANGKAH MENDAFTAR =====================
+class _Langkah {
+  final IconData ikon;
+  final String judul;
+  final String ringkas;
+  final List<String> detail;
+  const _Langkah(this.ikon, this.judul, this.ringkas, this.detail);
+}
+
+class _BagianLangkah extends StatefulWidget {
+  const _BagianLangkah();
+
+  @override
+  State<_BagianLangkah> createState() => _BagianLangkahState();
+}
+
+class _BagianLangkahState extends State<_BagianLangkah> {
+  int? _terbuka = 0;
+
+  // Mengikuti alur sistem yang sebenarnya (register -> data usaha -> ikut
+  // event -> acak lokasi & QR -> check-in -> checkout).
+  static const _langkah = [
+    _Langkah(Icons.person_add_alt_1_outlined, 'Buat akun', 'Daftar dengan nama, email, dan password.', [
+      'Tekan "Daftar Sekarang", isi nama, email aktif, dan password.',
+      'Setelah berhasil, masuk (login) dengan email & password tadi.',
+      'Lupa password? Pakai "Lupa password" di halaman Masuk -- kode OTP dikirim ke email.',
+    ]),
+    _Langkah(Icons.store_mall_directory_outlined, 'Lengkapi data usaha', 'Sekali isi, dipakai untuk semua event.', [
+      'Isi NIK (16 digit), nama lengkap, dan tanggal lahir.',
+      'Isi nama usaha, kategori dagangan (makanan & minuman / bukan), dan jenis lapak (rombong / meja).',
+      'Akun langsung aktif -- tidak perlu menunggu verifikasi petugas.',
+    ]),
+    _Langkah(Icons.touch_app_outlined, 'Pilih event & tekan "Ikut Event"', 'Pilih event yang pendaftarannya dibuka.', [
+      'Lihat daftar event beserta sisa kuota untuk kategorimu (pedagang lama / baru).',
+      'Hanya bisa ikut event yang statusnya "Pendaftaran dibuka" dan kuotanya masih ada.',
+      'Satu pedagang hanya boleh terdaftar di SATU event aktif dalam satu waktu.',
+    ]),
+    _Langkah(Icons.qr_code_2_rounded, 'Dapat lokasi, nomor stan & QR', 'Diacak otomatis oleh sistem saat itu juga.', [
+      'Sistem mengacak titik lokasi (jalan & ruas) dan nomor stanmu.',
+      'Kartu QR khusus event itu langsung terbit -- simpan atau cetak.',
+      'Berhalangan? Pendaftaran bisa dibatalkan selama pendaftaran masih dibuka dan kamu belum check-in.',
+    ]),
+    _Langkah(Icons.qr_code_scanner_rounded, 'Check-in di hari-H', 'Tunjukkan QR ke petugas di lokasi.', [
+      'Check-in dibuka mulai 1 jam sebelum event dimulai.',
+      'Datang ke lokasi & nomor stan sesuai kartu, lalu minta petugas memindai QR-mu.',
+    ]),
+    _Langkah(Icons.receipt_long_outlined, 'Checkout & isi omset', 'Setelah event selesai.', [
+      'Buka menu Check-out lalu isi total omset hari itu.',
+      'Wajib dilakukan -- selama belum checkout, kamu tidak bisa ikut event berikutnya.',
+    ]),
+  ];
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 30, 16, 0),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const _JudulBagian(
+            judul: 'Cara mendaftar sampai berjualan',
+            sub: 'Enam langkah. Ketuk tiap langkah untuk melihat detailnya.',
+          ),
+          const SizedBox(height: 12),
+          Container(
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(18),
+              border: Border.all(color: _kLine),
+            ),
+            child: Column(
+              children: [
+                for (var i = 0; i < _langkah.length; i++)
+                  _ItemLangkah(
+                    nomor: i + 1,
+                    langkah: _langkah[i],
+                    terakhir: i == _langkah.length - 1,
+                    terbuka: _terbuka == i,
+                    onTap: () => setState(() => _terbuka = _terbuka == i ? null : i),
+                  ),
+              ],
             ),
           ),
-          const SizedBox(height: 20),
-          Text(
-            '© ${DateTime.now().year} E-Event Surabaya',
-            style: TextStyle(fontSize: 12, color: Colors.white.withValues(alpha: 0.6)),
-          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _ItemLangkah extends StatelessWidget {
+  final int nomor;
+  final _Langkah langkah;
+  final bool terakhir;
+  final bool terbuka;
+  final VoidCallback onTap;
+
+  const _ItemLangkah({
+    required this.nomor,
+    required this.langkah,
+    required this.terakhir,
+    required this.terbuka,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    // Garis penghubung antar-langkah digambar di belakang (Stack), BUKAN
+    // lewat IntrinsicHeight. IntrinsicHeight + AnimatedSize bikin
+    // "RenderFlex overflowed" sesaat setiap detail langkah menutup, karena
+    // tinggi baris dihitung dari ukuran akhir sementara animasinya masih
+    // berjalan.
+    return InkWell(
+      onTap: onTap,
+      child: Stack(
+        children: [
+          if (!terakhir)
+            const Positioned(
+              left: 31,
+              top: 48,
+              bottom: 0,
+              child: SizedBox(width: 2, child: ColoredBox(color: _kLine)),
+            ),
+          Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Bulatan nomor langkah
+            SizedBox(
+              width: 64,
+              child: Column(
+                children: [
+                  const SizedBox(height: 14),
+                  AnimatedContainer(
+                    duration: const Duration(milliseconds: 200),
+                    width: 34,
+                    height: 34,
+                    alignment: Alignment.center,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      color: terbuka ? kBrandColor : kBrandColor.withValues(alpha: 0.08),
+                    ),
+                    child: Text(
+                      '$nomor',
+                      style: TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w700,
+                        color: terbuka ? Colors.white : kBrandColor,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            Expanded(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(0, 14, 12, 14),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Icon(langkah.ikon, size: 18, color: kBrandColor),
+                        const SizedBox(width: 6),
+                        Expanded(
+                          child: Text(langkah.judul,
+                              style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700, color: _kInk)),
+                        ),
+                        AnimatedRotation(
+                          turns: terbuka ? 0.5 : 0,
+                          duration: const Duration(milliseconds: 200),
+                          child: const Icon(Icons.expand_more_rounded, color: _kInkSoft),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 2),
+                    Text(langkah.ringkas, style: const TextStyle(fontSize: 13, color: _kInkSoft)),
+                    AnimatedSize(
+                      duration: const Duration(milliseconds: 200),
+                      curve: Curves.easeOut,
+                      alignment: Alignment.topCenter,
+                      child: terbuka
+                          ? Padding(
+                              padding: const EdgeInsets.only(top: 10),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  for (final d in langkah.detail)
+                                    Padding(
+                                      padding: const EdgeInsets.only(bottom: 6),
+                                      child: Row(
+                                        crossAxisAlignment: CrossAxisAlignment.start,
+                                        children: [
+                                          const Padding(
+                                            padding: EdgeInsets.only(top: 6),
+                                            child: Icon(Icons.circle, size: 6, color: kBrandColor),
+                                          ),
+                                          const SizedBox(width: 8),
+                                          Expanded(
+                                            child: Text(d,
+                                                style: const TextStyle(fontSize: 13, color: _kInk, height: 1.4)),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                ],
+                              ),
+                            )
+                          : const SizedBox(width: double.infinity),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ],
+        ),
+        ],
+      ),
+    );
+  }
+}
+
+// ===================== PENUTUP =====================
+class _Penutup extends StatelessWidget {
+  const _Penutup();
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 28, 16, 24),
+      child: Column(
+        children: [
+          const Image(image: AssetImage('assets/images/logo.png'), height: 44),
+          const SizedBox(height: 8),
+          const Text('E-Event Surabaya',
+              style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: _kInk)),
+          const Text('Portal pedagang Car Free Day se-Surabaya',
+              style: TextStyle(fontSize: 12, color: _kInkSoft)),
+          const SizedBox(height: 6),
+          Text('© ${DateTime.now().year}', style: const TextStyle(fontSize: 11.5, color: _kInkSoft)),
         ],
       ),
     );
@@ -762,39 +919,49 @@ class _Footer extends StatelessWidget {
 }
 
 // ===================== KOMPONEN KECIL =====================
-class _LabelSeksi extends StatelessWidget {
-  final String teks;
-  const _LabelSeksi(this.teks);
+class _JudulBagian extends StatelessWidget {
+  final String judul;
+  final String sub;
+  const _JudulBagian({required this.judul, required this.sub});
 
   @override
   Widget build(BuildContext context) {
-    return Text(
-      teks,
-      style: const TextStyle(
-        fontSize: 12,
-        fontWeight: FontWeight.w600,
-        letterSpacing: 1.1,
-        color: kBrandColor,
-      ),
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(judul, style: const TextStyle(fontSize: 19, fontWeight: FontWeight.w700, color: _kInk)),
+        const SizedBox(height: 2),
+        Text(sub, style: const TextStyle(fontSize: 12.5, color: _kInkSoft)),
+      ],
     );
   }
 }
 
-class _KotakInfo extends StatelessWidget {
+class _KotakKosong extends StatelessWidget {
+  final IconData ikon;
   final String teks;
-  const _KotakInfo({required this.teks});
+  final Widget? aksi;
+  const _KotakKosong({required this.ikon, required this.teks, this.aksi});
 
   @override
   Widget build(BuildContext context) {
     return Container(
       width: double.infinity,
-      padding: const EdgeInsets.all(28),
+      margin: const EdgeInsets.symmetric(horizontal: 16),
+      padding: const EdgeInsets.fromLTRB(20, 24, 20, 16),
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(18),
         border: Border.all(color: _kLine),
       ),
-      child: Text(teks, textAlign: TextAlign.center, style: const TextStyle(fontSize: 13.5, color: _kInkSoft)),
+      child: Column(
+        children: [
+          Icon(ikon, size: 30, color: _kInkSoft),
+          const SizedBox(height: 10),
+          Text(teks, textAlign: TextAlign.center, style: const TextStyle(fontSize: 13.5, color: _kInkSoft, height: 1.4)),
+          if (aksi != null) ...[const SizedBox(height: 4), aksi!],
+        ],
+      ),
     );
   }
 }
@@ -805,22 +972,22 @@ const _bulan = [
   'Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni',
   'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember',
 ];
+const _bulanPendek = ['JAN', 'FEB', 'MAR', 'APR', 'MEI', 'JUN', 'JUL', 'AGU', 'SEP', 'OKT', 'NOV', 'DES'];
 
-/// "2026-10-05" -> "Hari ini · Senin, 5 Oktober" (sama dengan web).
-String _formatTanggalEvent(String iso) {
-  final d = DateTime.tryParse(iso.length >= 10 ? iso.substring(0, 10) : iso);
-  if (d == null) return iso;
+/// "Hari ini" / "Besok" / "Sabtu"
+String _hariRelatif(DateTime? d) {
+  if (d == null) return '-';
   final now = DateTime.now();
-  final hariIni = DateTime(now.year, now.month, now.day);
-  final selisih = DateTime(d.year, d.month, d.day).difference(hariIni).inDays;
-  final label = '${_hari[d.weekday - 1]}, ${d.day} ${_bulan[d.month - 1]}';
-  if (selisih == 0) return 'Hari ini · $label';
-  if (selisih == 1) return 'Besok · $label';
-  return label;
+  final selisih = DateTime(d.year, d.month, d.day).difference(DateTime(now.year, now.month, now.day)).inDays;
+  if (selisih == 0) return 'Hari ini';
+  if (selisih == 1) return 'Besok';
+  return _hari[d.weekday - 1];
 }
+
+/// "Senin, 5 Oktober 2026"
+String _tanggalPanjang(DateTime d) => '${_hari[d.weekday - 1]}, ${d.day} ${_bulan[d.month - 1]} ${d.year}';
 
 /// "06:00" -> "06.00"
 String _jamTitik(String jam) => jam.length >= 5 ? jam.substring(0, 5).replaceAll(':', '.') : jam;
 
-String _jam(DateTime t) =>
-    '${t.hour.toString().padLeft(2, '0')}.${t.minute.toString().padLeft(2, '0')}.${t.second.toString().padLeft(2, '0')}';
+String _jam(DateTime t) => '${t.hour.toString().padLeft(2, '0')}.${t.minute.toString().padLeft(2, '0')}';
