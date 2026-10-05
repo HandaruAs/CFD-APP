@@ -100,32 +100,29 @@ export interface KuotaEventDTO {
   sisa: number;
 }
 
-// CreateRuasRequest/UpdateRuasRequest -- urutan gak lagi dikirim dari
-// FE (ditentukan otomatis backend). Petugas cuma isi namaRuas & kuota.
+// Manajemen Lapak sekarang cuma mengelola data wilayah (kecamatan, jalan,
+// ruas). Kuota TIDAK diisi di sini lagi -- kuota diatur per sesi di Jam
+// Operasional (Tambah Sesi). Urutan ruas ditentukan otomatis backend.
 export interface CreateRuasRequest {
   jalanId: string;
   namaRuas: string;
-  kuota: number;
 }
 
 export interface UpdateRuasRequest {
   namaRuas: string;
-  kuota: number;
 }
 
 export interface CreateJalanBaruRequest {
   kecamatanId: string;
   kodeJalan: string;
   namaJalan: string;
-  kapasitas: number;
 }
 
-// UpdateJalanBaruRequest -- edit jalan yang sudah ada (kode/nama/kapasitas).
+// UpdateJalanBaruRequest -- edit kode/nama jalan yang sudah ada.
 // Kecamatan gak ikut diedit lewat sini.
 export interface UpdateJalanBaruRequest {
   kodeJalan: string;
   namaJalan: string;
-  kapasitas: number;
 }
 
 // ============================================================
@@ -173,7 +170,7 @@ export interface StatsResponse {
 
 // Tab "Event" sudah dihapus -- pembuatan sesi/event pindah ke menu Jam
 // Operasional (tombol "Tambah Sesi").
-export type TabKey = "ruas-kuota" | "laporan";
+export type TabKey = "wilayah" | "laporan";
 
 // ============================================================
 // Acak Lapak (POST /api/petugas/acak-lapak/generate-slot)
@@ -227,4 +224,4 @@ export interface RegistrasiResponse {
   total: number;
   page: number;
   limit: number;
-}
+}

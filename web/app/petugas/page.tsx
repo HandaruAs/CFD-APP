@@ -25,9 +25,10 @@ import {
 
 // ===== TYPES =====
 // Event hari ini dari GET /api/petugas/events/hari-ini. Satu hari boleh
-// punya beberapa event; kartu status di atas menampilkan event yang paling
-// relevan (sedang berjalan, lalu yang akan mulai paling dekat, lalu yang
-// terakhir selesai), daftar lengkapnya ada di bawahnya.
+// punya beberapa event (bahkan berjalan bersamaan), jadi SELURUH dashboard
+// -- status & sisa waktu, kehadiran, kuota, omset, dan tabel pedagang --
+// selalu menampilkan SATU event yang dipilih petugas lewat tombol pilihan
+// event di atas. Data tidak lagi digabung dari beberapa event.
 type EventHariIni = {
   id: string;
   nama: string;
@@ -54,28 +55,40 @@ type SesiAktif = {
   totalMenit: number;
 };
 
-// Pilih event untuk kartu status: berjalan > terjadwal paling awal >
+// Event yang dipilih otomatis saat dashboard dibuka (atau saat event
+// pilihan petugas sudah tidak ada): berjalan > terjadwal paling awal >
 // selesai paling akhir > dibatalkan.
-function pilihEventUtama(events: EventHariIni[]): SesiAktif | null {
+function pilihEventUtama(events: EventHariIni[]): EventHariIni | null {
   const urutan: EventHariIni["status"][] = ["berjalan", "terjadwal", "selesai", "dibatalkan"];
   for (const st of urutan) {
     const cocok = events.filter((e) => e.status === st);
     if (cocok.length === 0) continue;
-    const e = st === "selesai" || st === "dibatalkan" ? cocok[cocok.length - 1] : cocok[0];
-    return {
-      id: e.id,
-      nama: e.nama,
-      tanggal: e.tanggal,
-      jamMulai: e.jamMulai,
-      jamSelesaiRencana: e.jamSelesai,
-      status: e.status,
-      aktif: e.status === "berjalan",
-      sisaMenit: e.sisaMenit,
-      totalMenit: e.totalMenit,
-    };
+    return st === "selesai" || st === "dibatalkan" ? cocok[cocok.length - 1] : cocok[0];
   }
   return null;
 }
+
+function keSesi(e: EventHariIni | null): SesiAktif | null {
+  if (!e) return null;
+  return {
+    id: e.id,
+    nama: e.nama,
+    tanggal: e.tanggal,
+    jamMulai: e.jamMulai,
+    jamSelesaiRencana: e.jamSelesai,
+    status: e.status,
+    aktif: e.status === "berjalan",
+    sisaMenit: e.sisaMenit,
+    totalMenit: e.totalMenit,
+  };
+}
+
+const LABEL_STATUS_EVENT: Record<EventHariIni["status"], { label: string; pill: string }> = {
+  berjalan: { label: "Berlangsung", pill: "pt-pill-success" },
+  terjadwal: { label: "Terjadwal", pill: "pt-pill-warning" },
+  selesai: { label: "Selesai", pill: "pt-pill-neutral" },
+  dibatalkan: { label: "Dibatalkan", pill: "pt-pill-danger" },
+};
 type KehadiranItem = {
   id: string;
   pedagangId: string;
@@ -342,7 +355,12 @@ const INTERVAL_REFRESH_MS = 60_000;
 export default function PetugasHomePage() {
   const kurangiGerak = useReducedMotion();
   const [events, setEvents] = useState<EventHariIni[]>([]);
-  const [laporan, setLaporan] = useState<LaporanResponse | null>(null);
+  // Event yang dipilih petugas. null = ikut pilihan otomatis (pilihEventUtama).
+  const [pilihanId, setPilihanId] = useState<string | null>(null);
+  // Laporan disimpan bersama id event-nya, supaya saat ganti event data
+  // lama tidak sempat tampil sebagai data event baru.
+  const [laporan, setLaporan] = useState<{ eventId: string; data: LaporanResponse } | null>(null);
+  const [laporanTick, setLaporanTick] = useState(0);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -352,12 +370,9 @@ export default function PetugasHomePage() {
   const load = useCallback(async (manual = false) => {
     if (manual) setRefreshing(true);
     try {
-      const [eventData, laporanData] = await Promise.all([
-        apiFetch("/api/petugas/events/hari-ini") as Promise<{ data: EventHariIni[] }>,
-        apiFetch("/api/petugas/laporan?limit=100") as Promise<LaporanResponse>,
-      ]);
+      const eventData = (await apiFetch("/api/petugas/events/hari-ini")) as { data: EventHariIni[] };
       setEvents(eventData.data ?? []);
-      setLaporan(laporanData);
+      setLaporanTick((n) => n + 1); // laporan event terpilih ikut dimuat ulang
       setLoadError(null);
       setDiperbarui(new Date());
     } catch (err) {
@@ -380,21 +395,38 @@ export default function PetugasHomePage() {
     };
   }, [load]);
 
-  const sesi = pilihEventUtama(events);
-  const kuotaHariIni = events
-    .filter((e) => e.status !== "dibatalkan")
-    .reduce((t, e) => ({ total: t.total + e.kuotaTotal, terisi: t.terisi + e.terisi, jumlah: t.jumlah + 1 }), {
-      total: 0,
-      terisi: 0,
-      jumlah: 0,
-    });
+  const eventTerpilih = events.find((e) => e.id === pilihanId) ?? pilihEventUtama(events);
+  const idTerpilih = eventTerpilih?.id ?? null;
+  const sesi = keSesi(eventTerpilih);
   const { label: labelSesi, tone: toneSesi } = turunkanStatusSesi(sesi);
 
-  const totalTerdaftar = laporan?.totalTerdaftar ?? 0;
-  const totalCheckin = laporan?.totalCheckin ?? 0;
-  const totalCheckout = laporan?.totalCheckout ?? 0;
-  const persentaseHadir = laporan?.persenHadir ?? 0;
-  const pedagangHariIni = laporan?.data ?? [];
+  // Kehadiran, omset & tabel pedagang HANYA untuk event terpilih.
+  useEffect(() => {
+    if (!idTerpilih) return;
+    let batal = false;
+    apiFetch(`/api/petugas/laporan?eventId=${encodeURIComponent(idTerpilih)}&limit=100`)
+      .then((data: LaporanResponse) => {
+        if (!batal) setLaporan({ eventId: idTerpilih, data });
+      })
+      .catch((err) => {
+        if (!batal) setLoadError(err instanceof Error ? err.message : "gagal memuat data kehadiran");
+      });
+    return () => {
+      batal = true;
+    };
+  }, [idTerpilih, laporanTick]);
+
+  const laporanEvent = laporan && laporan.eventId === idTerpilih ? laporan.data : null;
+  // Skeleton saat data event terpilih belum datang (pertama buka / ganti event).
+  const memuatLaporan = loading || (idTerpilih !== null && laporanEvent === null);
+
+  const totalTerdaftar = laporanEvent?.totalTerdaftar ?? 0;
+  const totalCheckin = laporanEvent?.totalCheckin ?? 0;
+  const totalCheckout = laporanEvent?.totalCheckout ?? 0;
+  const persentaseHadir = laporanEvent?.persenHadir ?? 0;
+  const pedagangHariIni = laporanEvent?.data ?? [];
+  const kuotaTotal = eventTerpilih?.kuotaTotal ?? 0;
+  const kuotaTerisi = eventTerpilih?.terisi ?? 0;
 
   // Sisa waktu dihitung mundur di browser sejak data terakhir diambil,
   // supaya angkanya tetap jalan di antara refresh.
@@ -462,7 +494,46 @@ export default function PetugasHomePage() {
         </div>
       )}
 
-      {/* ===== HERO: STATUS SESI ===== */}
+      {/* ===== PILIH EVENT (kalau hari ini lebih dari satu event) =====
+          Semua bagian di bawahnya mengikuti event yang dipilih di sini. */}
+      {!loading && events.length > 1 && (
+        <motion.div variants={BAGIAN} className="pt-card">
+          <div className="flex flex-wrap items-baseline justify-between gap-xs">
+            <p className="text-label-md font-semibold text-on-surface">Pilih event yang ingin dipantau</p>
+            <p className="text-label-sm text-on-surface-variant">{events.length} event hari ini</p>
+          </div>
+          <div role="tablist" aria-label="Event hari ini" className="mt-sm grid grid-cols-1 gap-sm sm:grid-cols-2 lg:grid-cols-3">
+            {events.map((e) => {
+              const aktif = e.id === idTerpilih;
+              const st = LABEL_STATUS_EVENT[e.status];
+              return (
+                <button
+                  key={e.id}
+                  type="button"
+                  role="tab"
+                  aria-selected={aktif}
+                  onClick={() => setPilihanId(e.id)}
+                  className={`flex min-h-[64px] flex-col items-start gap-1 rounded-xl border px-md py-sm text-left transition-colors ${
+                    aktif
+                      ? "border-primary bg-primary/10 shadow-[inset_3px_0_0_var(--color-primary)]"
+                      : "border-outline-variant bg-surface-container-lowest hover:bg-surface-container-low"
+                  }`}
+                >
+                  <span className="flex w-full items-center justify-between gap-sm">
+                    <span className="truncate text-body-md font-medium text-on-surface">{e.nama}</span>
+                    <span className={`pt-pill shrink-0 py-0.5 ${st.pill}`}>{st.label}</span>
+                  </span>
+                  <span className="text-label-sm tabular-nums text-on-surface-variant">
+                    {e.jamMulai.slice(0, 5)} – {e.jamSelesai.slice(0, 5)} WIB · {e.checkIn} hadir
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+        </motion.div>
+      )}
+
+      {/* ===== HERO: STATUS EVENT TERPILIH ===== */}
       <motion.div variants={BAGIAN}>
         {loading ? (
           <div className="h-[156px] animate-pulse rounded-2xl bg-surface-container-high" />
@@ -508,7 +579,6 @@ export default function PetugasHomePage() {
                 <div>
                   <p className={`text-label-sm ${toneSesi === "live" ? "text-white/70" : "text-on-surface-variant"}`}>
                     {sesi ? sesi.nama : "Status Event"}
-                    {events.length > 1 && ` · ${events.length} event hari ini`}
                   </p>
                   <p className="mt-1 text-headline-md">{labelSesi}</p>
                   {sesi && (
@@ -551,47 +621,10 @@ export default function PetugasHomePage() {
         )}
       </motion.div>
 
-      {/* ===== DAFTAR EVENT HARI INI (kalau lebih dari satu) ===== */}
-      {!loading && events.length > 1 && (
-        <motion.div variants={BAGIAN} className="pt-card">
-          <p className="text-label-md font-semibold text-on-surface">Event Hari Ini</p>
-          <ul className="mt-sm divide-y divide-outline-variant">
-            {events.map((e) => (
-              <li key={e.id} className="flex flex-wrap items-center justify-between gap-sm py-sm">
-                <div className="min-w-0">
-                  <p className="text-body-md font-medium text-on-surface">{e.nama}</p>
-                  <p className="text-label-sm text-on-surface-variant">
-                    {e.jamMulai} – {e.jamSelesai} WIB · {e.terisi}/{e.kuotaTotal} pedagang · {e.checkIn} hadir
-                  </p>
-                </div>
-                <span
-                  className={`pt-pill py-0.5 ${
-                    e.status === "berjalan"
-                      ? "pt-pill-success"
-                      : e.status === "terjadwal"
-                        ? "pt-pill-warning"
-                        : e.status === "dibatalkan"
-                          ? "pt-pill-danger"
-                          : "pt-pill-neutral"
-                  }`}
-                >
-                  {e.status === "berjalan"
-                    ? `Berjalan · sisa ${formatSisaWaktu(e.sisaMenit)}`
-                    : e.status === "terjadwal"
-                      ? "Terjadwal"
-                      : e.status === "dibatalkan"
-                        ? "Dibatalkan"
-                        : "Selesai"}
-                </span>
-              </li>
-            ))}
-          </ul>
-        </motion.div>
-      )}
 
       {/* ===== KEHADIRAN & PENDAFTARAN ===== */}
       <motion.div variants={BAGIAN} className="grid grid-cols-1 gap-md sm:grid-cols-2">
-        {loading ? (
+        {memuatLaporan ? (
           <>
             <div className="h-[156px] animate-pulse rounded-2xl bg-surface-container-high" />
             <div className="h-[156px] animate-pulse rounded-2xl bg-surface-container-high" />
@@ -608,7 +641,7 @@ export default function PetugasHomePage() {
                   <span className="text-body-md font-normal text-on-surface-variant"> / {totalTerdaftar}</span>
                 </p>
               </div>
-              <p className="mt-sm text-label-md text-on-surface-variant">Kehadiran Hari Ini</p>
+              <p className="mt-sm text-label-md text-on-surface-variant">Kehadiran Pedagang di Event Ini</p>
               <div className="mt-sm h-2 w-full overflow-hidden rounded-full bg-surface-container-high">
                 <motion.div
                   className="h-full rounded-full bg-gradient-to-r from-secondary-fixed-dim to-secondary"
@@ -632,19 +665,18 @@ export default function PetugasHomePage() {
                   <Sparkles className="h-5 w-5" strokeWidth={2} />
                 </span>
                 <div>
-                  {/* Pendaftaran sekarang diatur per event -- kartu ini
-                      menampilkan kuota gabungan semua event hari ini. */}
-                  <p className="text-label-md text-on-surface-variant">Kuota Event Hari Ini</p>
+                  {/* Kuota event terpilih saja (bukan gabungan semua event). */}
+                  <p className="text-label-md text-on-surface-variant">Kuota Event Ini</p>
                   <p className="mt-0.5 text-headline-md font-semibold text-on-surface">
-                    {kuotaHariIni.terisi}
-                    <span className="text-body-md font-normal text-on-surface-variant"> / {kuotaHariIni.total} pedagang</span>
+                    {kuotaTerisi}
+                    <span className="text-body-md font-normal text-on-surface-variant"> / {kuotaTotal} pedagang terdaftar</span>
                   </p>
                 </div>
               </div>
               <p className="mt-sm text-body-sm text-on-surface-variant">
-                {kuotaHariIni.total === 0
+                {!eventTerpilih
                   ? "Belum ada event hari ini."
-                  : `Sisa ${Math.max(0, kuotaHariIni.total - kuotaHariIni.terisi)} tempat dari ${kuotaHariIni.jumlah} event.`}
+                  : `Sisa ${Math.max(0, kuotaTotal - kuotaTerisi)} tempat.`}
               </p>
             </div>
           </>
@@ -658,21 +690,21 @@ export default function PetugasHomePage() {
             <TrendingUp className="h-[18px] w-[18px]" strokeWidth={2} />
           </span>
           <div>
-            <h3 className="pt-section-title">Omset Hari Ini</h3>
+            <h3 className="pt-section-title">Omset Event Ini</h3>
             <p className="pt-section-desc">Ranking pedagang berdasarkan omset check-out</p>
           </div>
-          {laporan && laporan.totalOmset > 0 && (
+          {laporanEvent && laporanEvent.totalOmset > 0 && (
             <div className="ml-auto flex flex-wrap gap-xs">
               <span className="rounded-full bg-primary-fixed px-md py-1.5 text-label-sm font-semibold text-on-primary-fixed">
-                Total <AngkaBerjalan nilai={laporan.totalOmset} format={formatRupiah} />
+                Total <AngkaBerjalan nilai={laporanEvent.totalOmset} format={formatRupiah} />
               </span>
               <span className="rounded-full bg-surface-container-high px-md py-1.5 text-label-sm text-on-surface-variant">
-                Rata-rata {formatRupiah(Math.round(laporan.rataOmset))}
+                Rata-rata {formatRupiah(Math.round(laporanEvent.rataOmset))}
               </span>
             </div>
           )}
         </div>
-        {loading ? (
+        {memuatLaporan ? (
           <div className="h-40 animate-pulse rounded-xl bg-surface-container-high" />
         ) : (
           <OmsetChart data={pedagangHariIni} />
@@ -685,20 +717,22 @@ export default function PetugasHomePage() {
           <span className="pt-section-icon">
             <Store className="h-[18px] w-[18px]" strokeWidth={2} />
           </span>
-          <h3 className="pt-section-title">Pedagang Hari Ini</h3>
+          <h3 className="pt-section-title">Pedagang di Event Ini</h3>
           <span className="ml-auto rounded-full bg-surface-container-high px-sm py-1 text-label-sm text-on-surface-variant">
             {pedagangHariIni.length} lapak terisi
           </span>
         </div>
 
-        {loading ? (
+        {memuatLaporan ? (
           <p className="px-lg py-xl text-center text-body-md text-on-surface-variant sm:px-xl">Memuat data...</p>
         ) : pedagangHariIni.length === 0 ? (
           <div className="pt-empty mx-lg mb-lg sm:mx-xl sm:mb-xl">
             <span className="pt-empty-icon">
               <Store className="h-6 w-6" strokeWidth={1.75} />
             </span>
-            <p className="text-body-sm text-on-surface-variant">Belum ada pedagang yang check-in hari ini.</p>
+            <p className="text-body-sm text-on-surface-variant">
+              {eventTerpilih ? "Belum ada pedagang yang check-in di event ini." : "Belum ada event hari ini."}
+            </p>
           </div>
         ) : (
           <>

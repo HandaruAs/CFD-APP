@@ -37,6 +37,16 @@ type EventTersedia struct {
 type EventTersediaResponse struct {
 	Kategori string          `json:"kategori"` // lama | baru
 	Events   []EventTersedia `json:"events"`
+	// Terkunci: pedagang masih terdaftar di event yang belum selesai, jadi
+	// event lain disembunyikan (Events kosong) sampai event itu selesai.
+	Terkunci   bool        `json:"terkunci"`
+	EventAktif *EventAktif `json:"eventAktif"` // nil kalau tidak terkunci
+}
+
+// EventAktif: event yang sedang diikuti pedagang dan belum selesai.
+type EventAktif struct {
+	ID   string `json:"id"`
+	Nama string `json:"nama"`
 }
 
 // Keikutsertaan: 1 kartu event yang diikuti pedagang (halaman Check-in/out

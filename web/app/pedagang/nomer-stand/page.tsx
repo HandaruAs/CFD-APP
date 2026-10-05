@@ -207,6 +207,9 @@ export default function EventDanNomorStanPage() {
   // --- Event ---
   const [kategori, setKategori] = useState<"lama" | "baru" | null>(null);
   const [events, setEvents] = useState<EventTersedia[]>([]);
+  // Diisi kalau pedagang masih terdaftar di event yang belum selesai: daftar
+  // event lain disembunyikan server sampai event ini selesai.
+  const [eventAktif, setEventAktif] = useState<{ id: string; nama: string } | null>(null);
   const [eventSaya, setEventSaya] = useState<Keikutsertaan[]>([]);
   const [loadingEvent, setLoadingEvent] = useState(false);
   const [errorEvent, setErrorEvent] = useState<string | null>(null);
@@ -274,11 +277,19 @@ export default function EventDanNomorStanPage() {
     setErrorEvent(null);
     try {
       const [tersedia, saya] = await Promise.all([
-        api<{ data: { kategori: "lama" | "baru"; events: EventTersedia[] } }>("/api/pedagang/events"),
+        api<{
+          data: {
+            kategori: "lama" | "baru";
+            events: EventTersedia[];
+            terkunci: boolean;
+            eventAktif: { id: string; nama: string } | null;
+          };
+        }>("/api/pedagang/events"),
         api<{ data: Keikutsertaan[] }>("/api/pedagang/events/saya"),
       ]);
       setKategori(tersedia.data.kategori);
       setEvents(tersedia.data.events);
+      setEventAktif(tersedia.data.terkunci ? tersedia.data.eventAktif : null);
       setEventSaya(saya.data);
     } catch (err) {
       if (err instanceof ApiError && err.code === "BELUM_PUNYA_PROFIL") {
@@ -498,7 +509,11 @@ export default function EventDanNomorStanPage() {
               )}
             </section>
 
-            {/* ===== PILIH EVENT ===== */}
+            {/* ===== PILIH EVENT =====
+                Disembunyikan seluruhnya selama pedagang masih terdaftar di
+                event yang belum selesai; muncul lagi otomatis setelah event
+                itu selesai (atau pendaftarannya dibatalkan). */}
+            {!eventAktif && (
             <section>
               <h2 className="mb-3 text-[15px] font-semibold text-[#1a1d29]">Pilih Event</h2>
               {loadingEvent && events.length === 0 ? (
@@ -597,6 +612,7 @@ export default function EventDanNomorStanPage() {
                 </div>
               )}
             </section>
+            )}
 
             {/* ===== DATA USAHA (read-only) ===== */}
             <section className={`${CARD_CLS} p-5`}>
