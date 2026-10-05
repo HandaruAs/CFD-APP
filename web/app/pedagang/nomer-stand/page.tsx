@@ -479,7 +479,11 @@ export default function EventDanNomorStanPage() {
               </div>
               {aktif.length === 0 ? (
                 <div className={`${CARD_CLS} p-6 text-center text-[13px] text-[#767884]`}>
-                  Kamu belum ikut event apa pun. Pilih event di bawah.
+                  {/* Event yang sudah selesai / batal tampil di bawah kartu ini,
+                      jadi pesannya dibedakan supaya tidak terkesan belum pernah ikut. */}
+                  {lainnya.length > 0
+                    ? "Tidak ada event yang sedang kamu ikuti. Pilih event di bawah untuk ikut lagi."
+                    : "Kamu belum ikut event apa pun. Pilih event di bawah."}
                 </div>
               ) : (
                 <div className="flex flex-col gap-4">
