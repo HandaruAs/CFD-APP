@@ -50,8 +50,11 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
       );
 
       if (!mounted) return;
-      Navigator.of(context).pushReplacement(
+      // Hapus seluruh tumpukan (beranda + login) supaya tombol kembali
+      // di home tidak membawa pengguna balik ke beranda/login.
+      Navigator.of(context).pushAndRemoveUntil(
         MaterialPageRoute(builder: (context) => homeScreen),
+        (route) => false,
       );
     }
   }
@@ -75,10 +78,14 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
           bottom: false,
           child: Column(
             children: [
-              const AuthGradientHeader(
+              AuthGradientHeader(
                 title: 'Selamat Datang',
                 subtitle:
                     'Masuk untuk mengakses layanan\nE-Event Surabaya',
+                // Tombol kembali ke beranda (kalau login dibuka dari sana).
+                onBack: Navigator.of(context).canPop()
+                    ? () => Navigator.of(context).pop()
+                    : null,
               ),
               Expanded(
                 child: Container(

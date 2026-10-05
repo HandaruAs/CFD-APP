@@ -2,12 +2,13 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:mobile/features/auth/presentation/providers/auth_provider.dart';
 import 'package:mobile/features/auth/presentation/navigation/role_navigation.dart';
-import 'package:mobile/features/auth/presentation/pages/login_screen.dart';
+import 'package:mobile/features/landing/presentation/pages/landing_screen.dart';
 
 /// Halaman pertama yang dibuka app. Tugasnya cuma satu: cari tau user
 /// ini udah login atau belum (lewat token tersimpan), lalu lempar ke
-/// tempat yang tepat -- LoginScreen kalau belum, atau home sesuai role
-/// (lewat RoleNavigation) kalau udah.
+/// tempat yang tepat -- beranda publik (LandingScreen, sama dengan
+/// beranda web) kalau belum, atau home sesuai role (lewat RoleNavigation)
+/// kalau udah. Dari beranda, pengguna masuk lewat tombol "Masuk".
 class SplashScreen extends ConsumerStatefulWidget {
   const SplashScreen({super.key});
 
@@ -32,7 +33,7 @@ class _SplashScreenState extends ConsumerState<SplashScreen> {
 
     final Widget target = (state.isLoggedIn && state.user != null)
         ? await RoleNavigation.resolveHomeScreen(ref, state.user!)
-        : const LoginScreen();
+        : const LandingScreen();
 
     if (!mounted) return;
     Navigator.of(context).pushReplacement(

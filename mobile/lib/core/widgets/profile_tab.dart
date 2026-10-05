@@ -3,7 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:mobile/core/themes/app_theme.dart';
 import 'package:mobile/features/auth/domain/entities/user.dart';
 import 'package:mobile/features/auth/presentation/providers/auth_provider.dart';
-import 'package:mobile/features/auth/presentation/pages/login_screen.dart';
+import 'package:mobile/features/landing/presentation/pages/landing_screen.dart';
 
 /// Tab "Profil" -- dipasang sebagai item terakhir di bottom nav /
 /// sidebar (lihat MainLayout), bukan dari menu dinamis backend, sebab
@@ -90,8 +90,10 @@ class ProfileTab extends ConsumerWidget {
 
     await ref.read(authProvider.notifier).logout();
     if (!context.mounted) return;
+    // Setelah keluar kembali ke beranda publik -- sama dengan kondisi saat
+    // aplikasi dibuka tanpa login.
     Navigator.of(context).pushAndRemoveUntil(
-      MaterialPageRoute(builder: (_) => const LoginScreen()),
+      MaterialPageRoute(builder: (_) => const LandingScreen()),
       (route) => false,
     );
   }
