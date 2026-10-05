@@ -52,20 +52,22 @@ const (
 var WIB = time.FixedZone("WIB", 7*3600)
 
 // StatusPendaftaran menilai apakah pendaftaran sebuah event sedang buka.
+// Pedagang boleh ikut SAMPAI EVENT SELESAI -- termasuk saat event sedang
+// berlangsung, untuk pedagang yang lupa mendaftar lebih awal.
 // Aturan:
 //   - event draft -> belum_dibuka
-//   - event selain terjadwal (berlangsung, selesai, batal) -> ditutup
-//   - sudah lewat jam mulai event -> ditutup
+//   - event selesai / diakhiri / dibatalkan -> ditutup
+//   - sudah lewat jam selesai event (selesaiAt) -> ditutup
 //   - sebelum pendaftaran_buka_at -> belum_dibuka
 //   - sesudah pendaftaran_tutup_at -> ditutup
 //   - selain itu -> dibuka (buka/tutup kosong artinya tanpa batas waktu)
-func StatusPendaftaran(status string, bukaAt, tutupAt *time.Time, mulaiAt, now time.Time) string {
+func StatusPendaftaran(status string, bukaAt, tutupAt *time.Time, selesaiAt, now time.Time) string {
 	switch {
 	case status == StatusDraft:
 		return PendaftaranBelumDibuka
-	case status != StatusTerjadwal:
+	case status != StatusTerjadwal && status != StatusBerlangsung && status != StatusDiperpanjang:
 		return PendaftaranDitutup
-	case !now.Before(mulaiAt):
+	case !now.Before(selesaiAt):
 		return PendaftaranDitutup
 	case bukaAt != nil && now.Before(*bukaAt):
 		return PendaftaranBelumDibuka
@@ -74,6 +76,19 @@ func StatusPendaftaran(status string, bukaAt, tutupAt *time.Time, mulaiAt, now t
 	default:
 		return PendaftaranDibuka
 	}
+}
+
+// SelesaiAt: tanggal ("2006-01-02") + jam selesai ("15:04" / "15:04:05")
+// dalam WIB. Format salah -> waktu nol (dianggap sudah lewat).
+func SelesaiAt(tanggal, jamSelesai string) time.Time {
+	if len(tanggal) < 10 || len(jamSelesai) < 5 {
+		return time.Time{}
+	}
+	t, err := time.ParseInLocation("2006-01-02 15:04", tanggal[:10]+" "+jamSelesai[:5], WIB)
+	if err != nil {
+		return time.Time{}
+	}
+	return t
 }
 
 // KuotaLamaDilepas: setelah lepas_kuota_at, sisa kuota lama boleh diambil

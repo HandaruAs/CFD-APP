@@ -57,7 +57,7 @@ export default function RiwayatSesi({ sesiList, loading }: { sesiList: SesiEvent
                   <th className="px-sm py-sm font-medium">Sesi</th>
                   <th className="px-sm py-sm font-medium">Jam</th>
                   <th className="px-sm py-sm font-medium">Status</th>
-                  <th className="px-sm py-sm text-right font-medium">Titik</th>
+                  <th className="px-sm py-sm font-medium">Lokasi</th>
                   <th className="px-sm py-sm text-right font-medium">Pedagang</th>
                 </tr>
               </thead>
@@ -76,11 +76,9 @@ export default function RiwayatSesi({ sesiList, loading }: { sesiList: SesiEvent
                       <td className="px-sm py-sm">
                         <StatusPill status={s.status} />
                       </td>
-                      <td className="px-sm py-sm text-right text-body-md tabular-nums text-on-surface-variant">
-                        {s.jumlahTitik}
-                      </td>
+                      <td className="px-sm py-sm text-body-sm text-on-surface-variant">{s.lokasi ?? "-"}</td>
                       <td className="px-sm py-sm text-right text-body-md tabular-nums text-on-surface">
-                        {s.terisiLama + s.terisiBaru}
+                        {s.terisiLama + s.terisiBaru}/{s.kuotaTotal}
                       </td>
                     </tr>
                   );
@@ -103,7 +101,7 @@ export default function RiwayatSesi({ sesiList, loading }: { sesiList: SesiEvent
                     {s.jamMulai && ` · ${jamTampil(s.jamMulai)} – ${jamTampil(s.jamSelesai)}`}
                   </p>
                   <p className="mt-0.5 text-label-sm text-on-surface-variant">
-                    {s.jumlahTitik} titik · {s.terisiLama + s.terisiBaru} pedagang
+                    {s.lokasi ?? "Lokasi belum diacak"} · {s.terisiLama + s.terisiBaru}/{s.kuotaTotal} pedagang
                   </p>
                 </div>
               );

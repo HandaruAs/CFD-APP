@@ -6,8 +6,8 @@
 //
 // Aturan dari backend:
 //   - kuota tidak boleh di bawah pedagang yang sudah terdaftar (per jatah);
-//   - setelah pendaftaran dibuka, kuota total hanya boleh naik;
-//   - sesi yang sudah terbit: kuota tidak boleh melebihi tempat di titik lokasi.
+//   - setelah pendaftaran dibuka, kuota total hanya boleh naik.
+// Lokasi sesi otomatis muat sebanyak kuota yang baru.
 
 import { useState } from "react";
 import { Info, Loader2, X } from "lucide-react";
@@ -32,11 +32,11 @@ export default function UbahKuotaModal({ sesi, onClose, onSaved }: Props) {
   async function simpan(e: React.FormEvent) {
     e.preventDefault();
     if (total < 1) {
-      setError("Kuota sesi minimal 1.");
+      setError("Jumlah pedagang minimal 1.");
       return;
     }
     if (lama < 0 || lama > total) {
-      setError("Jatah pedagang lama harus antara 0 dan kuota sesi.");
+      setError("Jatah pedagang lama harus antara 0 dan jumlah pedagang.");
       return;
     }
     setMenyimpan(true);
@@ -57,7 +57,7 @@ export default function UbahKuotaModal({ sesi, onClose, onSaved }: Props) {
           kuotaLama: lama,
         }),
       });
-      onSaved(`✅ Kuota sesi "${sesi.nama}" diperbarui`);
+      onSaved(`✅ Jumlah pedagang sesi "${sesi.nama}" diperbarui`);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Gagal menyimpan kuota.");
       setMenyimpan(false);
@@ -69,7 +69,7 @@ export default function UbahKuotaModal({ sesi, onClose, onSaved }: Props) {
       <div className="pt-modal-box">
         <div className="flex items-center justify-between border-b border-outline-variant px-lg py-md">
           <div>
-            <h2 className="text-title-lg text-on-surface">Ubah Kuota Sesi</h2>
+            <h2 className="text-title-lg text-on-surface">Ubah Jumlah Pedagang</h2>
             <p className="text-body-sm text-on-surface-variant">{sesi.nama}</p>
           </div>
           <button type="button" onClick={onClose} disabled={menyimpan} className="pt-modal-close" aria-label="Tutup">
@@ -88,7 +88,7 @@ export default function UbahKuotaModal({ sesi, onClose, onSaved }: Props) {
             <div className="grid grid-cols-1 gap-md sm:grid-cols-2">
               <div>
                 <label htmlFor="ubah-kuota" className="pt-field-label mb-1 block">
-                  Kuota sesi
+                  Jumlah pedagang di sesi ini
                 </label>
                 <input
                   id="ubah-kuota"
@@ -102,7 +102,7 @@ export default function UbahKuotaModal({ sesi, onClose, onSaved }: Props) {
               </div>
               <div>
                 <label htmlFor="ubah-kuota-lama" className="pt-field-label mb-1 block">
-                  Jatah pedagang lama
+                  Dari jumlah itu, untuk pedagang lama
                 </label>
                 <input
                   id="ubah-kuota-lama"
@@ -123,16 +123,17 @@ export default function UbahKuotaModal({ sesi, onClose, onSaved }: Props) {
                 Sudah terdaftar: <strong className="text-on-surface">{terisi}</strong> pedagang (lama {sesi.terisiLama}, baru{" "}
                 {sesi.terisiBaru})
               </p>
-              <p>
-                Tempat di titik lokasi: <strong className="text-on-surface">{sesi.kapasitasTitik}</strong> ({sesi.jumlahTitik}{" "}
-                titik)
-              </p>
+              {sesi.lokasi && (
+                <p>
+                  Lokasi: <strong className="text-on-surface">{sesi.lokasi}</strong>
+                </p>
+              )}
             </div>
 
             <p className="flex items-start gap-1.5 text-label-sm text-on-surface-variant">
               <Info className="h-3.5 w-3.5 shrink-0 translate-y-0.5" strokeWidth={2} />
-              Kuota tidak boleh di bawah jumlah pedagang yang sudah terdaftar. Setelah pendaftaran dibuka, kuota sesi hanya bisa
-              dinaikkan, dan tidak boleh melebihi tempat di titik lokasi.
+              Jumlah tidak boleh di bawah pedagang yang sudah terdaftar. Setelah pendaftaran dibuka, jumlahnya hanya bisa
+              dinaikkan.
             </p>
           </div>
 

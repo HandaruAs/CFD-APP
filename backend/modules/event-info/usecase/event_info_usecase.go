@@ -59,7 +59,7 @@ func (u *eventInfoUsecase) lengkapi(list []entity.EventInfo) []entity.EventInfo 
 		e := &list[i]
 		e.Sisa = max(0, e.KuotaTotal-e.Terisi)
 		e.TotalMenit = int(e.SelesaiAt.Sub(e.MulaiAt).Minutes())
-		e.StatusPendaftaran = eventaturan.StatusPendaftaran(e.StatusAsli, e.PendaftaranBukaAt, e.PendaftaranTutupAt, e.MulaiAt, now)
+		e.StatusPendaftaran = eventaturan.StatusPendaftaran(e.StatusAsli, e.PendaftaranBukaAt, e.PendaftaranTutupAt, e.SelesaiAt, now)
 		switch {
 		case e.StatusAsli == eventaturan.StatusDibatalkan:
 			e.Status = "dibatalkan"

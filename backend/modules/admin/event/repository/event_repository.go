@@ -18,7 +18,8 @@ var (
 	ErrScopeTidakValid       = errors.New("cakupan tidak valid")
 	ErrWilayahWajibDiisi     = errors.New("pilih minimal satu wilayah untuk cakupan ini")
 	ErrWilayahTidakDitemukan = errors.New("sebagian wilayah yang dipilih tidak ditemukan atau sudah dihapus")
-	ErrTidakAdaKandidat      = errors.New("tidak ada ruas yang bisa dipakai di cakupan ini (semua sudah dipakai event ini atau event lain yang jamnya bentrok, atau kuota ruasnya 0)")
+	ErrTidakAdaKandidat      = errors.New("tidak ada ruas yang bisa dipakai di cakupan ini (semua ruasnya sedang dipakai sesi lain di jam yang bentrok)")
+	ErrSudahAdaLokasi        = errors.New("lokasi sesi ini sudah diacak, satu sesi hanya punya satu lokasi")
 )
 
 type EventRepository struct {
@@ -42,9 +43,24 @@ const selectEvent = `
 	       ((e.tanggal + e.jam_mulai) AT TIME ZONE 'Asia/Jakarta') AS mulai_at,
 	       k.kuota_total, k.kuota_lama, k.kuota_baru,
 	       k.terisi_lama, k.terisi_baru, k.sisa_lama, k.sisa_baru,
-	       k.jumlah_titik, k.kapasitas_titik
+	       k.jumlah_titik, k.kapasitas_titik, lok.teks
 	FROM events e
 	JOIN v_event_kuota k ON k.event_id = e.id
+	LEFT JOIN LATERAL (
+		-- "Jalan Mulyosari · Ruas A (Kec. Sukolilo)"; lebih dari satu lokasi
+		-- (data lama) digabung dengan "; ".
+		SELECT string_agg(
+		         j.nama_jalan || ' · ' || r.nama_ruas ||
+		         COALESCE(' (Kec. ' || (
+		           SELECT mi.nama_instansi FROM jalan_instansi ji
+		           JOIN master_instansi mi ON mi.id = ji.instansi_id AND mi.deleted_at IS NULL
+		           WHERE ji.jalan_id = j.id LIMIT 1) || ')', ''),
+		         '; ' ORDER BY j.nama_jalan, r.urutan) AS teks
+		FROM event_lapak el
+		JOIN master_ruas r  ON r.id = el.ruas_id
+		JOIN master_jalan j ON j.id = r.jalan_id
+		WHERE el.event_id = e.id AND el.deleted_at IS NULL
+	) lok ON true
 `
 
 func scanEvent(row pgx.Row) (*entity.Event, error) {
@@ -56,7 +72,7 @@ func scanEvent(row pgx.Row) (*entity.Event, error) {
 		&ev.MulaiAt,
 		&ev.KuotaTotal, &ev.KuotaLama, &ev.KuotaBaru,
 		&ev.TerisiLama, &ev.TerisiBaru, &ev.SisaLama, &ev.SisaBaru,
-		&ev.JumlahTitik, &ev.KapasitasTitik,
+		&ev.JumlahTitik, &ev.KapasitasTitik, &ev.Lokasi,
 	)
 	if err != nil {
 		return nil, err
@@ -146,6 +162,12 @@ func (r *EventRepository) UpdateEvent(ctx context.Context, id string, in *entity
 	}
 	if tag.RowsAffected() == 0 {
 		return ErrStatusTidakSesuai
+	}
+	// Lokasi sesi muat sebanyak kuota sesi.
+	if _, err := tx.Exec(ctx, `
+		UPDATE event_lapak SET kapasitas = GREATEST($2::int, 1), updated_at = now()
+		WHERE event_id = $1 AND deleted_at IS NULL`, id, in.KuotaTotal); err != nil {
+		return err
 	}
 	if err := eventaturan.Audit(ctx, tx, &actorID, "event.update", "events", &id, &id, sebelum, in, nil); err != nil {
 		return err
@@ -324,7 +346,6 @@ func (r *EventRepository) GetLapak(ctx context.Context, eventID, lapakID string)
 
 type kandidatRuas struct {
 	ruasID string
-	kuota  int
 }
 
 // AcakLokasi memilih ruas secara acak (crypto/rand) di dalam cakupan lalu
@@ -345,10 +366,12 @@ func (r *EventRepository) AcakLokasi(ctx context.Context, eventID string, req *e
 	// Kunci baris event: dua admin menekan acak bersamaan tidak saling
 	// menimpa, dan status dicek ulang di dalam transaksi.
 	var status, tanggal, jamMulai, jamSelesai string
+	var kuotaTotal, jumlahLokasi int
 	err = tx.QueryRow(ctx, `
-		SELECT status::text, tanggal::text, jam_mulai::text, jam_selesai::text
+		SELECT status::text, tanggal::text, jam_mulai::text, jam_selesai::text, kuota_total,
+		       (SELECT COUNT(*) FROM event_lapak el WHERE el.event_id = events.id AND el.deleted_at IS NULL)::int
 		FROM events WHERE id = $1 AND deleted_at IS NULL
-		FOR UPDATE`, eventID).Scan(&status, &tanggal, &jamMulai, &jamSelesai)
+		FOR UPDATE`, eventID).Scan(&status, &tanggal, &jamMulai, &jamSelesai, &kuotaTotal, &jumlahLokasi)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return 0, nil, ErrEventTidakDitemukan
 	}
@@ -357,6 +380,10 @@ func (r *EventRepository) AcakLokasi(ctx context.Context, eventID string, req *e
 	}
 	if status != eventaturan.StatusDraft && status != eventaturan.StatusTerjadwal {
 		return 0, nil, ErrStatusTidakSesuai
+	}
+	// Satu sesi = satu lokasi, diacak sekali saja.
+	if jumlahLokasi > 0 {
+		return 0, nil, ErrSudahAdaLokasi
 	}
 
 	var filter, cekAda string
@@ -394,20 +421,10 @@ func (r *EventRepository) AcakLokasi(ctx context.Context, eventID string, req *e
 	}
 
 	rows, err := tx.Query(ctx, `
-		SELECT r.id, k.kuota
+		SELECT r.id
 		FROM master_ruas r
 		JOIN master_jalan j ON j.id = r.jalan_id AND j.deleted_at IS NULL
-		JOIN LATERAL (
-			SELECT COALESCE((x->>'kuota')::int, 0) AS kuota
-			FROM jsonb_array_elements(j.ruas) x
-			WHERE x->>'id' = r.id::text
-			LIMIT 1
-		) k ON true
 		WHERE r.deleted_at IS NULL
-		  AND k.kuota > 0
-		  AND NOT EXISTS (
-		      SELECT 1 FROM event_lapak el
-		      WHERE el.event_id = $1 AND el.ruas_id = r.id AND el.deleted_at IS NULL)
 		  AND NOT EXISTS (
 		      SELECT 1 FROM event_lapak el
 		      JOIN events e2 ON e2.id = el.event_id
@@ -423,7 +440,7 @@ func (r *EventRepository) AcakLokasi(ctx context.Context, eventID string, req *e
 	var kandidat []kandidatRuas
 	for rows.Next() {
 		var k kandidatRuas
-		if err := rows.Scan(&k.ruasID, &k.kuota); err != nil {
+		if err := rows.Scan(&k.ruasID); err != nil {
 			rows.Close()
 			return 0, nil, err
 		}
@@ -437,39 +454,31 @@ func (r *EventRepository) AcakLokasi(ctx context.Context, eventID string, req *e
 		return 0, nil, ErrTidakAdaKandidat
 	}
 
-	// Fisher-Yates dengan crypto/rand, lalu ambil jumlahTitik teratas.
-	for i := len(kandidat) - 1; i > 0; i-- {
-		j, err := eventaturan.RandIntn(i + 1)
-		if err != nil {
-			return 0, nil, err
-		}
-		kandidat[i], kandidat[j] = kandidat[j], kandidat[i]
+	// Undi SATU ruas dari semua kandidat (crypto/rand). Kapasitas lokasi =
+	// kuota sesi yang diisi admin -- kuota ruas di Manajemen Lapak tidak
+	// dipakai untuk sesi.
+	n, err := eventaturan.RandIntn(len(kandidat))
+	if err != nil {
+		return 0, nil, err
 	}
-	ambil := len(kandidat)
-	if req.JumlahTitik > 0 && req.JumlahTitik < ambil {
-		ambil = req.JumlahTitik
-	}
+	terpilih := kandidat[n]
+	kapasitas := max(kuotaTotal, 1)
 
-	ids := make([]string, 0, ambil)
-	for _, k := range kandidat[:ambil] {
-		var id string
-		err := tx.QueryRow(ctx, `
-			INSERT INTO event_lapak (event_id, ruas_id, kapasitas, created_by)
-			VALUES ($1, $2, $3, $4)
-			RETURNING id`, eventID, k.ruasID, k.kuota, actorID).Scan(&id)
-		if err != nil {
-			return 0, nil, err
-		}
-		ids = append(ids, id)
+	var lapakID string
+	if err := tx.QueryRow(ctx, `
+		INSERT INTO event_lapak (event_id, ruas_id, kapasitas, created_by)
+		VALUES ($1, $2, $3, $4)
+		RETURNING id`, eventID, terpilih.ruasID, kapasitas, actorID).Scan(&lapakID); err != nil {
+		return 0, nil, err
 	}
+	ids := []string{lapakID}
 
 	if err := eventaturan.Audit(ctx, tx, &actorID, "event_lapak.acak_lokasi", "event_lapak", nil, &eventID, nil,
 		map[string]any{
 			"scope":          req.Scope,
 			"wilayahIds":     req.WilayahIDs,
-			"jumlahTitik":    req.JumlahTitik,
 			"jumlahKandidat": len(kandidat),
-			"jumlahDiambil":  ambil,
+			"ruasTerpilih":   terpilih.ruasID,
 			"eventLapakIds":  ids,
 		}, nil); err != nil {
 		return 0, nil, err

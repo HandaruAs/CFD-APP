@@ -80,7 +80,7 @@ func (r *EventRepository) ListEventTersedia(ctx context.Context, pedagangID stri
 		LEFT JOIN event_participants p
 		       ON p.event_id = e.id AND p.pedagang_id = $1 AND p.deleted_at IS NULL
 		WHERE e.deleted_at IS NULL
-		  AND e.status = 'terjadwal'
+		  AND e.status IN ('terjadwal', 'berlangsung', 'diperpanjang')
 		  AND e.tanggal >= (now() AT TIME ZONE 'Asia/Jakarta')::date
 		ORDER BY e.tanggal, e.jam_mulai, e.nama`, pedagangID)
 	if err != nil {
@@ -195,7 +195,7 @@ func (r *EventRepository) Ikut(ctx context.Context, eventID, pedagangID, kategor
 	}
 
 	now := time.Now()
-	switch eventaturan.StatusPendaftaran(status, bukaAt, tutupAt, mulaiAt, now) {
+	switch eventaturan.StatusPendaftaran(status, bukaAt, tutupAt, eventaturan.SelesaiAt(tanggal, jamSelesai), now) {
 	case eventaturan.PendaftaranBelumDibuka:
 		return "", ErrPendaftaranBelumBuka
 	case eventaturan.PendaftaranDitutup:
@@ -419,16 +419,16 @@ func (r *EventRepository) Batal(ctx context.Context, eventID, pedagangID, userID
 	var nomor int
 	var eventLapakID string
 	var bukaAt, tutupAt *time.Time
-	var mulaiAt time.Time
+	var selesaiAt time.Time
 	err = tx.QueryRow(ctx, `
 		SELECT p.id, p.status::text, p.nomor, p.event_lapak_id,
 		       e.status::text, e.pendaftaran_buka_at, e.pendaftaran_tutup_at,
-		       ((e.tanggal + e.jam_mulai) AT TIME ZONE 'Asia/Jakarta')
+		       ((e.tanggal + e.jam_selesai) AT TIME ZONE 'Asia/Jakarta')
 		FROM event_participants p
 		JOIN events e ON e.id = p.event_id AND e.deleted_at IS NULL
 		WHERE p.event_id = $1 AND p.pedagang_id = $2 AND p.deleted_at IS NULL
 		FOR UPDATE OF p`, eventID, pedagangID).Scan(
-		&pesertaID, &statusPeserta, &nomor, &eventLapakID, &statusEvent, &bukaAt, &tutupAt, &mulaiAt)
+		&pesertaID, &statusPeserta, &nomor, &eventLapakID, &statusEvent, &bukaAt, &tutupAt, &selesaiAt)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return ErrBelumIkut
 	}
@@ -436,7 +436,7 @@ func (r *EventRepository) Batal(ctx context.Context, eventID, pedagangID, userID
 		return err
 	}
 	if statusPeserta != eventaturan.PesertaTerdaftar ||
-		eventaturan.StatusPendaftaran(statusEvent, bukaAt, tutupAt, mulaiAt, time.Now()) != eventaturan.PendaftaranDibuka {
+		eventaturan.StatusPendaftaran(statusEvent, bukaAt, tutupAt, selesaiAt, time.Now()) != eventaturan.PendaftaranDibuka {
 		return ErrTidakBisaBatal
 	}
 

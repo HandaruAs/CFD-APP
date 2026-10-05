@@ -3,39 +3,17 @@
 // Sesi Terjadwal -- sesi yang belum selesai (draft, terjadwal, berlangsung).
 // Status diambil dari backend (scheduler tiap menit), jadi sesi otomatis
 // pindah dari terjadwal -> berlangsung -> Riwayat Sesi sesuai jamnya.
-// Aksi per sesi: lihat titik lokasi, tambah titik (acak lagi), ubah kuota,
-// peserta, dan hapus/batalkan. Kuota diatur PER SESI (total & jatah pedagang
-// lama); setiap titik punya kapasitas tempat. Sesi yang keliru cukup dihapus lalu dibuat ulang;
+// Setiap sesi punya SATU lokasi hasil undian (ditampilkan langsung di baris).
+// Aksi per sesi: ubah jumlah pedagang, lihat peserta, hapus/batalkan; sesi
+// draft yang lokasinya belum sempat diundi punya tombol "Acak Lokasi".
+// Sesi yang keliru cukup dihapus lalu dibuat ulang;
 // kalau sudah ada pedagang yang ikut, sesi dibatalkan (bukan dihapus).
 
 import { useState } from "react";
-import {
-  Ban,
-  CalendarDays,
-  CalendarPlus,
-  ChevronDown,
-  ChevronUp,
-  Loader2,
-  MapPin,
-  Pencil,
-  Plus,
-  Send,
-  Trash2,
-  Users,
-} from "lucide-react";
+import { Ban, CalendarDays, CalendarPlus, MapPin, Pencil, Send, Shuffle, Trash2, Users } from "lucide-react";
 import { useConfirmDialog } from "../../manajemen-lapak/components/confirm-dialog";
 import UbahKuotaModal from "./UbahKuotaModal";
-import {
-  apiEvent,
-  jamTampil,
-  sedangBerlangsung,
-  tanggalPanjang,
-  tanggalRingkas,
-  todayISO,
-  waktuTampil,
-  type SesiDetail,
-  type SesiEvent,
-} from "./sesi-utils";
+import { apiEvent, jamTampil, sedangBerlangsung, tanggalPanjang, tanggalRingkas, todayISO, type SesiEvent } from "./sesi-utils";
 
 interface Props {
   /** Sesi yang belum selesai, sudah diurutkan dari yang paling dekat. */
@@ -58,22 +36,7 @@ const PENDAFTARAN_LABEL = {
 export default function DaftarSesi({ sesiList, loading, error, onTambah, onTambahTitik, onPeserta, onBerubah }: Props) {
   const confirm = useConfirmDialog();
   const hariIni = todayISO();
-  const [terbuka, setTerbuka] = useState<Record<string, boolean>>({});
-  const [detail, setDetail] = useState<Record<string, SesiDetail | "memuat" | "gagal">>({});
   const [ubahKuota, setUbahKuota] = useState<SesiEvent | null>(null);
-
-  async function toggleTitik(s: SesiEvent) {
-    const buka = !terbuka[s.id];
-    setTerbuka((t) => ({ ...t, [s.id]: buka }));
-    if (!buka) return;
-    setDetail((d) => ({ ...d, [s.id]: "memuat" }));
-    try {
-      const res = await apiEvent<{ data: SesiDetail }>(`/api/admin/events/${s.id}`);
-      setDetail((d) => ({ ...d, [s.id]: res.data }));
-    } catch {
-      setDetail((d) => ({ ...d, [s.id]: "gagal" }));
-    }
-  }
 
   function hapus(s: SesiEvent) {
     const terisi = s.terisiLama + s.terisiBaru;
@@ -161,7 +124,6 @@ export default function DaftarSesi({ sesiList, loading, error, onTambah, onTamba
             const berlangsung = sedangBerlangsung(s);
             const bisaAtur = s.status === "draft" || s.status === "terjadwal";
             const terisi = s.terisiLama + s.terisiBaru;
-            const d = detail[s.id];
             return (
               <li
                 key={s.id}
@@ -207,42 +169,34 @@ export default function DaftarSesi({ sesiList, loading, error, onTambah, onTamba
                       <span className="sr-only">{tanggalPanjang(tgl)}, </span>
                       {jamTampil(s.jamMulai)} – {jamTampil(s.jamSelesai)} WIB
                     </p>
-                    <p className="text-label-sm text-on-surface-variant">
-                      {terisi}/{s.kuotaTotal} pedagang (lama {s.terisiLama}/{s.kuotaLama}, baru {s.terisiBaru}/{s.kuotaBaru}) ·{" "}
-                      {s.jumlahTitik} titik, {s.kapasitasTitik} tempat
+                    <p className="mt-0.5 flex items-start gap-xs text-body-md text-on-surface">
+                      <MapPin className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
+                      {s.lokasi ? <span>{s.lokasi}</span> : <span className="font-medium text-error">Lokasi belum diacak</span>}
                     </p>
-                    {bisaAtur && s.kuotaTotal > s.kapasitasTitik && (
-                      <p className="text-label-sm font-medium text-error">
-                        Tempat di titik lokasi ({s.kapasitasTitik}) kurang dari kuota sesi ({s.kuotaTotal}). Tambah titik atau
-                        turunkan kuota.
-                      </p>
-                    )}
-                    {s.status === "terjadwal" && (s.pendaftaranBukaAt || s.pendaftaranTutupAt || s.lepasKuotaAt) && (
-                      <p className="text-label-sm text-on-surface-variant">
-                        {s.pendaftaranBukaAt && `Buka ${waktuTampil(s.pendaftaranBukaAt)}`}
-                        {s.pendaftaranTutupAt && ` · Tutup ${waktuTampil(s.pendaftaranTutupAt)}`}
-                        {s.lepasKuotaAt &&
-                          ` · Kuota lama ${s.kuotaLamaDilepas ? "sudah dilepas" : `dilepas ${waktuTampil(s.lepasKuotaAt)}`}`}
-                      </p>
-                    )}
+                    <p className="text-body-sm text-on-surface-variant">
+                      <strong className="text-on-surface">
+                        {terisi}/{s.kuotaTotal}
+                      </strong>{" "}
+                      pedagang · lama {s.terisiLama}/{s.kuotaLama} · baru {s.terisiBaru}/{s.kuotaBaru}
+                    </p>
                   </div>
 
                   <div className="flex shrink-0 flex-wrap items-center gap-xs">
-                    {s.status === "draft" && s.jumlahTitik > 0 && s.kuotaTotal <= s.kapasitasTitik && (
+                    {s.status === "draft" && s.jumlahTitik > 0 && (
                       <button type="button" onClick={() => terbitkan(s)} className="pt-btn pt-btn-primary">
                         <Send className="h-4 w-4" />
                         Terbitkan
                       </button>
                     )}
-                    {bisaAtur && (
+                    {bisaAtur && s.jumlahTitik === 0 && (
                       <button
                         type="button"
                         onClick={() => onTambahTitik(s)}
-                        className="pt-btn pt-btn-ghost"
-                        title="Acak titik lokasi tambahan"
+                        className="pt-btn pt-btn-primary"
+                        title="Undi lokasi sesi ini"
                       >
-                        <Plus className="h-4 w-4" />
-                        Titik
+                        <Shuffle className="h-4 w-4" />
+                        Acak Lokasi
                       </button>
                     )}
                     {bisaAtur && (
@@ -253,7 +207,7 @@ export default function DaftarSesi({ sesiList, loading, error, onTambah, onTamba
                         title="Ubah kuota sesi"
                       >
                         <Pencil className="h-4 w-4" />
-                        Kuota
+                        Ubah Jumlah
                       </button>
                     )}
                     <button
@@ -276,46 +230,8 @@ export default function DaftarSesi({ sesiList, loading, error, onTambah, onTamba
                         {terisi > 0 ? <Ban className="h-5 w-5" /> : <Trash2 className="h-5 w-5" />}
                       </button>
                     )}
-                    <button
-                      type="button"
-                      onClick={() => toggleTitik(s)}
-                      aria-expanded={!!terbuka[s.id]}
-                      aria-label="Lihat titik lokasi"
-                      className="pt-btn pt-btn-ghost pt-btn-icon"
-                    >
-                      {terbuka[s.id] ? <ChevronUp className="h-5 w-5" /> : <ChevronDown className="h-5 w-5" />}
-                    </button>
                   </div>
                 </div>
-
-                {terbuka[s.id] && (
-                  <div className="border-t border-outline-variant px-md py-sm">
-                    {d === "memuat" || !d ? (
-                      <div className="flex justify-center py-sm">
-                        <Loader2 className="h-5 w-5 animate-spin text-on-surface-variant" />
-                      </div>
-                    ) : d === "gagal" ? (
-                      <p className="py-sm text-body-sm text-error">Gagal memuat titik lokasi.</p>
-                    ) : d.lapak.length === 0 ? (
-                      <p className="py-sm text-body-sm text-on-surface-variant">Belum ada titik lokasi.</p>
-                    ) : (
-                      <ul className="divide-y divide-outline-variant/50">
-                        {d.lapak.map((l) => (
-                          <li key={l.id} className="flex items-center justify-between gap-sm py-1.5">
-                            <span className="flex min-w-0 items-center gap-xs text-body-sm text-on-surface">
-                              <MapPin className="h-3.5 w-3.5 shrink-0 text-on-surface-variant" />
-                              {l.namaJalan} · {l.namaRuas}
-                              {l.namaKecamatan && <span className="text-on-surface-variant">(Kec. {l.namaKecamatan})</span>}
-                            </span>
-                            <span className="shrink-0 text-label-sm tabular-nums text-on-surface-variant">
-                              {l.terisi}/{l.kapasitas} terisi
-                            </span>
-                          </li>
-                        ))}
-                      </ul>
-                    )}
-                  </div>
-                )}
               </li>
             );
           })}

@@ -78,7 +78,9 @@ export interface SesiEvent {
   sisaLama: number;
   sisaBaru: number;
   jumlahTitik: number;
-  kapasitasTitik: number; // jumlah tempat fisik di semua titik lokasi
+  kapasitasTitik: number; // = jumlah pedagang (lokasi muat sebanyak kuota sesi)
+  /** Lokasi hasil undian, mis. "Jalan Mulyosari · Ruas A (Kec. Sukolilo)"; null = belum diacak. */
+  lokasi: string | null;
 }
 
 export interface TitikLokasi {

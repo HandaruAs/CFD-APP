@@ -28,16 +28,19 @@ type Event struct {
 	Keterangan         *string    `json:"keterangan"`
 	// Kuota PER EVENT: admin mengisi kuota total & kuota pedagang lama,
 	// kuota pedagang baru = total - lama.
-	KuotaTotal     int       `json:"kuotaTotal"`
-	KuotaLama      int       `json:"kuotaLama"`
-	KuotaBaru      int       `json:"kuotaBaru"`
-	TerisiLama     int       `json:"terisiLama"`
-	TerisiBaru     int       `json:"terisiBaru"`
-	SisaLama       int       `json:"sisaLama"`
-	SisaBaru       int       `json:"sisaBaru"`
-	JumlahTitik    int       `json:"jumlahTitik"`
-	KapasitasTitik int       `json:"kapasitasTitik"` // jumlah kapasitas fisik semua titik lokasi
-	CreatedAt      time.Time `json:"createdAt"`
+	KuotaTotal     int `json:"kuotaTotal"`
+	KuotaLama      int `json:"kuotaLama"`
+	KuotaBaru      int `json:"kuotaBaru"`
+	TerisiLama     int `json:"terisiLama"`
+	TerisiBaru     int `json:"terisiBaru"`
+	SisaLama       int `json:"sisaLama"`
+	SisaBaru       int `json:"sisaBaru"`
+	JumlahTitik    int `json:"jumlahTitik"`
+	KapasitasTitik int `json:"kapasitasTitik"` // = kuota sesi (lokasi muat sebanyak kuota)
+	// Lokasi hasil undian, mis. "Jalan Mulyosari · Ruas A (Kec. Sukolilo)";
+	// null kalau belum diacak.
+	Lokasi    *string   `json:"lokasi"`
+	CreatedAt time.Time `json:"createdAt"`
 
 	MulaiAt time.Time `json:"-"` // tanggal + jam_mulai (WIB), buat hitung status pendaftaran
 }
@@ -123,7 +126,6 @@ type AcakLokasiRequest struct {
 	RuasIDs      []string `json:"ruasIds"`
 	KecamatanID  *string  `json:"kecamatanId"`
 	JalanID      *string  `json:"jalanId"`
-	JumlahTitik  int      `json:"jumlahTitik"` // jumlah ruas yang diambil; 0 = semua ruas yang tersedia di cakupan
 
 	// WilayahIDs: id kecamatan/jalan/ruas yang sudah dirapikan usecase
 	// (gabungan field jamak + tunggal, tanpa duplikat). Kosong untuk scope kota.
