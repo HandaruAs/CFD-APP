@@ -18,7 +18,6 @@ interface Props {
 export default function RuasFormModal({ wilayah, ruas, initialJalanId, initialNamaJalan, lockJalan, onClose, onSaved }: Props) {
   const [jalanId, setJalanId] = useState(initialJalanId ?? "");
   const [namaRuas, setNamaRuas] = useState(ruas?.namaRuas ?? "");
-  const [kuota, setKuota] = useState(String(ruas?.kuota ?? ""));
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
@@ -40,17 +39,17 @@ export default function RuasFormModal({ wilayah, ruas, initialJalanId, initialNa
       return;
     }
 
-    const nKuota = parseInt(kuota, 10);
+    if (!namaRuas.trim()) {
+      setError("Nama ruas wajib diisi.");
+      return;
+    }
 
     setSubmitting(true);
     try {
       if (ruas) {
-        await updateRuas(ruas.id, {
-          namaRuas,
-          kuota: nKuota,
-        });
+        await updateRuas(ruas.id, { namaRuas: namaRuas.trim() });
       } else {
-        await createRuas({ jalanId, namaRuas, kuota: nKuota });
+        await createRuas({ jalanId, namaRuas: namaRuas.trim() });
       }
       onSaved();
     } catch (err) {
@@ -65,7 +64,7 @@ export default function RuasFormModal({ wilayah, ruas, initialJalanId, initialNa
       <div className="pt-modal-box">
         <div className="flex items-center justify-between border-b border-outline-variant px-lg py-md">
           <h2 className="text-title-lg text-on-surface">
-            {ruas ? "Ubah Data" : "Tambah Data"}
+            {ruas ? "Ubah Ruas" : "Tambah Ruas"}
             {namaJalanTampil ? ` — ${namaJalanTampil}` : ""}
           </h2>
           <button type="button" onClick={onClose} className="pt-modal-close" aria-label="Tutup">
@@ -96,37 +95,21 @@ export default function RuasFormModal({ wilayah, ruas, initialJalanId, initialNa
             </div>
           )}
 
-          <div className="grid grid-cols-2 gap-md">
-            <div>
-              <label className="pt-field-label mb-1 block">
-                Nama Ruas <span className="text-error">*</span>
-              </label>
-              <input
-                required
-                value={namaRuas}
-                onChange={(e) => setNamaRuas(e.target.value)}
-                placeholder="Jl. Progo"
-                className="pt-input"
-              />
-            </div>
-            <div>
-              <label className="pt-field-label mb-1 block">
-                Kuota <span className="text-error">*</span>
-              </label>
-              <input
-                required
-                type="number"
-                min={1}
-                value={kuota}
-                onChange={(e) => setKuota(e.target.value)}
-                className="pt-input"
-              />
-            </div>
+          <div>
+            <label className="pt-field-label mb-1 block">
+              Nama Ruas <span className="text-error">*</span>
+            </label>
+            <input
+              required
+              value={namaRuas}
+              onChange={(e) => setNamaRuas(e.target.value)}
+              placeholder="Jl. Progo"
+              className="pt-input"
+            />
           </div>
 
           <p className="-mt-sm text-label-sm text-on-surface-variant">
-            Urutan &amp; nomor lapak ruas ini ditentukan otomatis (petugas cuma isi nama &amp; kuota) -- termasuk
-            siapa yang menempatinya (lama/baru), bisa dilihat di tabel Ruas Jalan setelah disimpan.
+            Urutan ruas ditentukan otomatis. Kuota pedagang diatur per sesi di menu Jam Operasional.
           </p>
 
           <div className="flex justify-end gap-sm border-t border-outline-variant pt-lg">

@@ -59,7 +59,7 @@ type CreateJalanBaruRequest struct {
 	KecamatanID string `json:"kecamatanId" validate:"required"`
 	KodeJalan   string `json:"kodeJalan" validate:"required"`
 	NamaJalan   string `json:"namaJalan" validate:"required"`
-	Kapasitas   int    `json:"kapasitas" validate:"required,gt=0"`
+	Kapasitas   int    `json:"kapasitas"` // opsional, tidak lagi diisi dari form
 }
 
 // UpdateJalanBaruRequest -- edit jalan yang SUDAH ada (kode/nama/
@@ -71,7 +71,7 @@ type CreateJalanBaruRequest struct {
 type UpdateJalanBaruRequest struct {
 	KodeJalan string `json:"kodeJalan" validate:"required"`
 	NamaJalan string `json:"namaJalan" validate:"required"`
-	Kapasitas int    `json:"kapasitas" validate:"required,gt=0"`
+	Kapasitas int    `json:"kapasitas"` // opsional, tidak lagi diisi dari form
 }
 
 // AssignJalanEventRequest -- buat nambahin/nyesuain kuota 1 jalan ke
@@ -144,14 +144,14 @@ type KuotaEventDTO struct {
 type CreateRuasRequest struct {
 	JalanID  string `json:"jalanId" validate:"required"`
 	NamaRuas string `json:"namaRuas" validate:"required"`
-	Kuota    int    `json:"kuota" validate:"required,gt=0"`
+	Kuota    int    `json:"kuota"` // tidak lagi diisi dari form
 }
 
 // UpdateRuasRequest -- Urutan ruas yang SUDAH ada gak ikut diedit lewat
 // sini (tetap dari nilai lama), sama alasannya kayak CreateRuasRequest.
 type UpdateRuasRequest struct {
 	NamaRuas string `json:"namaRuas" validate:"required"`
-	Kuota    int    `json:"kuota" validate:"required,gt=0"`
+	Kuota    int    `json:"kuota"` // tidak lagi diisi dari form
 }
 
 // ============================================================
@@ -167,7 +167,7 @@ type PedagangLamaItem struct {
 	NamaUsaha      string `json:"namaUsaha"`
 	Kategori       string `json:"kategori"`
 	Kontak         string `json:"kontak"`
-	Lokasi         string `json:"lokasi"` // "Jl. Progo / 1"
+	Lokasi         string `json:"lokasi"` // lokasi event terakhir, mis. "Jalan Darmo · Ruas 2 · No. 7"; "-" kalau belum pernah ikut event
 	Status         string `json:"status"` // aktif | nonaktif, ikut status pedagang_profiles
 	StatusPedagang string `json:"statusPedagang"` // "lama" | "baru" -- dari pedagang_profiles.submitted_at
 }
@@ -179,16 +179,21 @@ type PedagangLamaResponse struct {
 	Limit int                `json:"limit"`
 }
 
-// PedagangLamaFilter -- checklist #4, filter tambahan biar sesuai
-// referensi (Pencarian + Ruas + Status).
+// PedagangLamaFilter -- filter tabel Manajemen User > Pedagang
+// (Pencarian + Ruas + Status).
+//
+// Filter ruas/jalan dicocokkan ke LOKASI TERAKHIR pedagang di sistem event
+// (event_participants -> event_lapak -> master_ruas), sama dengan yang
+// tampil di kolom "Lokasi terakhir". Dulu pakai rentang nomor lapak ruas
+// (nomorMulai-nomorSelesai) dari sistem sesi lama (lapak_klaim), yang sudah
+// tidak dipakai sejak kuota ruas dihapus dari Manajemen Lapak.
 type PedagangLamaFilter struct {
-	Search       string
-	JalanID      string // kosong = semua jalan
-	NomorMulai   *int   // dari ruas yang dipilih, dua-duanya nil kalau ruas gak dipilih
-	NomorSelesai *int
-	Status       string // "lama" | "baru" (submitted_at NULL/NOT NULL), kosong = semua
-	Page         int
-	Limit        int
+	Search  string
+	JalanID string // kosong = semua jalan
+	RuasID  string // kosong = semua ruas
+	Status  string // "lama" | "baru" (submitted_at NULL/NOT NULL), kosong = semua
+	Page    int
+	Limit   int
 }
 
 // ============================================================
