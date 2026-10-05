@@ -1,42 +1,35 @@
 import 'package:mobile/core/network/api_client.dart';
-import 'package:mobile/features/petugas/domain/entities/scan_result.dart';
 import 'package:mobile/core/network/api_exception.dart';
+import 'package:mobile/features/petugas/domain/entities/scan_result.dart';
 
+/// Check-in pedagang PER EVENT (sama dengan web /petugas/scan-qr).
+/// Menggantikan endpoint lama /api/petugas/scan, /check-in, /riwayat-scan.
 class ScanRemoteDatasource {
-  /// POST /api/petugas/scan
-  ///
-  /// [qrCode] itu ID pedagang polos (backend langsung GetPedagangByID
-  /// pakai value ini) -- BUKAN JSON, cuma string ID hasil scan kamera.
-  /// Endpoint ini cuma verifikasi + ngecek status, belum nyimpen
-  /// kehadiran -- itu baru kejadian di [checkIn].
-  static Future<VerifyQRResult> verifyQr(String qrCode) async {
-    final data = await ApiClient.post(
-      '/api/petugas/scan',
-      body: {'qr_code': qrCode},
-    );
-    return VerifyQRResult.fromJson(data as Map<String, dynamic>);
+  static Map<String, dynamic> _data(dynamic res) {
+    final d = res is Map<String, dynamic> ? res['data'] : null;
+    if (d is! Map<String, dynamic>) throw ApiException('Format data scan tidak dikenal.');
+    return d;
   }
 
-  /// POST /api/petugas/check-in
-  static Future<CheckInResult> checkIn({
-    required String pedagangId,
-    String? catatan,
-  }) async {
-    final data = await ApiClient.post(
-      '/api/petugas/check-in',
-      body: {
-        'pedagang_id': pedagangId,
-        if (catatan != null && catatan.isNotEmpty) 'catatan': catatan,
-      },
-    );
-    return CheckInResult.fromJson(data as Map<String, dynamic>);
+  /// POST /api/petugas/event-checkin/periksa
+  /// Hanya membaca: siapa pedagangnya, event & lokasinya, dan boleh
+  /// di-check-in atau tidak. Belum mencatat apa-apa.
+  static Future<PesertaScan> periksa(String qrCode) async {
+    final res = await ApiClient.post('/api/petugas/event-checkin/periksa', body: {'qrCode': qrCode.trim()});
+    return PesertaScan.fromJson(_data(res));
   }
 
-  /// GET /api/petugas/riwayat-scan
-  static Future<List<RiwayatScanItem>> getRiwayatScan() async {
-    final data = await ApiClient.get('/api/petugas/riwayat-scan');
-    return ((data as Map<String, dynamic>)['riwayat'] as List<dynamic>? ?? [])
-        .map((e) => RiwayatScanItem.fromJson(e as Map<String, dynamic>))
-        .toList();
+  /// POST /api/petugas/event-checkin -- mencatat check-in.
+  static Future<PesertaScan> checkIn(String pesertaId) async {
+    final res = await ApiClient.post('/api/petugas/event-checkin', body: {'pesertaId': pesertaId});
+    return PesertaScan.fromJson(_data(res));
+  }
+
+  /// GET /api/petugas/event-checkin/riwayat -- check-in petugas ini hari ini.
+  static Future<List<RiwayatCheckIn>> riwayat() async {
+    final res = await ApiClient.get('/api/petugas/event-checkin/riwayat');
+    final list = res is Map<String, dynamic> ? res['data'] : null;
+    if (list is! List) return const [];
+    return list.whereType<Map<String, dynamic>>().map(RiwayatCheckIn.fromJson).toList();
   }
 }

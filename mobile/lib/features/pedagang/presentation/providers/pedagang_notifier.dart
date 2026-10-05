@@ -1,10 +1,18 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:mobile/core/network/api_exception.dart';
 import 'package:mobile/features/pedagang/data/datasources/pedagang_remote_datasource.dart';
-import 'package:mobile/features/pedagang/domain/entities/lapak_data.dart';
+import 'package:mobile/features/pedagang/domain/entities/checkout_data.dart';
+import 'package:mobile/features/pedagang/domain/entities/event_pedagang.dart';
 import 'pedagang_state.dart';
+
+/// Hasil aksi ikut / batal event: [hasil] terisi kalau berhasil; kalau
+/// gagal, [pesan] + [kode] (field `code` backend, mis. "BELUM_CHECKOUT").
+typedef HasilAksiEvent = ({Keikutsertaan? hasil, String? pesan, String? kode});
 
 class PedagangNotifier extends StateNotifier<PedagangState> {
   PedagangNotifier() : super(PedagangState.initial());
+
+  // ───────────────────────── data usaha ─────────────────────────
 
   Future<void> loadStatusPengajuan() async {
     state = state.copyWith(isLoadingPengajuan: true, error: null);
@@ -16,11 +24,8 @@ class PedagangNotifier extends StateNotifier<PedagangState> {
     }
   }
 
-  /// Submit form pengajuan usaha (AjukanUsaha). Balikin `true` kalau
-  /// berhasil, biar halaman form tau kapan boleh pindah/nampilin sukses.
-  /// Setelah sukses, langsung refetch status biar `state.pengajuan`
-  /// ke-update (dan menu sidebar ikut ke-refresh pas fetch /api/menus
-  /// berikutnya, karena stage-nya masih "unverified" sampai di-approve).
+  /// Simpan data usaha. Setelah berhasil, status dimuat ulang lalu daftar
+  /// event diambil (pedagang langsung bisa memilih event).
   Future<bool> submitPengajuan({
     required String nik,
     required String namaLengkap,
@@ -41,12 +46,63 @@ class PedagangNotifier extends StateNotifier<PedagangState> {
       );
       state = state.copyWith(isSubmittingPengajuan: false);
       await loadStatusPengajuan();
+      await loadEvents();
       return true;
     } catch (e) {
       state = state.copyWith(isSubmittingPengajuan: false, error: e.toString());
       return false;
     }
   }
+
+  void clearError() {
+    state = state.copyWith(error: null, errorEvent: null);
+  }
+
+  // ───────────────────────── event ─────────────────────────
+
+  /// Ambil daftar event + event yang diikuti sekaligus.
+  /// [diam] = true untuk penyegaran berkala (tanpa spinner / pesan error).
+  Future<void> loadEvents({bool diam = false}) async {
+    if (!diam) state = state.copyWith(isLoadingEvent: true, errorEvent: null);
+    try {
+      final hasil = await Future.wait<Object>([
+        PedagangRemoteDatasource.getEvents(),
+        PedagangRemoteDatasource.getEventSaya(),
+      ]);
+      final daftar = hasil[0] as DaftarEventPedagang;
+      state = state.copyWith(
+        isLoadingEvent: false,
+        kategori: daftar.kategori,
+        events: daftar.events,
+        eventSaya: hasil[1] as List<Keikutsertaan>,
+      );
+    } catch (e) {
+      state = state.copyWith(isLoadingEvent: false, errorEvent: diam ? state.errorEvent : e.toString());
+    }
+  }
+
+  Future<HasilAksiEvent> ikut(String eventId) async {
+    try {
+      final k = await PedagangRemoteDatasource.ikut(eventId);
+      await loadEvents(diam: true);
+      return (hasil: k, pesan: null, kode: null);
+    } catch (e) {
+      await loadEvents(diam: true); // sisa kuota mungkin sudah berubah
+      return (hasil: null, pesan: e.toString(), kode: e is ApiException ? e.code : null);
+    }
+  }
+
+  Future<String?> batal(String eventId) async {
+    try {
+      await PedagangRemoteDatasource.batal(eventId);
+      await loadEvents(diam: true);
+      return null;
+    } catch (e) {
+      return e.toString();
+    }
+  }
+
+  // ───────────────────────── checkout ─────────────────────────
 
   Future<void> loadCheckoutData() async {
     state = state.copyWith(isLoadingCheckout: true, error: null);
@@ -58,100 +114,24 @@ class PedagangNotifier extends StateNotifier<PedagangState> {
     }
   }
 
-  Future<bool> submitCheckout(int omset) async {
+  /// Ambil data checkout TANPA mengubah tampilan -- dipakai halaman event
+  /// untuk memutuskan perlu pindah ke Cek-out atau tidak. Gagal -> null.
+  Future<CheckoutData?> cekCheckout() async {
+    try {
+      return await PedagangRemoteDatasource.getCheckoutData();
+    } catch (_) {
+      return null;
+    }
+  }
+
+  Future<bool> submitCheckout(String eventId, int omset) async {
     state = state.copyWith(isLoadingCheckout: true, error: null);
     try {
-      await PedagangRemoteDatasource.submitCheckout(omset);
+      await PedagangRemoteDatasource.submitCheckout(eventId, omset);
       await loadCheckoutData();
       return true;
     } catch (e) {
       state = state.copyWith(isLoadingCheckout: false, error: e.toString());
-      return false;
-    }
-  }
-
-  void clearError() {
-    state = state.copyWith(error: null);
-  }
-
-  // --- Modul Lapak (klaim nomor stand, step 6) ---
-
-  /// Dipanggil begitu halaman Lapak dibuka -- ngecek apakah sesi klaim
-  /// lagi aktif dan apakah pedagang ini udah pernah klaim sebelumnya.
-  /// Kalau udah pernah, langsung isi `hasilKlaim` dari data status ini
-  /// biar UI langsung nampilin kartu hasil tanpa nyuruh isi form lagi.
-  Future<void> loadLapakStatus() async {
-    state = state.copyWith(isLoadingLapakStatus: true);
-    try {
-      final status = await PedagangRemoteDatasource.getLapakStatus();
-      state = state.copyWith(
-        isLoadingLapakStatus: false,
-        lapakStatus: status,
-        hasilKlaim: status.sudahKlaim
-            ? HasilKlaim(
-                nomorStand: status.nomorLapak ?? '-',
-                kecamatan: status.namaKecamatan ?? '-',
-                namaJalan: status.namaJalan ?? '-',
-                namaRuas: status.namaRuas ?? '',
-              )
-            : null,
-      );
-    } catch (e) {
-      state = state.copyWith(isLoadingLapakStatus: false, error: e.toString());
-    }
-  }
-
-  /// Klaim lapak -- tanpa pilihan apa pun, lokasi diacak backend.
-  Future<bool> klaimLapak() async {
-    state = state.copyWith(isClaiming: true, error: null);
-    try {
-      final hasil = await PedagangRemoteDatasource.klaimLapak();
-      state = state.copyWith(isClaiming: false, hasilKlaim: hasil);
-      return true;
-    } catch (e) {
-      state = state.copyWith(isClaiming: false, error: e.toString());
-      return false;
-    }
-  }
-
-  /// Alur "Daftar & Pilih Lokasi Stan" buat pedagang yang BELUM pernah
-  /// daftar -- sama kayak processPendaftaranLaluKlaim() di web:
-  /// kirim pengajuan dulu, kalau sukses langsung klaim lapak.
-  ///
-  /// Kalau pengajuan sukses tapi klaim gagal (mis. lapak keburu penuh),
-  /// `state.pengajuan` udah keisi (submitPengajuan refetch status), jadi
-  /// UI otomatis pindah ke tampilan "sudah daftar, tinggal klaim" --
-  /// pedagang gak disuruh ngisi ulang data usaha dari nol.
-  Future<bool> daftarLaluKlaim({
-    required String nik,
-    required String namaLengkap,
-    required String tanggalLahir,
-    required String namaUsaha,
-    required String jenisDagangan,
-    required String jenisLapak,
-  }) async {
-    final daftarOk = await submitPengajuan(
-      nik: nik,
-      namaLengkap: namaLengkap,
-      tanggalLahir: tanggalLahir,
-      namaUsaha: namaUsaha,
-      jenisDagangan: jenisDagangan,
-      jenisLapak: jenisLapak,
-    );
-    if (!daftarOk) return false;
-    return klaimLapak();
-  }
-
-  /// Dipanggil tiap tick polling di halaman Lapak setelah klaim
-  /// berhasil. Return `true` kalau petugas udah scan QR pedagang
-  /// (check-in). Sengaja gak nge-throw / nyentuh `state.error` di sini --
-  /// kegagalan network pas polling harusnya dicoba lagi diam-diam di
-  /// tick berikutnya, bukan nge-flash pesan error ke pedagang yang lagi
-  /// nunggu di depan petugas.
-  Future<bool> checkSudahCheckIn() async {
-    try {
-      return await PedagangRemoteDatasource.getCheckInStatus();
-    } catch (_) {
       return false;
     }
   }

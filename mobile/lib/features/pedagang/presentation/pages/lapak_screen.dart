@@ -5,10 +5,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:qr_flutter/qr_flutter.dart';
-import 'package:mobile/features/pedagang/presentation/providers/pedagang_provider.dart';
-import 'package:mobile/features/pedagang/presentation/providers/pedagang_state.dart';
+import 'package:mobile/features/pedagang/domain/entities/event_pedagang.dart';
 import 'package:mobile/features/pedagang/domain/entities/pengajuan_status.dart';
 import 'package:mobile/features/pedagang/presentation/pages/checkout_screen.dart';
+import 'package:mobile/features/pedagang/presentation/providers/pedagang_provider.dart';
+import 'package:mobile/features/pedagang/presentation/providers/pedagang_state.dart';
 
 const _brandColor = Color(0xFF1C3F7C);
 
@@ -27,8 +28,7 @@ const _namaBulan = [
   'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember',
 ];
 
-/// "1990-05-12" (atau ISO lengkap) -> "12 Mei 1990". Sama kayak
-/// formatTanggalLahir() di web. Balikin string aslinya kalau gagal parse.
+/// "1990-05-12" (atau ISO lengkap) -> "12 Mei 1990".
 String _formatTanggalIndo(String? raw) {
   if (raw == null || raw.isEmpty) return '-';
   final d = DateTime.tryParse(raw);
@@ -43,17 +43,18 @@ String _formatTanggalApi(DateTime d) {
   return '$y-$m-$day';
 }
 
-/// TAB ROOT "Nomor Stand" pedagang -- halaman gabungan "Daftar Usaha" +
-/// "Pilih Lokasi Stan", mirror dari web/app/pedagang/nomer-stand:
-///   - Belum pernah daftar -> form data usaha (editable), submit sekali
-///     langsung bikin pengajuan usaha DAN klaim lapak.
-///   - Sudah pernah daftar -> data usaha read-only, tinggal klaim.
-///   - Sudah klaim lapak   -> kartu nomor stan + QR, polling check-in.
+/// TAB "Check in / Check Out" pedagang -- sistem MULTI-EVENT, sama dengan
+/// web /pedagang/nomer-stand:
+///   1. belum punya data usaha -> isi data usaha;
+///   2. pilih event -> server mengacak lokasi & nomor stan (CFD-xxxxxx);
+///   3. kartu event + QR -> ditunjukkan ke petugas untuk check-in;
+///   4. setelah event selesai -> isi omset di halaman Cek-out.
 ///
-/// Lokasi (jalan/ruas) & nomor stan SELALU diacak backend dari slot yang
-/// disiapkan admin -- pedagang gak milih mode/kecamatan lagi.
+/// Kalau pedagang masih punya check-in di event yang SUDAH selesai tapi
+/// omsetnya belum diisi, halaman ini langsung membuka Cek-out (wajib
+/// checkout dulu sebelum ikut / check-in event lain).
 ///
-/// build() return body langsung, Scaffold/AppBar dipegang MainLayout.
+/// build() mengembalikan body saja, Scaffold/AppBar dipegang MainLayout.
 class LapakScreen extends ConsumerStatefulWidget {
   const LapakScreen({super.key});
 
@@ -69,37 +70,18 @@ class _LapakScreenState extends ConsumerState<LapakScreen> {
   DateTime? _tanggalLahir;
   String? _jenisDagangan;
   String? _jenisLapak;
-  String? _formError; // error validasi lokal (bukan dari backend)
+  String? _formError;
 
-  Timer? _pollTimer;
-
-  // Spinner cuma buat muatan PERTAMA. Setelah itu refetch (mis.
-  // submitPengajuan yang manggil loadStatusPengajuan lagi) gak boleh
-  // ngeganti form jadi spinner di tengah proses submit.
   bool _loadedAwal = false;
-
-  // Lagi di halaman Checkout (hasil push dari sini) -- biar polling gak
-  // nge-push Checkout dobel.
-  bool _diarahkanKeCheckout = false;
+  bool _diCheckout = false; // sedang di halaman Cek-out (hasil push dari sini)
+  String? _sedangDiproses; // id event yang sedang ikut / batal
+  String? _checkInBerjalan; // nama event yang sedang check-in (masih berjalan)
+  Timer? _pollTimer;
 
   @override
   void initState() {
     super.initState();
-    Future.microtask(() async {
-      final notifier = ref.read(pedagangProvider.notifier);
-      notifier.clearError();
-      await Future.wait([
-        notifier.loadStatusPengajuan(),
-        notifier.loadLapakStatus(),
-      ]);
-      if (!mounted) return;
-      setState(() => _loadedAwal = true);
-      // Cek SEKALI di awal, walau belum klaim: kalau pedagang masih nunggak
-      // checkout sesi lama (mis. check-in minggu lalu, gak pernah isi
-      // omset) ATAU udah checkout hari ini, langsung ke halaman Checkout.
-      final dipindah = await _cekDanPindah();
-      if (!dipindah) _maybeStartPolling();
-    });
+    Future.microtask(_muatAwal);
   }
 
   @override
@@ -111,39 +93,159 @@ class _LapakScreenState extends ConsumerState<LapakScreen> {
     super.dispose();
   }
 
-  /// Tanya backend apakah pedagang ini harus ada di halaman Checkout
-  /// (`/api/pedagang/check-in/status` true = udah check-in di sesi hari
-  /// ini, ATAU masih punya kehadiran lama yang belum checkout). Kalau iya,
-  /// push CheckoutScreen dan balikin true.
-  Future<bool> _cekDanPindah() async {
-    if (_diarahkanKeCheckout) return true;
-    final harusCheckout = await ref.read(pedagangProvider.notifier).checkSudahCheckIn();
-    if (!mounted || !harusCheckout) return false;
+  Future<void> _muatAwal() async {
+    final notifier = ref.read(pedagangProvider.notifier);
+    notifier.clearError();
+    await notifier.loadStatusPengajuan();
+    if (ref.read(pedagangProvider).pengajuan != null) {
+      await notifier.loadEvents();
+    }
+    if (!mounted) return;
+    setState(() => _loadedAwal = true);
+    await _cekCheckout();
+    // Selagi ada event yang menunggu check-in, segarkan diam-diam supaya
+    // kartu event berubah jadi "Sudah check-in" setelah petugas scan.
+    _pollTimer = Timer.periodic(const Duration(seconds: 20), (_) => _segarkanDiam());
+  }
 
-    _diarahkanKeCheckout = true;
-    _pollTimer?.cancel();
-    _pollTimer = null;
-    // CheckoutScreen BUKAN tab -- halaman beneran di atas shell.
-    await Navigator.of(context).push(
-      MaterialPageRoute(builder: (_) => const CheckoutScreen()),
+  Future<void> _segarkanDiam() async {
+    if (!mounted || _diCheckout) return;
+    final state = ref.read(pedagangProvider);
+    if (state.pengajuan == null) return;
+    final menunggu = state.eventSaya.any((k) => k.aktif);
+    if (!menunggu) return;
+    await ref.read(pedagangProvider.notifier).loadEvents(diam: true);
+    await _cekCheckout();
+  }
+
+  /// Wajib checkout (event sudah selesai) -> langsung buka Cek-out.
+  /// Sedang check-in di event yang masih berjalan -> tampilkan banner.
+  Future<void> _cekCheckout() async {
+    if (_diCheckout) return;
+    final d = await ref.read(pedagangProvider.notifier).cekCheckout();
+    if (!mounted) return;
+    if (d != null && !d.sudahCheckOut && d.wajibCheckout) {
+      await _bukaCheckout();
+      return;
+    }
+    setState(() => _checkInBerjalan = (d != null && d.sudahCheckIn && !d.sudahCheckOut) ? d.namaEvent : null);
+  }
+
+  Future<void> _bukaCheckout() async {
+    if (_diCheckout) return;
+    _diCheckout = true;
+    await Navigator.of(context).push(MaterialPageRoute(builder: (_) => const CheckoutScreen()));
+    _diCheckout = false;
+    if (!mounted) return;
+    await ref.read(pedagangProvider.notifier).loadEvents(diam: true);
+    await _cekCheckout();
+  }
+
+  Future<void> _muatUlang() async {
+    await ref.read(pedagangProvider.notifier).loadEvents();
+    await _cekCheckout();
+  }
+
+  // ───────────────────────── aksi ─────────────────────────
+
+  Future<void> _ikut(EventTersedia ev) async {
+    final lanjut = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text('Ikut "${ev.nama}"?'),
+        content: Text(
+          '${tanggalEvent(ev.tanggal)}\n${jamEvent(ev.jamMulai)} – ${jamEvent(ev.jamSelesai)} WIB\n\n'
+          'Lokasi dan nomor stan kamu akan diacak otomatis oleh sistem.',
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.of(ctx).pop(false), child: const Text('Batal')),
+          FilledButton(onPressed: () => Navigator.of(ctx).pop(true), child: const Text('Ya, Ikut')),
+        ],
+      ),
     );
-    // Balik dari Checkout (mis. habis checkout sesi lama) -- refresh status
-    // lapak biar form klaim / hasil klaim yang tampil sesuai kondisi baru.
-    _diarahkanKeCheckout = false;
-    if (mounted) await ref.read(pedagangProvider.notifier).loadLapakStatus();
-    return true;
+    if (lanjut != true || !mounted) return;
+
+    setState(() => _sedangDiproses = ev.id);
+    final r = await ref.read(pedagangProvider.notifier).ikut(ev.id);
+    if (!mounted) return;
+    setState(() => _sedangDiproses = null);
+
+    if (r.hasil != null) {
+      await _tampilkanHasilIkut(r.hasil!);
+      return;
+    }
+    if (r.kode == 'BELUM_CHECKOUT') {
+      await _bukaCheckout();
+      return;
+    }
+    _snack(r.pesan ?? 'Gagal ikut event.');
   }
 
-  // Begitu pedagang punya hasil klaim (baru klaim barusan ATAU udah dari
-  // sebelumnya), polling status check-in tiap 5 detik -- persis kayak
-  // useEffect([hasil]) di web.
-  void _maybeStartPolling() {
-    if (_pollTimer != null) return;
-    if (ref.read(pedagangProvider).hasilKlaim == null) return;
-
-    _cekDanPindah(); // cek langsung, jangan nunggu 5 detik pertama
-    _pollTimer = Timer.periodic(const Duration(seconds: 5), (_) => _cekDanPindah());
+  Future<void> _tampilkanHasilIkut(Keikutsertaan k) {
+    return showDialog<void>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        icon: const Icon(Icons.check_circle, color: Colors.green, size: 48),
+        title: const Text('Berhasil Ikut Event', textAlign: TextAlign.center),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(k.namaEvent, textAlign: TextAlign.center, style: const TextStyle(fontWeight: FontWeight.w600)),
+            const SizedBox(height: 12),
+            const Text('Nomor stan kamu', style: TextStyle(color: Colors.black54)),
+            Text(k.kodeStan, style: const TextStyle(fontSize: 28, fontWeight: FontWeight.bold, color: _brandColor)),
+            const SizedBox(height: 8),
+            Text(
+              '${k.namaJalan} · ${k.namaRuas}${k.namaKecamatan != null ? '\nKec. ${k.namaKecamatan}' : ''}',
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 12),
+            const Text(
+              'Tunjukkan QR di kartu event ke petugas saat datang.',
+              textAlign: TextAlign.center,
+              style: TextStyle(fontSize: 12.5, color: Colors.black54),
+            ),
+          ],
+        ),
+        actions: [
+          FilledButton(onPressed: () => Navigator.of(ctx).pop(), child: const Text('Lihat Kartu Event')),
+        ],
+      ),
+    );
   }
+
+  Future<void> _batal(Keikutsertaan k) async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Batal ikut event?'),
+        content: Text(
+          'Nomor stan ${k.kodeStan} di ${k.namaJalan} · ${k.namaRuas} akan dilepas dan '
+          'bisa diambil pedagang lain.',
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.of(ctx).pop(false), child: const Text('Tidak')),
+          FilledButton(
+            onPressed: () => Navigator.of(ctx).pop(true),
+            style: FilledButton.styleFrom(backgroundColor: Colors.red),
+            child: const Text('Ya, Batalkan'),
+          ),
+        ],
+      ),
+    );
+    if (ok != true || !mounted) return;
+    setState(() => _sedangDiproses = k.eventId);
+    final err = await ref.read(pedagangProvider.notifier).batal(k.eventId);
+    if (!mounted) return;
+    setState(() => _sedangDiproses = null);
+    _snack(err ?? 'Pendaftaran event dibatalkan.');
+  }
+
+  void _snack(String pesan) {
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(pesan)));
+  }
+
+  // ───────────────────────── data usaha ─────────────────────────
 
   Future<void> _pickTanggalLahir() async {
     final now = DateTime.now();
@@ -157,59 +259,28 @@ class _LapakScreenState extends ConsumerState<LapakScreen> {
     if (picked != null) setState(() => _tanggalLahir = picked);
   }
 
-  /// Validasi form pendaftaran -- sama kayak validationError() di web.
-  String? _validationError() {
-    if (!(_formKey.currentState?.validate() ?? false)) {
-      return 'Mohon lengkapi semua data usaha terlebih dahulu.';
-    }
-    if (_tanggalLahir == null || _jenisDagangan == null || _jenisLapak == null) {
-      return 'Mohon lengkapi semua data usaha terlebih dahulu.';
-    }
-    return null;
-  }
+  Future<void> _simpanDataUsaha() async {
+    final valid = (_formKey.currentState?.validate() ?? false) &&
+        _tanggalLahir != null &&
+        _jenisDagangan != null &&
+        _jenisLapak != null;
+    setState(() => _formError = valid ? null : 'Mohon lengkapi semua data usaha terlebih dahulu.');
+    if (!valid) return;
 
-  Future<void> _handleSubmit({required bool sudahDaftar}) async {
-    final notifier = ref.read(pedagangProvider.notifier);
-    notifier.clearError();
-
-    // Sudah pernah daftar -- data usaha gak diubah, langsung klaim.
-    if (sudahDaftar) {
-      setState(() => _formError = null);
-      final ok = await notifier.klaimLapak();
-      if (ok) {
-        _maybeStartPolling();
-      } else {
-        // Klaim ditolak karena masih nunggak checkout -> langsung ke Checkout.
-        await _cekDanPindah();
-      }
-      return;
-    }
-
-    final err = _validationError();
-    setState(() => _formError = err);
-    if (err != null) return;
-
-    // Belum pernah daftar -- submit ini sekaligus bikin pengajuan usaha
-    // (NIK dkk gak bisa asal diubah lagi), jadi konfirmasi dulu.
-    final lanjut = await _showKonfirmasi();
+    final lanjut = await _konfirmasiDataUsaha();
     if (lanjut != true || !mounted) return;
 
-    final ok = await notifier.daftarLaluKlaim(
-      nik: _nikController.text.trim(),
-      namaLengkap: _namaLengkapController.text.trim(),
-      tanggalLahir: _formatTanggalApi(_tanggalLahir!),
-      namaUsaha: _namaUsahaController.text.trim(),
-      jenisDagangan: _jenisDagangan!,
-      jenisLapak: _jenisLapak!,
-    );
-    if (ok) {
-      _maybeStartPolling();
-    } else {
-      await _cekDanPindah();
-    }
+    await ref.read(pedagangProvider.notifier).submitPengajuan(
+          nik: _nikController.text.trim(),
+          namaLengkap: _namaLengkapController.text.trim(),
+          tanggalLahir: _formatTanggalApi(_tanggalLahir!),
+          namaUsaha: _namaUsahaController.text.trim(),
+          jenisDagangan: _jenisDagangan!,
+          jenisLapak: _jenisLapak!,
+        );
   }
 
-  Future<bool?> _showKonfirmasi() {
+  Future<bool?> _konfirmasiDataUsaha() {
     return showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
@@ -235,16 +306,10 @@ class _LapakScreenState extends ConsumerState<LapakScreen> {
           ),
         ),
         actions: [
-          TextButton(
-            onPressed: () => Navigator.of(ctx).pop(false),
-            child: const Text('Periksa Lagi'),
-          ),
+          TextButton(onPressed: () => Navigator.of(ctx).pop(false), child: const Text('Periksa Lagi')),
           ElevatedButton(
             onPressed: () => Navigator.of(ctx).pop(true),
-            style: ElevatedButton.styleFrom(
-              backgroundColor: _brandColor,
-              foregroundColor: Colors.white,
-            ),
+            style: ElevatedButton.styleFrom(backgroundColor: _brandColor, foregroundColor: Colors.white),
             child: const Text('Ya, Kirim'),
           ),
         ],
@@ -252,120 +317,218 @@ class _LapakScreenState extends ConsumerState<LapakScreen> {
     );
   }
 
+  // ───────────────────────── build ─────────────────────────
+
   @override
   Widget build(BuildContext context) {
     final state = ref.watch(pedagangProvider);
-    final pengajuan = state.pengajuan;
-    final sudahDaftar = pengajuan != null;
-
-    if (state.hasilKlaim != null) {
-      return _buildHasilKlaim(state, pengajuan);
-    }
 
     if (!_loadedAwal) {
       return const Center(child: CircularProgressIndicator());
     }
+    if (state.pengajuan == null) {
+      return _buildIsiDataUsaha(state);
+    }
+    return _buildHalamanEvent(state, state.pengajuan!);
+  }
 
-    final sesiAktif = state.lapakStatus?.sesiAktif ?? true;
-    if (!sesiAktif) return _buildSesiBelumDibuka(state);
-
-    final isBusy = state.isClaiming || state.isSubmittingPengajuan;
+  Widget _buildIsiDataUsaha(PedagangState state) {
+    final busy = state.isSubmittingPengajuan;
     final error = _formError ?? state.error;
-
     return SingleChildScrollView(
       padding: const EdgeInsets.all(16),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Text(
-            sudahDaftar ? 'Pilih Lokasi Stan' : 'Daftar & Pilih Lokasi Stan',
-            style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
-          ),
+          const Text('Isi Data Usaha', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
           const SizedBox(height: 4),
-          Text(
-            sudahDaftar
-                ? 'Silakan pilih lokasi stan untuk partisipasi Anda di Car Free Day.'
-                : 'Lengkapi data usaha dan pilih lokasi stan Anda untuk berpartisipasi di Car Free Day.',
-            style: const TextStyle(color: Colors.black54, fontSize: 13),
+          const Text(
+            'Lengkapi data usaha kamu sekali saja. Setelah itu kamu bisa memilih event CFD yang ingin diikuti.',
+            style: TextStyle(color: Colors.black54, fontSize: 13),
           ),
           const SizedBox(height: 16),
-          if (pengajuan != null)
-            _buildDataTerdaftar(pengajuan)
-          else
-            _buildFormPendaftaran(enabled: !isBusy),
-          const SizedBox(height: 12),
-          _card(
-            icon: Icons.place_outlined,
-            title: 'Lokasi Penempatan',
-            children: const [
-              Text(
-                'Lokasi & nomor stan kamu diambil otomatis dari daftar lokasi yang sudah '
-                'disiapkan petugas. Tekan tombol di bawah buat langsung dapat nomor stan.',
-                style: TextStyle(fontSize: 12.5, color: Colors.black54, height: 1.4),
-              ),
-            ],
-          ),
+          _buildFormPendaftaran(enabled: !busy),
           if (error != null) ...[
             const SizedBox(height: 12),
             _errorBox(error),
           ],
           const SizedBox(height: 20),
           ElevatedButton.icon(
-            onPressed: isBusy ? null : () => _handleSubmit(sudahDaftar: sudahDaftar),
+            onPressed: busy ? null : _simpanDataUsaha,
             style: ElevatedButton.styleFrom(
               backgroundColor: _brandColor,
               foregroundColor: Colors.white,
               padding: const EdgeInsets.symmetric(vertical: 16),
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
             ),
-            icon: isBusy
+            icon: busy
                 ? const SizedBox(
                     height: 18,
                     width: 18,
                     child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
                   )
                 : const Icon(Icons.save_outlined, size: 18),
-            label: Text(
-              isBusy
-                  ? 'Menyimpan...'
-                  : sudahDaftar
-                      ? 'Simpan Pilihan Stan'
-                      : 'Daftar & Pilih Lokasi Stan',
-            ),
+            label: Text(busy ? 'Menyimpan...' : 'Simpan & Lanjut Pilih Event'),
           ),
         ],
       ),
     );
   }
 
-  Widget _buildSesiBelumDibuka(PedagangState state) {
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(24),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const Icon(Icons.warning_amber_rounded, color: Colors.red, size: 48),
+  Widget _buildHalamanEvent(PedagangState state, PengajuanStatus pengajuan) {
+    final aktif = state.eventSaya.where((k) => k.aktif).toList();
+    final lainnya = state.eventSaya.where((k) => !k.aktif).toList();
+    final belumDiikuti = state.events.where((e) => e.statusSaya == null || e.statusSaya == 'batal').toList();
+
+    return RefreshIndicator(
+      onRefresh: _muatUlang,
+      child: ListView(
+        physics: const AlwaysScrollableScrollPhysics(),
+        padding: const EdgeInsets.all(16),
+        children: [
+          if (_checkInBerjalan != null) ...[
+            _banner(
+              icon: Icons.storefront,
+              iconColor: const Color(0xFF16A34A),
+              bg: const Color(0xFFE3F8EE),
+              border: const Color(0xFFBFEED7),
+              title: 'Sedang berjualan di $_checkInBerjalan',
+              titleColor: const Color(0xFF0F7A44),
+              body: 'Isi omset di halaman Cek-out setelah event selesai.',
+              bodyColor: const Color(0xFF1A7A52),
+              aksi: TextButton(onPressed: _bukaCheckout, child: const Text('Ke halaman Cek-out')),
+            ),
             const SizedBox(height: 12),
-            const Text('Sesi Klaim Belum Dibuka',
-                style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-            const SizedBox(height: 8),
+          ],
+
+          // ===== EVENT SAYA =====
+          Row(
+            children: [
+              const Expanded(
+                child: Text('Event Saya', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+              ),
+              TextButton.icon(
+                onPressed: state.isLoadingEvent ? null : _muatUlang,
+                icon: state.isLoadingEvent
+                    ? const SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2))
+                    : const Icon(Icons.refresh, size: 18),
+                label: const Text('Muat ulang'),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          if (aktif.isEmpty)
+            _kotakKosong('Kamu belum ikut event apa pun. Pilih event di bawah.')
+          else
+            ...aktif.map((k) => Padding(
+                  padding: const EdgeInsets.only(bottom: 12),
+                  child: _KartuEvent(
+                    k: k,
+                    diproses: _sedangDiproses == k.eventId,
+                    onBatal: () => _batal(k),
+                  ),
+                )),
+          if (lainnya.isNotEmpty) ...[
+            const SizedBox(height: 4),
+            ...lainnya.map(_barisRiwayat),
+          ],
+          const SizedBox(height: 20),
+
+          // ===== PILIH EVENT =====
+          const Text('Pilih Event', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+          const SizedBox(height: 8),
+          if (state.errorEvent != null)
+            _errorBox(state.errorEvent!)
+          else if (state.isLoadingEvent && state.events.isEmpty)
+            const Padding(
+              padding: EdgeInsets.all(24),
+              child: Center(child: CircularProgressIndicator()),
+            )
+          else if (belumDiikuti.isEmpty)
+            _kotakKosong('Belum ada event yang dibuka. Cek lagi nanti.')
+          else
+            ...belumDiikuti.map((ev) => Padding(
+                  padding: const EdgeInsets.only(bottom: 12),
+                  child: _kartuPilihEvent(ev),
+                )),
+          const SizedBox(height: 12),
+          _buildDataTerdaftar(pengajuan),
+        ],
+      ),
+    );
+  }
+
+  Widget _kartuPilihEvent(EventTersedia ev) {
+    final diproses = _sedangDiproses == ev.id;
+    String? alasan;
+    if (!ev.bisaIkut) {
+      if (ev.statusPendaftaran == 'belum_dibuka') {
+        alasan = 'Pendaftaran belum dibuka';
+      } else if (ev.statusPendaftaran == 'ditutup') {
+        alasan = 'Pendaftaran sudah ditutup';
+      } else if (ev.sisaUntukSaya <= 0) {
+        alasan = 'Tempat sudah penuh';
+      }
+    }
+    return Card(
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Text(ev.nama, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
+            const SizedBox(height: 4),
             Text(
-              state.lapakStatus?.pesanSesi ??
-                  'Sesi klaim lapak hari ini belum dibuka oleh petugas.',
-              textAlign: TextAlign.center,
+              '${tanggalEvent(ev.tanggal)}\n${jamEvent(ev.jamMulai)} – ${jamEvent(ev.jamSelesai)} WIB',
               style: const TextStyle(color: Colors.black54),
             ),
-            const SizedBox(height: 16),
-            // Screen ini TAB (IndexedStack) -- gak ada "Kembali", diganti
-            // tombol cek ulang status.
-            ElevatedButton(
-              onPressed: () => ref.read(pedagangProvider.notifier).loadLapakStatus(),
-              style: ElevatedButton.styleFrom(backgroundColor: _brandColor),
-              child: const Text('Cek Lagi', style: TextStyle(color: Colors.white)),
+            if (ev.lokasi.isNotEmpty) ...[
+              const SizedBox(height: 8),
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Icon(Icons.place_outlined, size: 18, color: _brandColor),
+                  const SizedBox(width: 6),
+                  Expanded(child: Text(ev.lokasi.map((l) => l.teks).join('\n'))),
+                ],
+              ),
+            ],
+            const SizedBox(height: 8),
+            Text(
+              ev.sisaUntukSaya > 0 ? 'Sisa ${ev.sisaUntukSaya} tempat untukmu' : 'Tempat penuh',
+              style: TextStyle(
+                fontWeight: FontWeight.w600,
+                color: ev.sisaUntukSaya > 0 ? const Color(0xFF15803D) : Colors.red,
+              ),
+            ),
+            const SizedBox(height: 12),
+            SizedBox(
+              height: 48,
+              child: FilledButton(
+                onPressed: (ev.bisaIkut && _sedangDiproses == null) ? () => _ikut(ev) : null,
+                child: diproses
+                    ? const SizedBox(
+                        width: 20,
+                        height: 20,
+                        child: CircularProgressIndicator(strokeWidth: 2.5, color: Colors.white),
+                      )
+                    : Text(alasan ?? 'Ikut Event', style: const TextStyle(fontSize: 15)),
+              ),
             ),
           ],
         ),
+      ),
+    );
+  }
+
+  Widget _barisRiwayat(Keikutsertaan k) {
+    return Card(
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      child: ListTile(
+        title: Text(k.namaEvent, style: const TextStyle(fontWeight: FontWeight.w600)),
+        subtitle: Text('${tanggalEvent(k.tanggal)} · ${k.namaJalan} · ${k.namaRuas} · ${k.kodeStan}'),
+        trailing: Text(labelStatusPeserta(k.status), style: const TextStyle(fontSize: 12)),
       ),
     );
   }
@@ -382,9 +545,7 @@ class _LapakScreenState extends ConsumerState<LapakScreen> {
         _infoRow('Kategori', _kategoriLabel[pengajuan.jenisDagangan] ?? pengajuan.jenisDagangan),
         _infoRow(
           'Jenis Lapak',
-          pengajuan.jenisLapak != null
-              ? (_lapakLabel[pengajuan.jenisLapak!] ?? pengajuan.jenisLapak!)
-              : '-',
+          pengajuan.jenisLapak != null ? (_lapakLabel[pengajuan.jenisLapak!] ?? pengajuan.jenisLapak!) : '-',
         ),
       ],
     );
@@ -426,12 +587,8 @@ class _LapakScreenState extends ConsumerState<LapakScreen> {
                 suffixIcon: Icon(Icons.calendar_today_outlined),
               ),
               child: Text(
-                _tanggalLahir == null
-                    ? 'Pilih tanggal'
-                    : _formatTanggalIndo(_formatTanggalApi(_tanggalLahir!)),
-                style: TextStyle(
-                  color: _tanggalLahir == null ? Colors.black45 : Colors.black87,
-                ),
+                _tanggalLahir == null ? 'Pilih tanggal' : _formatTanggalIndo(_formatTanggalApi(_tanggalLahir!)),
+                style: TextStyle(color: _tanggalLahir == null ? Colors.black45 : Colors.black87),
               ),
             ),
           ),
@@ -445,8 +602,7 @@ class _LapakScreenState extends ConsumerState<LapakScreen> {
               hintText: 'Sesuai KTP',
               border: OutlineInputBorder(),
             ),
-            validator: (v) =>
-                (v == null || v.trim().isEmpty) ? 'Nama lengkap wajib diisi' : null,
+            validator: (v) => (v == null || v.trim().isEmpty) ? 'Nama lengkap wajib diisi' : null,
           ),
           const SizedBox(height: 12),
           TextFormField(
@@ -457,19 +613,13 @@ class _LapakScreenState extends ConsumerState<LapakScreen> {
               hintText: 'Contoh: Kedai Kopi Senja',
               border: OutlineInputBorder(),
             ),
-            validator: (v) =>
-                (v == null || v.trim().isEmpty) ? 'Nama usaha wajib diisi' : null,
+            validator: (v) => (v == null || v.trim().isEmpty) ? 'Nama usaha wajib diisi' : null,
           ),
           const SizedBox(height: 12),
           DropdownButtonFormField<String>(
             initialValue: _jenisDagangan,
-            decoration: const InputDecoration(
-              labelText: 'Kategori',
-              border: OutlineInputBorder(),
-            ),
-            items: _kategoriLabel.entries
-                .map((e) => DropdownMenuItem(value: e.key, child: Text(e.value)))
-                .toList(),
+            decoration: const InputDecoration(labelText: 'Kategori', border: OutlineInputBorder()),
+            items: _kategoriLabel.entries.map((e) => DropdownMenuItem(value: e.key, child: Text(e.value))).toList(),
             onChanged: enabled ? (v) => setState(() => _jenisDagangan = v) : null,
           ),
           const SizedBox(height: 12),
@@ -512,133 +662,17 @@ class _LapakScreenState extends ConsumerState<LapakScreen> {
     );
   }
 
-  Widget _buildHasilKlaim(PedagangState state, PengajuanStatus? pengajuan) {
-    final hasil = state.hasilKlaim!;
-    final pedagangId = pengajuan?.id;
+  // ---------- widget kecil ----------
 
-    return SingleChildScrollView(
-      padding: const EdgeInsets.all(16),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          _banner(
-            icon: Icons.check_circle,
-            iconColor: const Color(0xFF16A34A),
-            bg: const Color(0xFFE3F8EE),
-            border: const Color(0xFFBFEED7),
-            title: 'Alokasi Berhasil',
-            titleColor: const Color(0xFF0F7A44),
-            body: 'Detail stan telah disimpan ke dalam sistem.',
-            bodyColor: const Color(0xFF1A7A52),
-          ),
-          const SizedBox(height: 12),
-          // Label ini SAMA dengan web: maksudnya menunggu petugas scan QR
-          // (check-in), bukan verifikasi pendaftaran yang udah dihapus.
-          _banner(
-            icon: Icons.access_time,
-            iconColor: Colors.amber,
-            bg: const Color(0xFFFEF9E7),
-            border: const Color(0xFFFCE8B2),
-            title: 'Menunggu Verifikasi Petugas',
-            titleColor: const Color(0xFFB45309),
-            body: 'Tunjukkan QR code ini ke petugas untuk melakukan check-in. '
-                'Halaman akan otomatis berpindah setelah check-in berhasil.',
-            bodyColor: const Color(0xFF92400E),
-          ),
-          const SizedBox(height: 16),
-          Card(
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-            child: Padding(
-              padding: const EdgeInsets.all(16),
-              child: Column(
-                children: [
-                  const Text('NOMOR STAN',
-                      style: TextStyle(
-                          fontSize: 11,
-                          fontWeight: FontWeight.bold,
-                          color: _brandColor,
-                          letterSpacing: 0.5)),
-                  const SizedBox(height: 4),
-                  Text(hasil.nomorStand,
-                      style: const TextStyle(
-                          fontSize: 32, fontWeight: FontWeight.bold, color: _brandColor)),
-                  const Divider(height: 24),
-                  _infoRow('Kecamatan', hasil.kecamatan),
-                  _infoRow('Nama Jalan', hasil.namaJalan),
-                  // Baris Ruas cuma muncul kalau lapaknya memang punya ruas.
-                  if (hasil.namaRuas.isNotEmpty) _infoRow('Ruas', hasil.namaRuas),
-                ],
-              ),
-            ),
-          ),
-          const SizedBox(height: 12),
-          Card(
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-            child: Padding(
-              padding: const EdgeInsets.all(16),
-              child: Column(
-                children: [
-                  const Text('Verifikasi Pedagang',
-                      style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600)),
-                  const SizedBox(height: 12),
-                  // QR digenerate lokal (qr_flutter), jadi tetap muncul
-                  // walau sinyal di lokasi CFD lagi jelek. Isinya ID
-                  // pedagang_profiles, sama kayak yang dibaca /api/petugas/scan.
-                  if (pedagangId != null && pedagangId.isNotEmpty)
-                    QrImageView(
-                      data: pedagangId,
-                      version: QrVersions.auto,
-                      size: 200,
-                      backgroundColor: Colors.white,
-                    )
-                  else
-                    const SizedBox(
-                      width: 200,
-                      height: 200,
-                      child: Icon(Icons.qr_code_2, size: 56, color: Colors.black26),
-                    ),
-                  const SizedBox(height: 12),
-                  const Text('Pindai untuk memverifikasi identitas pedagang dan alokasi stan.',
-                      textAlign: TextAlign.center,
-                      style: TextStyle(fontSize: 12, color: Colors.black54)),
-                ],
-              ),
-            ),
-          ),
-          if (pengajuan != null) ...[
-            const SizedBox(height: 12),
-            _card(
-              icon: Icons.person_outline,
-              title: 'Data Pedagang',
-              children: [
-                _infoRow('NIK', pengajuan.nik),
-                _infoRow('Nama Lengkap', pengajuan.namaLengkap ?? '-'),
-                _infoRow('Tanggal Lahir', _formatTanggalIndo(pengajuan.tanggalLahir)),
-              ],
-            ),
-            const SizedBox(height: 12),
-            _card(
-              icon: Icons.storefront_outlined,
-              title: 'Data Usaha',
-              children: [
-                _infoRow('Nama Usaha', pengajuan.namaUsaha),
-                _infoRow('Kategori Usaha',
-                    _kategoriLabel[pengajuan.jenisDagangan] ?? pengajuan.jenisDagangan),
-                _infoRow(
-                  'Pilihan Lapak',
-                  pengajuan.jenisLapak != null
-                      ? (_lapakLabel[pengajuan.jenisLapak!] ?? pengajuan.jenisLapak!)
-                      : '-',
-                ),
-              ],
-            ),
-          ],
-        ],
+  Widget _kotakKosong(String teks) {
+    return Card(
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      child: Padding(
+        padding: const EdgeInsets.all(20),
+        child: Text(teks, textAlign: TextAlign.center, style: const TextStyle(color: Colors.black54)),
       ),
     );
   }
-
-  // ---------- widget kecil ----------
 
   Widget _card({required IconData icon, required String title, required List<Widget> children}) {
     return Card(
@@ -672,6 +706,7 @@ class _LapakScreenState extends ConsumerState<LapakScreen> {
     required Color titleColor,
     required String body,
     required Color bodyColor,
+    Widget? aksi,
   }) {
     return Container(
       padding: const EdgeInsets.all(12),
@@ -689,11 +724,10 @@ class _LapakScreenState extends ConsumerState<LapakScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(title,
-                    style: TextStyle(
-                        color: titleColor, fontWeight: FontWeight.w600, fontSize: 13.5)),
+                Text(title, style: TextStyle(color: titleColor, fontWeight: FontWeight.w600, fontSize: 13.5)),
                 const SizedBox(height: 2),
                 Text(body, style: TextStyle(color: bodyColor, fontSize: 12.5)),
+                if (aksi != null) aksi,
               ],
             ),
           ),
@@ -728,11 +762,108 @@ class _LapakScreenState extends ConsumerState<LapakScreen> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           SizedBox(width: 130, child: Text(label, style: const TextStyle(color: Colors.black54))),
-          Expanded(
-            child: Text(value.isEmpty ? '-' : value,
-                style: const TextStyle(fontWeight: FontWeight.w500)),
-          ),
+          Expanded(child: Text(value.isEmpty ? '-' : value, style: const TextStyle(fontWeight: FontWeight.w500))),
         ],
+      ),
+    );
+  }
+}
+
+/// Kartu event yang diikuti: nomor stan, lokasi, jam, status, dan QR untuk
+/// dipindai petugas saat check-in.
+class _KartuEvent extends StatelessWidget {
+  final Keikutsertaan k;
+  final bool diproses;
+  final VoidCallback onBatal;
+
+  const _KartuEvent({required this.k, required this.diproses, required this.onBatal});
+
+  @override
+  Widget build(BuildContext context) {
+    final sudahCheckIn = k.status == 'check_in';
+    return Card(
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(14),
+        side: BorderSide(color: _brandColor.withValues(alpha: 0.25)),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Expanded(
+                  child: Text(k.namaEvent, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
+                ),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 3),
+                  decoration: BoxDecoration(
+                    color: (sudahCheckIn ? Colors.green : Colors.amber).withValues(alpha: 0.15),
+                    borderRadius: BorderRadius.circular(20),
+                  ),
+                  child: Text(
+                    labelStatusPeserta(k.status),
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w700,
+                      color: sudahCheckIn ? const Color(0xFF15803D) : const Color(0xFFB45309),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 4),
+            Text(
+              '${tanggalEvent(k.tanggal)} · ${jamEvent(k.jamMulai)} – ${jamEvent(k.jamSelesai)} WIB',
+              style: const TextStyle(color: Colors.black54),
+            ),
+            const Divider(height: 24),
+            const Text('NOMOR STAN',
+                textAlign: TextAlign.center,
+                style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: _brandColor, letterSpacing: 0.5)),
+            Text(k.kodeStan,
+                textAlign: TextAlign.center,
+                style: const TextStyle(fontSize: 30, fontWeight: FontWeight.bold, color: _brandColor)),
+            const SizedBox(height: 4),
+            Text(
+              '${k.namaJalan} · ${k.namaRuas}${k.namaKecamatan != null ? '\nKec. ${k.namaKecamatan}' : ''}',
+              textAlign: TextAlign.center,
+              style: const TextStyle(fontWeight: FontWeight.w500),
+            ),
+            const SizedBox(height: 12),
+            if (!sudahCheckIn && k.qrCode.isNotEmpty) ...[
+              Center(
+                child: QrImageView(
+                  data: k.qrCode,
+                  version: QrVersions.auto,
+                  size: 200,
+                  backgroundColor: Colors.white,
+                ),
+              ),
+              const SizedBox(height: 6),
+              const Text(
+                'Tunjukkan QR ini ke petugas untuk check-in.',
+                textAlign: TextAlign.center,
+                style: TextStyle(fontSize: 12, color: Colors.black54),
+              ),
+            ] else if (sudahCheckIn)
+              const Text(
+                'Kamu sudah check-in. Selamat berjualan!',
+                textAlign: TextAlign.center,
+                style: TextStyle(color: Color(0xFF15803D), fontWeight: FontWeight.w600),
+              ),
+            if (k.bisaBatal) ...[
+              const SizedBox(height: 8),
+              TextButton(
+                onPressed: diproses ? null : onBatal,
+                style: TextButton.styleFrom(foregroundColor: Colors.red),
+                child: Text(diproses ? 'Membatalkan...' : 'Batal ikut event ini'),
+              ),
+            ],
+          ],
+        ),
       ),
     );
   }

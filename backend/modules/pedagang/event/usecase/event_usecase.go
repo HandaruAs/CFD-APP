@@ -12,6 +12,7 @@ import (
 type EventRepository interface {
 	GetPedagang(ctx context.Context, userID string) (pedagangID, kategori string, err error)
 	ListEventTersedia(ctx context.Context, pedagangID string) ([]entity.EventTersedia, map[string][]entity.LapakSisa, error)
+	EventAktif(ctx context.Context, pedagangID string) (*entity.EventAktif, error)
 	Ikut(ctx context.Context, eventID, pedagangID, kategori, userID string) (string, error)
 	Batal(ctx context.Context, eventID, pedagangID, userID string) error
 	GetKeikutsertaan(ctx context.Context, pesertaID string) (*entity.Keikutsertaan, error)
@@ -58,6 +59,22 @@ func (u *eventUsecase) ListEventTersedia(ctx context.Context, userID string) (*e
 	if err != nil {
 		return nil, err
 	}
+
+	// Masih terdaftar di event yang belum selesai -> event lain disembunyikan.
+	// Daftarnya muncul lagi otomatis begitu event itu selesai atau dibatalkan.
+	aktif, err := u.repo.EventAktif(ctx, pedagangID)
+	if err != nil {
+		return nil, err
+	}
+	if aktif != nil {
+		return &entity.EventTersediaResponse{
+			Kategori:   kategori,
+			Events:     []entity.EventTersedia{},
+			Terkunci:   true,
+			EventAktif: aktif,
+		}, nil
+	}
+
 	events, lapak, err := u.repo.ListEventTersedia(ctx, pedagangID)
 	if err != nil {
 		return nil, err

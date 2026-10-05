@@ -154,6 +154,7 @@ type Peserta struct {
 	NamaJalan    string     `json:"namaJalan"`
 	NamaRuas     string     `json:"namaRuas"`
 	Nomor        int        `json:"nomor"`
+	KodeStan     string     `json:"kodeStan"` // nomor stan untuk ditampilkan, mis. "CFD-012361"
 	AcakAt       time.Time  `json:"acakAt"`
 	CheckInAt    *time.Time `json:"checkInAt"`
 	CheckOutAt   *time.Time `json:"checkOutAt"`

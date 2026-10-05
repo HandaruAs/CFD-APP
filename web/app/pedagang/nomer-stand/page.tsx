@@ -73,6 +73,7 @@ type Keikutsertaan = {
   namaJalan: string;
   namaRuas: string;
   nomor: number;
+  kodeStan: string; // nomor stan yang ditampilkan, mis. "CFD-012361"
   kategori: "lama" | "baru";
   kuotaDipakai: "lama" | "baru";
   status: StatusPeserta;
@@ -206,6 +207,9 @@ export default function EventDanNomorStanPage() {
   // --- Event ---
   const [kategori, setKategori] = useState<"lama" | "baru" | null>(null);
   const [events, setEvents] = useState<EventTersedia[]>([]);
+  // Diisi kalau pedagang masih terdaftar di event yang belum selesai: daftar
+  // event lain disembunyikan server sampai event ini selesai.
+  const [eventAktif, setEventAktif] = useState<{ id: string; nama: string } | null>(null);
   const [eventSaya, setEventSaya] = useState<Keikutsertaan[]>([]);
   const [loadingEvent, setLoadingEvent] = useState(false);
   const [errorEvent, setErrorEvent] = useState<string | null>(null);
@@ -273,11 +277,19 @@ export default function EventDanNomorStanPage() {
     setErrorEvent(null);
     try {
       const [tersedia, saya] = await Promise.all([
-        api<{ data: { kategori: "lama" | "baru"; events: EventTersedia[] } }>("/api/pedagang/events"),
+        api<{
+          data: {
+            kategori: "lama" | "baru";
+            events: EventTersedia[];
+            terkunci: boolean;
+            eventAktif: { id: string; nama: string } | null;
+          };
+        }>("/api/pedagang/events"),
         api<{ data: Keikutsertaan[] }>("/api/pedagang/events/saya"),
       ]);
       setKategori(tersedia.data.kategori);
       setEvents(tersedia.data.events);
+      setEventAktif(tersedia.data.terkunci ? tersedia.data.eventAktif : null);
       setEventSaya(saya.data);
     } catch (err) {
       if (err instanceof ApiError && err.code === "BELUM_PUNYA_PROFIL") {
@@ -483,7 +495,7 @@ export default function EventDanNomorStanPage() {
                       <div className="min-w-0">
                         <p className="truncate text-[13px] font-medium text-[#1a1d29]">{k.namaEvent}</p>
                         <p className="text-[12px] text-[#767884]">
-                          {formatTanggal(k.tanggal)} · {k.namaJalan} · {k.namaRuas} · No. {k.nomor}
+                          {formatTanggal(k.tanggal)} · {k.namaJalan} · {k.namaRuas} · {k.kodeStan}
                         </p>
                       </div>
                       <span
@@ -497,7 +509,11 @@ export default function EventDanNomorStanPage() {
               )}
             </section>
 
-            {/* ===== PILIH EVENT ===== */}
+            {/* ===== PILIH EVENT =====
+                Disembunyikan seluruhnya selama pedagang masih terdaftar di
+                event yang belum selesai; muncul lagi otomatis setelah event
+                itu selesai (atau pendaftarannya dibatalkan). */}
+            {!eventAktif && (
             <section>
               <h2 className="mb-3 text-[15px] font-semibold text-[#1a1d29]">Pilih Event</h2>
               {loadingEvent && events.length === 0 ? (
@@ -596,6 +612,7 @@ export default function EventDanNomorStanPage() {
                 </div>
               )}
             </section>
+            )}
 
             {/* ===== DATA USAHA (read-only) ===== */}
             <section className={`${CARD_CLS} p-5`}>
@@ -704,7 +721,7 @@ export default function EventDanNomorStanPage() {
             <h3 className="mt-3 text-[16px] font-bold text-[#1a1d29]">Kamu Terdaftar!</h3>
             <p className="text-[12.5px] text-[#767884]">{hasilIkut.namaEvent}</p>
             <p className="mt-4 text-[10.5px] font-semibold uppercase tracking-wide text-[#00288e]">Nomor Stan</p>
-            <p className="text-[40px] font-bold leading-none text-[#00288e]">{hasilIkut.nomor}</p>
+            <p className="text-[34px] font-bold leading-none tracking-tight text-[#00288e]">{hasilIkut.kodeStan}</p>
             <p className="mt-2 text-[13px] font-medium text-[#1a1d29]">
               {hasilIkut.namaJalan} · {hasilIkut.namaRuas}
             </p>
@@ -726,7 +743,7 @@ export default function EventDanNomorStanPage() {
             <p className="text-[12.5px] text-[#767884] mt-1">{konfirmasiBatal.namaEvent}</p>
           </div>
           <div className="px-5 py-4 text-[12.5px] text-[#4b4d5a]">
-            Nomor stan <strong>{konfirmasiBatal.nomor}</strong> di {konfirmasiBatal.namaJalan} · {konfirmasiBatal.namaRuas} akan
+            Nomor stan <strong>{konfirmasiBatal.kodeStan}</strong> di {konfirmasiBatal.namaJalan} · {konfirmasiBatal.namaRuas} akan
             dilepas, dan kamu <strong>tidak bisa ikut event ini lagi</strong>.
             {errorAksi && <p className="mt-2 text-[#ba1a1a]">{errorAksi}</p>}
           </div>
@@ -772,7 +789,7 @@ function KartuEventSaya({ k, onBatal }: { k: Keikutsertaan; onBatal: () => void 
           </p>
 
           <p className="mt-4 text-[10.5px] font-semibold uppercase tracking-wide text-[#00288e]">Nomor Stan</p>
-          <p className="text-[36px] font-bold leading-none text-[#00288e]">{k.nomor}</p>
+          <p className="text-[30px] font-bold leading-none tracking-tight text-[#00288e]">{k.kodeStan}</p>
 
           <div className="mt-4 flex flex-col gap-1.5">
             <Baris label="Kecamatan" value={k.namaKecamatan ?? "-"} />

@@ -21,7 +21,7 @@ func NewEventController(uc usecase.EventUsecase) *EventController {
 }
 
 func mapError(c fiber.Ctx, err error) error {
-	var bentrok *repository.ErrJadwalBentrok
+	var sudahPunya *repository.ErrSudahPunyaEvent
 	var belumCheckout *repository.ErrBelumCheckout
 	switch {
 	case errors.As(err, &belumCheckout):
@@ -34,8 +34,8 @@ func mapError(c fiber.Ctx, err error) error {
 		return c.Status(fiber.StatusConflict).JSON(fiber.Map{"error": err.Error(), "code": "EVENT_BELUM_SELESAI"})
 	case errors.Is(err, repository.ErrOmsetTidakValid):
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": err.Error(), "code": "OMSET_TIDAK_VALID"})
-	case errors.As(err, &bentrok):
-		return c.Status(fiber.StatusConflict).JSON(fiber.Map{"error": bentrok.Error(), "code": "JADWAL_BENTROK"})
+	case errors.As(err, &sudahPunya):
+		return c.Status(fiber.StatusConflict).JSON(fiber.Map{"error": sudahPunya.Error(), "code": "SUDAH_PUNYA_EVENT"})
 	case errors.Is(err, repository.ErrBelumPunyaProfil):
 		return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": err.Error(), "code": "BELUM_PUNYA_PROFIL"})
 	case errors.Is(err, repository.ErrEventTidakDitemukan),

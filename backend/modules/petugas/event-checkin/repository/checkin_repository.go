@@ -140,6 +140,7 @@ func scanPeserta(row pgx.Row) (*entity.PesertaScan, error) {
 	if err != nil {
 		return nil, err
 	}
+	p.KodeStan = eventaturan.KodeStan(p.Nomor)
 	return &p, nil
 }
 
@@ -271,6 +272,7 @@ func (r *CheckInRepository) RiwayatHariIni(ctx context.Context, petugasID string
 			&it.NamaJalan, &it.NamaRuas, &it.Nomor, &it.CheckInAt); err != nil {
 			return nil, err
 		}
+		it.KodeStan = eventaturan.KodeStan(it.Nomor)
 		list = append(list, it)
 	}
 	return list, rows.Err()

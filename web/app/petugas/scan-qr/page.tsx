@@ -53,6 +53,7 @@ type PesertaScan = {
   namaJalan: string;
   namaRuas: string;
   nomor: number;
+  kodeStan: string; // mis. "CFD-012361"
   status: "terdaftar" | "check_in" | "check_out" | "batal" | "tidak_hadir";
   checkInAt: string | null;
   bisaCheckIn: boolean;
@@ -72,6 +73,7 @@ type RiwayatItem = {
   namaJalan: string;
   namaRuas: string;
   nomor: number;
+  kodeStan: string; // mis. "CFD-012361"
   checkInAt: string;
 };
 
@@ -602,7 +604,7 @@ export default function ScanQrPage() {
                     </div>
                     <div className="shrink-0 text-right">
                       <p className="text-label-sm text-on-surface-variant">Nomor Stan</p>
-                      <p className="text-headline-md font-semibold leading-none text-primary">{pedagang.nomor}</p>
+                      <p className="text-title-lg font-semibold leading-none tracking-tight text-primary">{pedagang.kodeStan}</p>
                     </div>
                   </div>
                 </div>
@@ -705,7 +707,7 @@ export default function ScanQrPage() {
                       <p className="truncate text-label-md text-on-surface">{item.namaUsaha || item.namaLengkap || "-"}</p>
                       <p className="flex items-center gap-1 truncate text-label-sm text-on-surface-variant">
                         <MapPin className="h-3 w-3 shrink-0" strokeWidth={2} />
-                        {item.namaEvent} · {item.namaJalan} · {item.namaRuas} · No. {item.nomor}
+                        {item.namaEvent} · {item.namaJalan} · {item.namaRuas} · {item.kodeStan}
                       </p>
                     </div>
                     <span className="shrink-0 text-label-sm tabular-nums text-on-surface-variant">{jamTampil(item.checkInAt)}</span>

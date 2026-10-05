@@ -16,6 +16,7 @@ type Peserta = {
   namaJalan: string;
   namaRuas: string;
   nomor: number;
+  kodeStan: string; // nomor stan yang ditampilkan, mis. "CFD-012361"
 };
 
 const STATUS: Record<Peserta["status"], { label: string; pill: string }> = {
@@ -93,7 +94,7 @@ export default function PesertaModal({ sesi, onClose }: { sesi: SesiEvent; onClo
                         {p.namaJalan} · {p.namaRuas}
                       </td>
                       <td className="px-sm py-sm text-right text-body-md font-semibold tabular-nums text-on-surface">
-                        {p.nomor}
+                        {p.kodeStan}
                       </td>
                       <td className="px-sm py-sm">
                         <span className={`pt-pill ${STATUS[p.status].pill}`}>{STATUS[p.status].label}</span>

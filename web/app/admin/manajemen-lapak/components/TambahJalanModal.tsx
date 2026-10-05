@@ -50,7 +50,6 @@ export default function TambahJalanModal({ wilayah, initialKecamatanId, onClose,
       : kecamatanOptions[0]?.kecamatanId ?? ""
   );
   const [namaJalan, setNamaJalan] = useState("");
-  const [kapasitas, setKapasitas] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
@@ -79,7 +78,6 @@ export default function TambahJalanModal({ wilayah, initialKecamatanId, onClose,
         kecamatanId,
         kodeJalan,
         namaJalan,
-        kapasitas: parseInt(kapasitas, 10) || 0,
       });
       onSaved();
     } catch (err) {
@@ -135,30 +133,15 @@ export default function TambahJalanModal({ wilayah, initialKecamatanId, onClose,
               placeholder="Jalan Kertajaya"
             />
           </div>
-          <div className="grid grid-cols-2 gap-md">
-            <div>
-              <label className="pt-field-label mb-1 block">Kode Jalan</label>
-              <input
-                readOnly
-                value={kodeJalan}
-                placeholder="Terisi otomatis"
-                className="pt-input cursor-not-allowed bg-surface-container-high text-on-surface-variant"
-                title="Otomatis dari Kecamatan + Nama Jalan. Untuk edit manual, ubah langsung di tabel Kecamatan."
-              />
-            </div>
-            <div>
-              <label className="pt-field-label mb-1 block">
-                Kapasitas <span className="text-error">*</span>
-              </label>
-              <input
-                required
-                type="number"
-                min={1}
-                value={kapasitas}
-                onChange={(e) => setKapasitas(e.target.value)}
-                className="pt-input"
-              />
-            </div>
+          <div>
+            <label className="pt-field-label mb-1 block">Kode Jalan</label>
+            <input
+              readOnly
+              value={kodeJalan}
+              placeholder="Terisi otomatis"
+              className="pt-input cursor-not-allowed bg-surface-container-high text-on-surface-variant"
+              title="Otomatis dari Kecamatan + Nama Jalan. Bisa diubah lewat tombol edit di tabel Jalan."
+            />
           </div>
           <div className="flex justify-end gap-sm border-t border-outline-variant pt-lg">
             <button type="button" onClick={onClose} className="pt-btn pt-btn-ghost">

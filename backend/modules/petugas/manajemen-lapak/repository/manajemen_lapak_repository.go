@@ -576,10 +576,10 @@ func (r *Repository) GetPedagangLama(ctx context.Context, filter entity.Pedagang
 		args = append(args, filter.JalanID)
 		argIdx++
 	}
-	if filter.NomorMulai != nil && filter.NomorSelesai != nil {
-		conds = append(conds, fmt.Sprintf(`(lk.nomor_lapak ~ '^[0-9]+$' AND lk.nomor_lapak::int BETWEEN $%d AND $%d)`, argIdx, argIdx+1))
-		args = append(args, *filter.NomorMulai, *filter.NomorSelesai)
-		argIdx += 2
+	if filter.RuasID != "" {
+		conds = append(conds, fmt.Sprintf(`lk.ruas_id = $%d::uuid`, argIdx))
+		args = append(args, filter.RuasID)
+		argIdx++
 	}
 	if filter.Status == "lama" {
 		conds = append(conds, `p.submitted_at IS NULL`)
@@ -592,8 +592,24 @@ func (r *Repository) GetPedagangLama(ctx context.Context, filter entity.Pedagang
 		extraFilter = "AND " + strings.Join(conds, " AND ")
 	}
 
+	// lokasiTerakhir: 1 baris per pedagang -- keikutsertaan event terakhir
+	// yang tidak dibatalkan (urut tanggal & jam event). Pedagang yang belum
+	// pernah ikut event tetap tampil (LEFT JOIN), lokasinya "-".
+	lokasiTerakhir := `
+		LEFT JOIN LATERAL (
+			SELECT el.ruas_id, mr.nama_ruas, mj.id AS jalan_id, mj.nama_jalan, ep.nomor
+			FROM event_participants ep
+			JOIN events e        ON e.id = ep.event_id AND e.deleted_at IS NULL
+			JOIN event_lapak el  ON el.id = ep.event_lapak_id
+			JOIN master_ruas mr  ON mr.id = el.ruas_id
+			JOIN master_jalan mj ON mj.id = mr.jalan_id
+			WHERE ep.pedagang_id = p.id AND ep.deleted_at IS NULL AND ep.status <> 'batal'
+			ORDER BY e.tanggal DESC, e.jam_mulai DESC, ep.acak_at DESC
+			LIMIT 1
+		) lk ON true`
+
 	query := fmt.Sprintf(`
-		SELECT DISTINCT ON (p.id)
+		SELECT
 			p.id AS id,
 			u.id AS user_id,
 			COALESCE(p.nik, '-') AS nik,
@@ -602,7 +618,7 @@ func (r *Repository) GetPedagangLama(ctx context.Context, filter entity.Pedagang
 			COALESCE(p.nama_usaha, '-') AS nama_usaha,
 			COALESCE(p.jenis_dagangan::text, '-') AS kategori,
 			COALESCE(u.phone, '') AS kontak,
-			COALESCE(mj.nama_jalan || ' / ' || lk.nomor_lapak, '-') AS lokasi,
+			COALESCE(lk.nama_jalan || ' · ' || lk.nama_ruas || ' · No. ' || lk.nomor, '-') AS lokasi,
 			p.status_verifikasi::text AS status,
 			CASE WHEN p.submitted_at IS NULL THEN 'lama' ELSE 'baru' END AS status_pedagang,
 			-- waktu masuk: pedagang baru = saat daftar sendiri, pedagang
@@ -610,22 +626,16 @@ func (r *Repository) GetPedagangLama(ctx context.Context, filter entity.Pedagang
 			COALESCE(p.submitted_at, p.created_at) AS waktu_masuk
 		FROM pedagang_profiles p
 		JOIN users u ON p.user_id = u.id
-		LEFT JOIN lapak_klaim lk ON lk.pedagang_id = p.id
-		LEFT JOIN master_jalan mj ON mj.id = lk.jalan_id
+		%s
 		WHERE p.deleted_at IS NULL AND u.deleted_at IS NULL %s
-		ORDER BY p.id, lk.claimed_at DESC
-	`, extraFilter)
+	`, lokasiTerakhir, extraFilter)
 
 	countQuery := fmt.Sprintf(`
-		SELECT COUNT(*) FROM (
-			SELECT DISTINCT ON (p.id) p.id
-			FROM pedagang_profiles p
-			JOIN users u ON p.user_id = u.id
-			LEFT JOIN lapak_klaim lk ON lk.pedagang_id = p.id
-			LEFT JOIN master_jalan mj ON mj.id = lk.jalan_id
-			WHERE p.deleted_at IS NULL AND u.deleted_at IS NULL %s
-			ORDER BY p.id, lk.claimed_at DESC
-		) t`, extraFilter)
+		SELECT COUNT(*)
+		FROM pedagang_profiles p
+		JOIN users u ON p.user_id = u.id
+		%s
+		WHERE p.deleted_at IS NULL AND u.deleted_at IS NULL %s`, lokasiTerakhir, extraFilter)
 	var total int
 	if err := r.db.QueryRow(ctx, countQuery, args...).Scan(&total); err != nil {
 		return nil, 0, err

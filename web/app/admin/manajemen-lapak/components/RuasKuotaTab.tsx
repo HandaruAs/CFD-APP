@@ -1,14 +1,13 @@
 "use client";
 
 import { useState } from "react";
-import { Plus, Pencil, Trash2, Loader2, MapPin, AlertTriangle, X, Settings2 } from "lucide-react";
+import { Plus, Pencil, Trash2, Loader2, MapPin, AlertTriangle, X } from "lucide-react";
 import type { JalanLengkapData, KecamatanLengkapData, RuasData } from "../types";
 import { deleteRuas, deleteKecamatan, deleteJalanBaru } from "../api";
 import RuasFormModal from "./RuasFormModal";
 import TambahKecamatanModal from "./TambahKecamatanModal";
 import TambahJalanModal from "./TambahJalanModal";
 import EditJalanModal from "./EditJalanModal";
-import AssignKuotaEventModal from "./AssignKuotaEventModal";
 
 interface PendingDelete {
   title: string;
@@ -28,13 +27,11 @@ interface Props {
 export default function RuasKuotaTab({ wilayah, loading, error, onRefresh }: Props) {
   const [selectedKecamatan, setSelectedKecamatan] = useState<string | null>(null);
   const [selectedJalanId, setSelectedJalanId] = useState<string | null>(null);
-  const [selectedRuasId, setSelectedRuasId] = useState<string | null>(null);
 
   const [showTambahKecamatan, setShowTambahKecamatan] = useState(false);
   const [showTambahJalan, setShowTambahJalan] = useState(false);
   const [editJalan, setEditJalan] = useState<JalanLengkapData | null>(null);
   const [ruasModalState, setRuasModalState] = useState<{ ruas: RuasData | null } | null>(null);
-  const [assignKuotaJalan, setAssignKuotaJalan] = useState<JalanLengkapData | null>(null);
   const [pendingDelete, setPendingDelete] = useState<PendingDelete | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [dialogError, setDialogError] = useState<string | null>(null);
@@ -63,27 +60,22 @@ export default function RuasKuotaTab({ wilayah, loading, error, onRefresh }: Pro
   const jalanList: JalanLengkapData[] = kecamatanTerpilih?.jalan ?? [];
   const jalanTerpilih = jalanList.find((j) => j.id === selectedJalanId) ?? null;
   const ruasList: RuasData[] = jalanTerpilih?.ruas ?? [];
-  const ruasTerpilih = ruasList.find((r) => r.id === selectedRuasId) ?? null;
 
   function pilihKecamatan(kec: string) {
     setSelectedKecamatan(kec);
     setSelectedJalanId(null);
-    setSelectedRuasId(null);
   }
   function pilihJalan(jalanId: string) {
     setSelectedJalanId(jalanId);
-    setSelectedRuasId(null);
   }
 
   function handleDeleteRuas(ruas: RuasData) {
     setPendingDelete({
       title: `Hapus ruas "${ruas.namaRuas}"?`,
       description: jalanTerpilih ? `Bagian dari jalan ${jalanTerpilih.namaJalan}.` : undefined,
-      details: [`Nomor lapak ${ruas.nomorMulai}–${ruas.nomorSelesai} (${ruas.kuota} lapak) ikut hilang`],
       confirmLabel: "Hapus Ruas",
       onConfirm: async () => {
         await deleteRuas(ruas.id);
-        if (selectedRuasId === ruas.id) setSelectedRuasId(null);
         onRefresh();
       },
     });
@@ -105,7 +97,6 @@ export default function RuasKuotaTab({ wilayah, loading, error, onRefresh }: Pro
         if (selectedKecamatan === kec.kecamatan) {
           setSelectedKecamatan(null);
           setSelectedJalanId(null);
-          setSelectedRuasId(null);
         }
         onRefresh();
       },
@@ -116,17 +107,11 @@ export default function RuasKuotaTab({ wilayah, loading, error, onRefresh }: Pro
     setPendingDelete({
       title: `Hapus jalan "${jalan.namaJalan}"?`,
       description: "Tindakan ini tidak bisa dibatalkan.",
-      details: [
-        `${jalan.ruas.length} ruas ikut terhapus`,
-        jalan.terisi > 0 ? `${jalan.terisi} lapak di jalan ini sedang terisi` : undefined,
-      ].filter(Boolean) as string[],
+      details: [`${jalan.ruas.length} ruas ikut terhapus`],
       confirmLabel: "Hapus Jalan",
       onConfirm: async () => {
         await deleteJalanBaru(jalan.id);
-        if (selectedJalanId === jalan.id) {
-          setSelectedJalanId(null);
-          setSelectedRuasId(null);
-        }
+        if (selectedJalanId === jalan.id) setSelectedJalanId(null);
         onRefresh();
       },
     });
@@ -149,11 +134,11 @@ export default function RuasKuotaTab({ wilayah, loading, error, onRefresh }: Pro
   return (
     <div className="space-y-lg">
       <p className="text-body-sm text-on-surface-variant">
-        4 tabel ini saling terhubung -- klik satu baris buat nge-filter tabel di sebelah/bawahnya: Kecamatan → Jalan →
-        Ruas → Sisa Lapak.
+        3 tabel ini saling terhubung -- klik satu baris buat nge-filter tabel di sebelahnya: Kecamatan → Jalan → Ruas.
+        Kuota pedagang diatur per sesi di menu Jam Operasional.
       </p>
 
-      <div className="grid grid-cols-1 gap-lg lg:grid-cols-2">
+      <div className="grid grid-cols-1 gap-lg lg:grid-cols-2 xl:grid-cols-3">
         {/* TABEL 1: KECAMATAN */}
         <Panel
           title="1. Kecamatan"
@@ -195,7 +180,7 @@ export default function RuasKuotaTab({ wilayah, loading, error, onRefresh }: Pro
             <EmptyHint icon={MapPin} text="Klik salah satu kecamatan di tabel 1." />
           ) : (
             <SimpleTable
-              headers={["Jalan", "Kapasitas", "Kuota Event"]}
+              headers={["Jalan", "Jumlah Ruas"]}
               rows={jalanList.map((j) => ({
                 key: j.id,
                 selected: j.id === selectedJalanId,
@@ -205,26 +190,17 @@ export default function RuasKuotaTab({ wilayah, loading, error, onRefresh }: Pro
                     <span className="font-medium">{j.namaJalan}</span>{" "}
                     <span className="text-label-sm text-on-surface-variant">{j.kodeJalan}</span>
                   </span>,
-                  String(j.kapasitas),
-                  `${j.terisi} / ${j.kuotaEvent}`,
+                  String((j.ruas ?? []).length),
                 ],
                 actions: (
                   <>
                     <button
                       onClick={() => setEditJalan(j)}
-                      title="Edit kode/nama/kapasitas jalan"
-                      aria-label="Edit kode/nama/kapasitas jalan"
+                      title="Edit kode/nama jalan"
+                      aria-label="Edit kode/nama jalan"
                       className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-on-surface-variant transition-colors hover:bg-primary/10 hover:text-primary"
                     >
                       <Pencil className="h-4 w-4" />
-                    </button>
-                    <button
-                      onClick={() => setAssignKuotaJalan(j)}
-                      title="Atur kuota ke event aktif"
-                      aria-label="Atur kuota ke event aktif"
-                      className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-on-surface-variant transition-colors hover:bg-primary/10 hover:text-primary"
-                    >
-                      <Settings2 className="h-4 w-4" />
                     </button>
                     <button
                       onClick={() => handleDeleteJalan(j)}
@@ -258,43 +234,22 @@ export default function RuasKuotaTab({ wilayah, loading, error, onRefresh }: Pro
                   <tr>
                     <Th>Urutan</Th>
                     <Th>Ruas</Th>
-                    <Th>Kuota</Th>
-                    <Th>Status</Th>
                     <Th className="text-right">Aksi</Th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-outline-variant/60 bg-surface-container-lowest">
                   {ruasList.length === 0 && (
                     <tr>
-                      <td colSpan={5} className="px-md py-lg text-center text-on-surface-variant">
+                      <td colSpan={3} className="px-md py-lg text-center text-on-surface-variant">
                         Belum ada ruas.
                       </td>
                     </tr>
                   )}
                   {ruasList.map((r) => (
-                    <tr
-                      key={r.id}
-                      onClick={() => setSelectedRuasId(r.id)}
-                      className={`cursor-pointer hover:bg-surface-container-low ${
-                        r.id === selectedRuasId ? "bg-primary/10 shadow-[inset_3px_0_0_var(--color-primary)]" : ""
-                      }`}
-                    >
+                    <tr key={r.id} className="hover:bg-surface-container-low">
                       <td className="px-md py-sm text-on-surface-variant">{r.urutan}</td>
                       <td className="px-md py-sm text-on-surface">{r.namaRuas}</td>
-                      <td className="px-md py-sm text-on-surface-variant">{r.kuota}</td>
-                      <td className="px-md py-sm">
-                        <div className="flex flex-wrap items-center gap-xs">
-                          <span className="pt-pill pt-pill-success" title="Pedagang lama (data lama, diklaimkan petugas)">
-                            <span className="pt-pill-dot" />
-                            {r.terisiLama} Lama
-                          </span>
-                          <span className="pt-pill pt-pill-neutral" title="Pedagang baru (klaim sendiri lewat war token)">
-                            <span className="pt-pill-dot" />
-                            {r.terisiBaru} Baru
-                          </span>
-                        </div>
-                      </td>
-                      <td className="px-md py-sm text-right" onClick={(e) => e.stopPropagation()}>
+                      <td className="px-md py-sm text-right">
                         <button
                           onClick={() => setRuasModalState({ ruas: r })}
                           title="Edit ruas"
@@ -320,27 +275,6 @@ export default function RuasKuotaTab({ wilayah, loading, error, onRefresh }: Pro
           )}
         </Panel>
 
-        {/* TABEL 4: SISA LAPAK */}
-        <Panel title="4. Sisa Lapak" subtitle={ruasTerpilih ? ruasTerpilih.namaRuas : jalanTerpilih ? jalanTerpilih.namaJalan : "Pilih ruas atau jalan"}>
-          {!jalanTerpilih ? (
-            <EmptyHint icon={MapPin} text="Klik salah satu jalan (atau ruas) buat lihat sisa lapaknya." />
-          ) : ruasTerpilih ? (
-            <RingkasanSisa
-              judul={ruasTerpilih.namaRuas}
-              keterangan={`Nomor lapak ${ruasTerpilih.nomorMulai}–${ruasTerpilih.nomorSelesai}`}
-              kuota={ruasTerpilih.kuota}
-              lama={ruasTerpilih.terisiLama}
-              baru={ruasTerpilih.terisiBaru}
-            />
-          ) : (
-            <RingkasanSisa
-              judul={jalanTerpilih.namaJalan}
-              keterangan={`Kapasitas jalan ${jalanTerpilih.kapasitas} lapak · pilih ruas untuk rincian lama/baru`}
-              kuota={jalanTerpilih.kuotaEvent}
-              terisi={jalanTerpilih.terisi}
-            />
-          )}
-        </Panel>
       </div>
 
       {showTambahKecamatan && (
@@ -391,16 +325,6 @@ export default function RuasKuotaTab({ wilayah, loading, error, onRefresh }: Pro
         />
       )}
 
-      {assignKuotaJalan && (
-        <AssignKuotaEventModal
-          jalan={assignKuotaJalan}
-          onClose={() => setAssignKuotaJalan(null)}
-          onSaved={() => {
-            setAssignKuotaJalan(null);
-            onRefresh();
-          }}
-        />
-      )}
 
       {pendingDelete && (
         <div className="pt-modal-overlay" onClick={closeDialog}>
@@ -594,72 +518,5 @@ function Th({ children, className = "" }: { children: React.ReactNode; className
     <th className={`px-md py-sm text-left text-label-md font-medium text-on-surface-variant ${className}`}>
       {children}
     </th>
-  );
-}
-
-// Ringkasan sisa lapak (panel 4): kuota, terisi, sisa + batang progres.
-// Kalau lama/baru diisi (level ruas), batangnya dipecah dua warna.
-function RingkasanSisa({
-  judul,
-  keterangan,
-  kuota,
-  terisi,
-  lama,
-  baru,
-}: {
-  judul: string;
-  keterangan: string;
-  kuota: number;
-  terisi?: number;
-  lama?: number;
-  baru?: number;
-}) {
-  const jumlahTerisi = terisi ?? (lama ?? 0) + (baru ?? 0);
-  const sisa = Math.max(0, kuota - jumlahTerisi);
-  const persen = (n: number) => (kuota > 0 ? Math.min(100, (n / kuota) * 100) : 0);
-  const adaRincian = lama !== undefined && baru !== undefined;
-  return (
-    <div className="flex flex-col gap-md rounded-xl bg-surface-container-low p-md">
-      <div>
-        <p className="text-body-md font-semibold text-on-surface">{judul}</p>
-        <p className="text-label-sm font-normal text-on-surface-variant">{keterangan}</p>
-      </div>
-      <dl className="grid grid-cols-3 gap-sm text-center">
-        {(
-          [
-            ["Kuota", kuota, "text-on-surface"],
-            ["Terisi", jumlahTerisi, "text-primary"],
-            ["Sisa", sisa, sisa === 0 && kuota > 0 ? "text-error" : "text-secondary"],
-          ] as const
-        ).map(([label, nilai, warna]) => (
-          <div key={label} className="rounded-xl bg-surface-container-lowest px-sm py-sm">
-            <dt className="text-label-sm text-on-surface-variant">{label}</dt>
-            <dd className={`text-headline-md font-semibold tabular-nums ${warna}`}>{nilai}</dd>
-          </div>
-        ))}
-      </dl>
-      <div>
-        <div className="flex h-2.5 overflow-hidden rounded-full bg-surface-container-high">
-          {adaRincian ? (
-            <>
-              <div className="bg-secondary" style={{ width: `${persen(lama ?? 0)}%` }} title={`${lama} pedagang lama`} />
-              <div className="bg-primary" style={{ width: `${persen(baru ?? 0)}%` }} title={`${baru} pedagang baru`} />
-            </>
-          ) : (
-            <div className="bg-primary" style={{ width: `${persen(jumlahTerisi)}%` }} />
-          )}
-        </div>
-        {adaRincian && (
-          <div className="mt-xs flex flex-wrap gap-md text-label-sm font-normal text-on-surface-variant">
-            <span className="inline-flex items-center gap-1">
-              <span className="h-2 w-2 rounded-full bg-secondary" /> {lama} pedagang lama
-            </span>
-            <span className="inline-flex items-center gap-1">
-              <span className="h-2 w-2 rounded-full bg-primary" /> {baru} pedagang baru
-            </span>
-          </div>
-        )}
-      </div>
-    </div>
   );
 }

@@ -49,7 +49,7 @@ type Kecamatan = {
   jalan: {
     id: string;
     namaJalan: string;
-    ruas: { namaRuas: string; nomorMulai: number; nomorSelesai: number }[] | null;
+    ruas: { id: string; namaRuas: string; urutan: number }[] | null;
   }[];
 };
 
@@ -100,7 +100,9 @@ export default function ManajemenUserPedagangPage() {
   const [page, setPage] = useState(1);
   const [searchInput, setSearchInput] = useState("");
   const [search, setSearch] = useState("");
-  const [ruasKey, setRuasKey] = useState(""); // "jalanId:nomorMulai:nomorSelesai"
+  // id ruas (master_ruas). Dicocokkan ke LOKASI TERAKHIR pedagang di event,
+  // sama dengan kolom "Lokasi terakhir" di tabel.
+  const [ruasId, setRuasId] = useState("");
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("");
   const [reloadSignal, setReloadSignal] = useState(0);
   // Hasil fetch disimpan bareng "key" filter-nya. Selama key hasil beda
@@ -167,16 +169,22 @@ export default function ManajemenUserPedagangPage() {
     return () => clearTimeout(t);
   }, [searchInput]);
 
-  const daftarRuas = useMemo(
+  // Pilihan ruas dikelompokkan per kecamatan (optgroup), diurutkan per
+  // jalan lalu urutan ruas. Kecamatan/jalan tanpa ruas tidak ditampilkan.
+  const grupRuas = useMemo(
     () =>
-      wilayah.flatMap((k) =>
-        k.jalan.flatMap((j) =>
-          (j.ruas ?? []).map((r) => ({
-            key: `${j.id}:${r.nomorMulai}:${r.nomorSelesai}`,
-            label: `${j.namaJalan} - ${r.namaRuas}`,
-          }))
-        )
-      ),
+      wilayah
+        .map((k) => ({
+          kecamatan: k.kecamatan,
+          ruas: [...(k.jalan ?? [])]
+            .sort((a, b) => a.namaJalan.localeCompare(b.namaJalan, "id"))
+            .flatMap((j) =>
+              [...(j.ruas ?? [])]
+                .sort((a, b) => a.urutan - b.urutan)
+                .map((r) => ({ id: r.id, label: `${j.namaJalan} · ${r.namaRuas}` }))
+            ),
+        }))
+        .filter((g) => g.ruas.length > 0),
     [wilayah]
   );
 
@@ -184,12 +192,7 @@ export default function ManajemenUserPedagangPage() {
   function buildQuery(limit: number, pageNum: number) {
     const qs = new URLSearchParams();
     if (search) qs.set("search", search);
-    if (ruasKey) {
-      const [jalanId, mulai, selesai] = ruasKey.split(":");
-      qs.set("jalanId", jalanId);
-      qs.set("nomorMulai", mulai);
-      qs.set("nomorSelesai", selesai);
-    }
+    if (ruasId) qs.set("ruasId", ruasId);
     if (statusFilter) qs.set("status", statusFilter);
     qs.set("page", String(pageNum));
     qs.set("limit", String(limit));
@@ -203,7 +206,7 @@ export default function ManajemenUserPedagangPage() {
     return { data: data.data ?? [], total: data.total ?? 0 };
   }
 
-  const queryKey = JSON.stringify([search, ruasKey, statusFilter, page, reloadSignal]);
+  const queryKey = JSON.stringify([search, ruasId, statusFilter, page, reloadSignal]);
 
   useEffect(() => {
     let cancelled = false;
@@ -331,12 +334,12 @@ export default function ManajemenUserPedagangPage() {
   const totalPages = Math.max(1, Math.ceil(total / LIMIT));
   const dari = total === 0 ? 0 : (page - 1) * LIMIT + 1;
   const sampai = Math.min(page * LIMIT, total);
-  const adaFilter = Boolean(searchInput || ruasKey || statusFilter);
+  const adaFilter = Boolean(searchInput || ruasId || statusFilter);
 
   function resetFilter() {
     setSearchInput("");
     setSearch("");
-    setRuasKey("");
+    setRuasId("");
     setStatusFilter("");
     setPage(1);
   }
@@ -429,19 +432,24 @@ export default function ManajemenUserPedagangPage() {
               />
             </label>
             <select
-              value={ruasKey}
+              value={ruasId}
               onChange={(e) => {
-                setRuasKey(e.target.value);
+                setRuasId(e.target.value);
                 setPage(1);
               }}
               className="pt-input !w-auto !py-2.5"
-              aria-label="Filter ruas"
+              aria-label="Filter ruas (lokasi terakhir)"
+              title="Menampilkan pedagang yang lokasi event terakhirnya di ruas ini"
             >
               <option value="">Semua ruas</option>
-              {daftarRuas.map((r) => (
-                <option key={r.key} value={r.key}>
-                  {r.label}
-                </option>
+              {grupRuas.map((g) => (
+                <optgroup key={g.kecamatan} label={g.kecamatan}>
+                  {g.ruas.map((r) => (
+                    <option key={r.id} value={r.id}>
+                      {r.label}
+                    </option>
+                  ))}
+                </optgroup>
               ))}
             </select>
             <select

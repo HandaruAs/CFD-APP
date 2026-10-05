@@ -5,28 +5,26 @@ import 'package:mobile/core/themes/app_theme.dart';
 import 'package:mobile/core/widgets/menu_icon.dart';
 import 'package:mobile/features/auth/presentation/providers/auth_provider.dart';
 import 'package:mobile/features/petugas/domain/entities/laporan.dart';
-import 'package:mobile/features/petugas/domain/entities/status_operasional.dart';
+import 'package:mobile/features/petugas/domain/entities/event_hari_ini.dart';
 import 'package:mobile/features/petugas/presentation/providers/petugas_dashboard_provider.dart';
 import 'package:mobile/features/petugas/presentation/providers/petugas_dashboard_state.dart';
 import 'package:mobile/features/petugas/presentation/utils/laporan_format.dart';
 
 enum _SesiTone { live, upcoming, ended, none }
 
-/// Sama persis kayak turunkanStatusSesi() di web/app/petugas/page.tsx.
-({String label, _SesiTone tone}) _turunkanStatusSesi(SesiAktif? sesi) {
-  if (sesi == null) return (label: 'Belum Ada Sesi', tone: _SesiTone.none);
-  if (sesi.aktif) return (label: 'Sedang Berlangsung', tone: _SesiTone.live);
-  if (sesi.status == 'ditutup') return (label: 'Diakhiri Lebih Awal', tone: _SesiTone.ended);
-  if (sesi.status == 'selesai') return (label: 'Sudah Selesai', tone: _SesiTone.ended);
-
-  final now = TimeOfDay.now();
-  final bagian = sesi.jamMulai.split(':');
-  final mulaiMenit = (int.tryParse(bagian[0]) ?? 0) * 60 +
-      (bagian.length > 1 ? int.tryParse(bagian[1]) ?? 0 : 0);
-  if (now.hour * 60 + now.minute < mulaiMenit) {
-    return (label: 'Menunggu Mulai', tone: _SesiTone.upcoming);
+/// Sama dengan turunkanStatusSesi() di web/app/petugas/page.tsx (versi event).
+({String label, _SesiTone tone}) _turunkanStatusSesi(EventHariIni? sesi) {
+  if (sesi == null) return (label: 'Belum Ada Event', tone: _SesiTone.none);
+  switch (sesi.status) {
+    case 'berjalan':
+      return (label: 'Sedang Berlangsung', tone: _SesiTone.live);
+    case 'terjadwal':
+      return (label: 'Menunggu Mulai', tone: _SesiTone.upcoming);
+    case 'dibatalkan':
+      return (label: 'Dibatalkan', tone: _SesiTone.ended);
+    default:
+      return (label: 'Sudah Selesai', tone: _SesiTone.ended);
   }
-  return (label: 'Sudah Berakhir', tone: _SesiTone.ended);
 }
 
 String _formatJam(String jam) => jam.length >= 5 ? jam.substring(0, 5) : jam;
@@ -46,8 +44,9 @@ String _sapaan() {
 }
 
 /// TAB "Dashboard" petugas -- susunan sama kayak dashboard superadmin:
-/// hero (salam + status sesi) -> Layanan (horizontal) -> ringkasan hari ini
-/// (kehadiran, ambil nomor stan, omset, daftar pedagang).
+/// hero (salam + status event) -> Layanan (horizontal) -> ringkasan hari ini
+/// (kehadiran, kuota event hari ini, daftar event, omset, daftar pedagang).
+/// Data event dari /api/petugas/events/hari-ini (sistem multi-event).
 class PetugasHomeScreen extends ConsumerStatefulWidget {
   const PetugasHomeScreen({super.key});
 
@@ -68,9 +67,9 @@ class _PetugasHomeScreenState extends ConsumerState<PetugasHomeScreen> {
   Widget build(BuildContext context) {
     final state = ref.watch(petugasDashboardProvider);
     final nama = ref.watch(userProvider)?.name ?? 'Petugas';
-    final status = state.statusOperasional;
+    final events = state.events;
     final laporan = state.laporan;
-    final adaData = status != null;
+    final adaData = events != null;
 
     return RefreshIndicator(
       onRefresh: () => ref.read(petugasDashboardProvider.notifier).loadDashboard(),
@@ -78,7 +77,12 @@ class _PetugasHomeScreenState extends ConsumerState<PetugasHomeScreen> {
         physics: const AlwaysScrollableScrollPhysics(),
         padding: const EdgeInsets.only(bottom: 24),
         children: [
-          _Hero(nama: nama, sesi: status?.sesi, adaData: adaData),
+          _Hero(
+            nama: nama,
+            sesi: pilihEventUtama(events ?? const []),
+            jumlahEvent: events?.length ?? 0,
+            adaData: adaData,
+          ),
           const Padding(
             padding: EdgeInsets.fromLTRB(20, 20, 20, 10),
             child: _SectionTitle('Layanan'),
@@ -90,7 +94,7 @@ class _PetugasHomeScreenState extends ConsumerState<PetugasHomeScreen> {
           ),
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 16),
-            child: _buildRingkasan(state, status, laporan),
+            child: _buildRingkasan(state, events, laporan),
           ),
         ],
       ),
@@ -98,15 +102,15 @@ class _PetugasHomeScreenState extends ConsumerState<PetugasHomeScreen> {
   }
 
   Widget _buildRingkasan(
-      PetugasDashboardState state, StatusOperasional? status, LaporanResponse? laporan) {
-    if (state.isLoading && status == null) {
+      PetugasDashboardState state, List<EventHariIni>? events, LaporanResponse? laporan) {
+    if (state.isLoading && events == null) {
       return const Padding(
         padding: EdgeInsets.symmetric(vertical: 40),
         child: Center(child: CircularProgressIndicator()),
       );
     }
 
-    if (state.error != null && status == null) {
+    if (state.error != null && events == null) {
       return Column(
         children: [
           const Icon(Icons.error_outline, color: Colors.red, size: 40),
@@ -133,8 +137,12 @@ class _PetugasHomeScreenState extends ConsumerState<PetugasHomeScreen> {
           ),
         _KehadiranCard(laporan: laporan),
         const SizedBox(height: 12),
-        _AmbilStanCard(pendaftaran: status?.pendaftaran),
+        _KuotaEventCard(events: events ?? const []),
         const SizedBox(height: 12),
+        if ((events?.length ?? 0) > 1) ...[
+          _DaftarEventCard(events: events!),
+          const SizedBox(height: 12),
+        ],
         _OmsetCard(laporan: laporan, data: pedagangHariIni),
         const SizedBox(height: 12),
         _PedagangCard(data: pedagangHariIni),
@@ -147,9 +155,10 @@ class _PetugasHomeScreenState extends ConsumerState<PetugasHomeScreen> {
 
 class _Hero extends StatelessWidget {
   final String nama;
-  final SesiAktif? sesi;
+  final EventHariIni? sesi;
+  final int jumlahEvent;
   final bool adaData;
-  const _Hero({required this.nama, required this.sesi, required this.adaData});
+  const _Hero({required this.nama, required this.sesi, required this.jumlahEvent, required this.adaData});
 
   @override
   Widget build(BuildContext context) {
@@ -177,7 +186,7 @@ class _Hero extends StatelessWidget {
               style: const TextStyle(color: Colors.white70, fontSize: 13)),
           if (adaData) ...[
             const SizedBox(height: 18),
-            _SesiPanel(sesi: sesi),
+            _SesiPanel(sesi: sesi, jumlahEvent: jumlahEvent),
           ],
         ],
       ),
@@ -186,8 +195,9 @@ class _Hero extends StatelessWidget {
 }
 
 class _SesiPanel extends StatelessWidget {
-  final SesiAktif? sesi;
-  const _SesiPanel({required this.sesi});
+  final EventHariIni? sesi;
+  final int jumlahEvent;
+  const _SesiPanel({required this.sesi, this.jumlahEvent = 0});
 
   @override
   Widget build(BuildContext context) {
@@ -198,7 +208,7 @@ class _SesiPanel extends StatelessWidget {
       _SesiTone.upcoming => const Color(0xFFFBBF24),
       _ => Colors.white54,
     };
-    final elapsed = (sesi != null && sesi!.aktif && sesi!.totalMenit > 0)
+    final elapsed = (sesi != null && sesi!.berjalan && sesi!.totalMenit > 0)
         ? ((sesi!.totalMenit - sesi!.sisaMenit) / sesi!.totalMenit).clamp(0.0, 1.0)
         : 0.0;
 
@@ -216,8 +226,14 @@ class _SesiPanel extends StatelessWidget {
             children: [
               Icon(Icons.circle, size: 10, color: dot),
               const SizedBox(width: 8),
-              const Text('Status Sesi CFD',
-                  style: TextStyle(color: Colors.white70, fontSize: 12.5)),
+              Expanded(
+                child: Text(
+                  (sesi?.nama ?? 'Status Event') + (jumlahEvent > 1 ? ' · $jumlahEvent event hari ini' : ''),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(color: Colors.white70, fontSize: 12.5),
+                ),
+              ),
             ],
           ),
           const SizedBox(height: 6),
@@ -228,7 +244,7 @@ class _SesiPanel extends StatelessWidget {
             Padding(
               padding: const EdgeInsets.only(top: 2),
               child: Text(
-                '${_formatJam(sesi!.jamMulai)} – ${_formatJam(sesi!.jamSelesaiRencana)} WIB',
+                '${_formatJam(sesi!.jamMulai)} – ${_formatJam(sesi!.jamSelesai)} WIB',
                 style: const TextStyle(color: Colors.white70, fontSize: 13),
               ),
             ),
@@ -429,38 +445,102 @@ class _KehadiranCard extends StatelessWidget {
   }
 }
 
-/// Field `pendaftaran` di API ngatur jendela waktu pedagang AMBIL NOMOR STAN
-/// (bukan pendaftaran akun) -- label ngikutin fungsi aslinya.
-class _AmbilStanCard extends StatelessWidget {
-  final PendaftaranStatus? pendaftaran;
-  const _AmbilStanCard({required this.pendaftaran});
+/// Kuota gabungan semua event hari ini (yang tidak dibatalkan). Dulu kartu
+/// "Ambil Nomor Stan" (buka/tutup pendaftaran global) -- sekarang
+/// pendaftaran diatur per event, jadi yang ditampilkan kuotanya.
+class _KuotaEventCard extends StatelessWidget {
+  final List<EventHariIni> events;
+  const _KuotaEventCard({required this.events});
 
   @override
   Widget build(BuildContext context) {
-    final buka = pendaftaran?.isOpen ?? false;
-    final warna = buka ? const Color(0xFF15803D) : Colors.black54;
-    final adaJam = pendaftaran?.jamBuka != null && pendaftaran?.jamTutup != null;
+    final aktif = events.where((e) => e.status != 'dibatalkan').toList();
+    final total = aktif.fold<int>(0, (n, e) => n + e.kuotaTotal);
+    final terisi = aktif.fold<int>(0, (n, e) => n + e.terisi);
+    final sisa = (total - terisi).clamp(0, total);
 
     return _Card(
       icon: Icons.confirmation_number_rounded,
-      title: 'Ambil Nomor Stan',
-      child: Row(
+      title: 'Kuota Event Hari Ini',
+      child: total == 0
+          ? const Text('Belum ada event hari ini.', style: TextStyle(color: Colors.black54))
+          : Row(
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+                Text('$terisi',
+                    style: const TextStyle(fontSize: 30, fontWeight: FontWeight.w800, height: 1)),
+                Text(' / $total pedagang',
+                    style: const TextStyle(fontSize: 15, color: Colors.black54)),
+                const Spacer(),
+                Text('sisa $sisa · ${aktif.length} event',
+                    style: const TextStyle(fontSize: 12, color: Colors.black54)),
+              ],
+            ),
+    );
+  }
+}
+
+/// Daftar semua event hari ini -- muncul kalau ada lebih dari satu event.
+class _DaftarEventCard extends StatelessWidget {
+  final List<EventHariIni> events;
+  const _DaftarEventCard({required this.events});
+
+  static ({String label, Color warna}) _status(EventHariIni e) {
+    switch (e.status) {
+      case 'berjalan':
+        return (label: 'Berjalan · sisa ${_formatSisaWaktu(e.sisaMenit)}', warna: const Color(0xFF15803D));
+      case 'terjadwal':
+        return (label: 'Terjadwal', warna: const Color(0xFFB45309));
+      case 'dibatalkan':
+        return (label: 'Dibatalkan', warna: const Color(0xFFB91C1C));
+      default:
+        return (label: 'Selesai', warna: Colors.black54);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return _Card(
+      icon: Icons.view_list_rounded,
+      title: 'Event Hari Ini',
+      child: Column(
         children: [
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
-            decoration: BoxDecoration(
-              color: warna.withValues(alpha: 0.12),
-              borderRadius: BorderRadius.circular(20),
-            ),
-            child: Text(buka ? 'Dibuka' : 'Ditutup',
-                style: TextStyle(color: warna, fontWeight: FontWeight.w800, fontSize: 14)),
-          ),
-          const Spacer(),
-          if (adaJam)
-            Text(
-              '${_formatJam(pendaftaran!.jamBuka!)} – ${_formatJam(pendaftaran!.jamTutup!)} WIB',
-              style: const TextStyle(color: Colors.black54, fontSize: 13),
-            ),
+          for (var i = 0; i < events.length; i++) ...[
+            if (i > 0) const Divider(height: 20),
+            Builder(builder: (_) {
+              final e = events[i];
+              final st = _status(e);
+              return Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Expanded(
+                        child: Text(e.nama, style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600)),
+                      ),
+                      const SizedBox(width: 8),
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                        decoration: BoxDecoration(
+                          color: st.warna.withValues(alpha: 0.12),
+                          borderRadius: BorderRadius.circular(20),
+                        ),
+                        child: Text(st.label,
+                            style: TextStyle(color: st.warna, fontWeight: FontWeight.w700, fontSize: 11.5)),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    '${_formatJam(e.jamMulai)} – ${_formatJam(e.jamSelesai)} WIB · '
+                    '${e.terisi}/${e.kuotaTotal} pedagang · ${e.checkIn} hadir',
+                    style: const TextStyle(fontSize: 12.5, color: Colors.black54),
+                  ),
+                ],
+              );
+            }),
+          ],
         ],
       ),
     );

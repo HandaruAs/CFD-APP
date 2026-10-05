@@ -16,6 +16,7 @@ import (
 	"cfd-backend/modules/petugas/manajemen-lapak/entity"
 	"cfd-backend/modules/petugas/manajemen-lapak/usecase"
 	"github.com/gofiber/fiber/v3"
+	"github.com/google/uuid"
 )
 
 type ManajemenLapakController struct {
@@ -133,19 +134,18 @@ func (ctrl *ManajemenLapakController) GetPedagangLama(c fiber.Ctx) error {
 	filter := entity.PedagangLamaFilter{
 		Search:  c.Query("search", ""),
 		JalanID: c.Query("jalanId", ""),
+		RuasID:  c.Query("ruasId", ""),
 		Status:  c.Query("status", ""),
 	}
 	filter.Page, _ = strconv.Atoi(c.Query("page", "1"))
 	filter.Limit, _ = strconv.Atoi(c.Query("limit", "20"))
-	if v := c.Query("nomorMulai", ""); v != "" {
-		if n, err := strconv.Atoi(v); err == nil {
-			filter.NomorMulai = &n
-		}
+	// jalanId / ruasId harus UUID; selain itu diabaikan supaya query
+	// tidak gagal dengan error 500 (Postgres 22P02).
+	if _, err := uuid.Parse(filter.JalanID); err != nil {
+		filter.JalanID = ""
 	}
-	if v := c.Query("nomorSelesai", ""); v != "" {
-		if n, err := strconv.Atoi(v); err == nil {
-			filter.NomorSelesai = &n
-		}
+	if _, err := uuid.Parse(filter.RuasID); err != nil {
+		filter.RuasID = ""
 	}
 
 	data, err := ctrl.usecase.GetPedagangLama(c.Context(), filter)

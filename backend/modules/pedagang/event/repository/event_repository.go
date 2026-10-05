@@ -38,11 +38,55 @@ func (e *ErrBelumCheckout) Error() string {
 	return fmt.Sprintf("selesaikan checkout (isi omset) event \"%s\" dulu", e.NamaEvent)
 }
 
-// ErrJadwalBentrok membawa nama event yang bentrok.
-type ErrJadwalBentrok struct{ NamaEvent string }
+// ErrSudahPunyaEvent: pedagang masih terdaftar di event lain yang belum
+// selesai. Satu pedagang hanya boleh punya SATU event aktif; event lain baru
+// bisa diikuti setelah event itu selesai (atau pendaftarannya dibatalkan).
+type ErrSudahPunyaEvent struct{ NamaEvent string }
 
-func (e *ErrJadwalBentrok) Error() string {
-	return fmt.Sprintf("jadwal bentrok dengan event \"%s\" yang sudah kamu ikuti", e.NamaEvent)
+func (e *ErrSudahPunyaEvent) Error() string {
+	return fmt.Sprintf("kamu sudah terdaftar di event \"%s\". Event lain bisa diikuti setelah event itu selesai", e.NamaEvent)
+}
+
+// querier dipenuhi *pgxpool.Pool maupun pgx.Tx, supaya pengecekan event
+// aktif bisa dipakai di luar maupun di dalam transaksi Ikut.
+type querier interface {
+	QueryRow(ctx context.Context, sql string, args ...any) pgx.Row
+}
+
+// cariEventAktif: event yang sedang "mengunci" pedagang -- statusnya masih
+// terdaftar / check_in dan event-nya BELUM selesai (belum selesai_normal /
+// diakhiri_awal / dibatalkan, dan jam selesainya belum lewat). Sama dengan
+// aturan eventaturan.EventSudahSelesai.
+//
+// Event yang sudah selesai tapi belum checkout TIDAK dihitung di sini; itu
+// ditangani aturan wajib checkout (ErrBelumCheckout).
+//
+// nil, nil = tidak ada event aktif.
+func cariEventAktif(ctx context.Context, q querier, pedagangID string) (*entity.EventAktif, error) {
+	var ev entity.EventAktif
+	err := q.QueryRow(ctx, `
+		SELECT e.id, e.nama
+		FROM event_participants p
+		JOIN events e ON e.id = p.event_id AND e.deleted_at IS NULL
+		WHERE p.pedagang_id = $1 AND p.deleted_at IS NULL
+		  AND p.status IN ('terdaftar', 'check_in')
+		  AND e.status NOT IN ('selesai_normal', 'diakhiri_awal', 'dibatalkan')
+		  AND now() < (e.tanggal + e.jam_selesai) AT TIME ZONE 'Asia/Jakarta'
+		ORDER BY e.tanggal, e.jam_mulai
+		LIMIT 1`, pedagangID).Scan(&ev.ID, &ev.Nama)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	return &ev, nil
+}
+
+// EventAktif: event yang sedang diikuti pedagang dan belum selesai (nil kalau
+// tidak ada). Dipakai halaman Pilih Event untuk menyembunyikan event lain.
+func (r *EventRepository) EventAktif(ctx context.Context, pedagangID string) (*entity.EventAktif, error) {
+	return cariEventAktif(ctx, r.db, pedagangID)
 }
 
 type EventRepository struct {
@@ -175,6 +219,13 @@ func (r *EventRepository) Ikut(ctx context.Context, eventID, pedagangID, kategor
 	}
 	defer tx.Rollback(ctx)
 
+	// Kunci baris pedagang ini dulu: kalau pedagang yang sama menekan "Ikut"
+	// di dua event bersamaan, request kedua menunggu sampai yang pertama
+	// selesai, lalu tertahan aturan "satu event aktif" di bawah.
+	if _, err := tx.Exec(ctx, `SELECT 1 FROM pedagang_profiles WHERE id = $1 FOR UPDATE`, pedagangID); err != nil {
+		return "", err
+	}
+
 	var status, tanggal, jamMulai, jamSelesai string
 	var bukaAt, tutupAt, lepasAt *time.Time
 	var mulaiAt time.Time
@@ -235,22 +286,15 @@ func (r *EventRepository) Ikut(ctx context.Context, eventID, pedagangID, kategor
 		return "", err
 	}
 
-	var namaBentrok string
-	err = tx.QueryRow(ctx, `
-		SELECT e2.nama
-		FROM event_participants p
-		JOIN events e2 ON e2.id = p.event_id AND e2.deleted_at IS NULL
-		WHERE p.pedagang_id = $2 AND p.deleted_at IS NULL
-		  AND p.status IN ('terdaftar', 'check_in')
-		  AND e2.id <> $1 AND e2.status <> 'dibatalkan'
-		  AND e2.tanggal = $3::date
-		  AND e2.jam_mulai < $5::time AND e2.jam_selesai > $4::time
-		LIMIT 1`, eventID, pedagangID, tanggal, jamMulai, jamSelesai).Scan(&namaBentrok)
-	if err == nil {
-		return "", &ErrJadwalBentrok{NamaEvent: namaBentrok}
-	}
-	if !errors.Is(err, pgx.ErrNoRows) {
+	// Aturan: satu pedagang hanya boleh punya SATU event aktif. Selama masih
+	// terdaftar / check-in di event yang belum selesai, tidak bisa ikut event
+	// lain. (Aturan ini juga mencakup jadwal yang bentrok.)
+	aktif, err := cariEventAktif(ctx, tx, pedagangID)
+	if err != nil {
 		return "", err
+	}
+	if aktif != nil {
+		return "", &ErrSudahPunyaEvent{NamaEvent: aktif.Nama}
 	}
 
 	// Kunci semua titik event ini: dua pedagang yang menekan bersamaan
@@ -282,6 +326,7 @@ func (r *EventRepository) Ikut(ctx context.Context, eventID, pedagangID, kategor
 	// Pemakaian kuota per jatah (lama/baru) di tingkat EVENT, dan nomor yang
 	// sudah dipakai per titik.
 	terisi := map[string]int{}
+	nomorDipakai := map[int]bool{} // nomor stan yang sudah dipakai di event ini (semua titik)
 	rows, err = tx.Query(ctx, `
 		SELECT event_lapak_id, kuota_dipakai::text, nomor FROM event_participants
 		WHERE event_id = $1 AND status <> 'batal' AND deleted_at IS NULL`, eventID)
@@ -296,6 +341,7 @@ func (r *EventRepository) Ikut(ctx context.Context, eventID, pedagangID, kategor
 			return "", err
 		}
 		terisi[pool]++
+		nomorDipakai[nomor] = true
 		if l, ok := byID[lapakID]; ok {
 			l.terpakai[nomor] = true
 		}
@@ -358,17 +404,23 @@ func (r *EventRepository) Ikut(ctx context.Context, eventID, pedagangID, kategor
 		n -= l.sisa()
 	}
 
-	kosong := make([]int, 0, pilih.kapasitas)
-	for nomor := 1; nomor <= pilih.kapasitas; nomor++ {
-		if !pilih.terpakai[nomor] {
-			kosong = append(kosong, nomor)
+	// Nomor stan 6 digit acak (tampil sebagai "CFD-012361"), tidak boleh
+	// kembar di event ini. Ruangnya 999.999 angka, jadi cukup diundi ulang
+	// kalau kebetulan sudah dipakai.
+	nomor := 0
+	for percobaan := 0; percobaan < 50; percobaan++ {
+		n, err := eventaturan.RandIntn(eventaturan.NomorStanMaks)
+		if err != nil {
+			return "", err
+		}
+		if !nomorDipakai[n+1] {
+			nomor = n + 1
+			break
 		}
 	}
-	idx, err := eventaturan.RandIntn(len(kosong))
-	if err != nil {
-		return "", err
+	if nomor == 0 {
+		return "", errors.New("gagal membuat nomor stan unik, coba lagi")
 	}
-	nomor := kosong[idx]
 
 	var pesertaID string
 	err = tx.QueryRow(ctx, `
@@ -388,13 +440,13 @@ func (r *EventRepository) Ikut(ctx context.Context, eventID, pedagangID, kategor
 	// Bukti pengacakan: ukuran kumpulan saat diacak dan hasilnya.
 	if err := eventaturan.Audit(ctx, tx, &userID, "peserta.ikut", "event_participants", &pesertaID, &eventID, nil,
 		map[string]any{
-			"pedagangId":        pedagangID,
-			"kategori":          kategori,
-			"kuotaDipakai":      poolDipakai,
-			"ukuranKumpulan":    ukuranKumpulan,
-			"eventLapakId":      pilih.id,
-			"jumlahNomorKosong": len(kosong),
-			"nomor":             nomor,
+			"pedagangId":     pedagangID,
+			"kategori":       kategori,
+			"kuotaDipakai":   poolDipakai,
+			"ukuranKumpulan": ukuranKumpulan,
+			"eventLapakId":   pilih.id,
+			"nomor":          nomor,
+			"kodeStan":       eventaturan.KodeStan(nomor),
 		}, nil); err != nil {
 		return "", err
 	}
@@ -485,6 +537,7 @@ func scanKeikutsertaan(row pgx.Row) (*entity.Keikutsertaan, error) {
 	if err != nil {
 		return nil, err
 	}
+	k.KodeStan = eventaturan.KodeStan(k.Nomor)
 	return &k, nil
 }
 
@@ -556,6 +609,7 @@ func scanCheckout(row pgx.Row) (*entity.DataCheckout, error) {
 	if err != nil {
 		return nil, err
 	}
+	d.KodeStan = eventaturan.KodeStan(d.Nomor)
 	return &d, nil
 }
 
