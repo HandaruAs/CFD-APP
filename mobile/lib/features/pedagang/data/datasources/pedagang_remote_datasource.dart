@@ -1,35 +1,30 @@
 import 'package:mobile/core/network/api_client.dart';
-import 'package:mobile/features/pedagang/domain/entities/pengajuan_status.dart';
-import 'package:mobile/features/pedagang/domain/entities/checkout_data.dart';
-import 'package:mobile/features/pedagang/domain/entities/lapak_data.dart';
 import 'package:mobile/core/network/api_exception.dart';
+import 'package:mobile/features/pedagang/domain/entities/checkout_data.dart';
+import 'package:mobile/features/pedagang/domain/entities/event_pedagang.dart';
+import 'package:mobile/features/pedagang/domain/entities/pengajuan_status.dart';
 
+/// Endpoint pedagang. Sejak sistem MULTI-EVENT, klaim lapak lama
+/// (/api/pedagang/lapak/*, /check-in/status, /checkout) diganti endpoint
+/// event -- sama dengan web /pedagang/nomer-stand & /pedagang/CekOut.
 class PedagangRemoteDatasource {
   /// GET /api/pedagang/pengajuan
   ///
-  /// PENTING: backend SELALU balikin HTTP 200, gak pernah 404. Kalau
-  /// pedagang belum pernah ajukan usaha, body-nya `{"has_pengajuan":
-  /// false}` -- jadi yang jadi penentu itu flag `has_pengajuan`, BUKAN
-  /// status code. Return null kalau belum ada pengajuan.
+  /// Backend SELALU balikin HTTP 200. Kalau pedagang belum pernah isi data
+  /// usaha, body-nya `{"has_pengajuan": false}`. Return null kalau belum ada.
   static Future<PengajuanStatus?> getStatusPengajuan() async {
     final data = await ApiClient.get('/api/pedagang/pengajuan');
-
     if (data is! Map<String, dynamic>) {
       throw ApiException('Format respons status pengajuan tidak dikenal.');
     }
-
     final hasPengajuan = data['has_pengajuan'] as bool? ?? false;
     if (!hasPengajuan) return null;
-
     return PengajuanStatus.fromJson(data);
   }
 
-  /// POST /api/pedagang/pengajuan
-  ///
-  /// [tanggalLahir] wajib format "YYYY-MM-DD" (samain sama validasi
-  /// backend `datetime=2006-01-02`). [jenisDagangan] cuma boleh
-  /// "makanan_minuman" atau "bukan_makanan_minuman". [jenisLapak] cuma
-  /// boleh "rombong" atau "meja".
+  /// POST /api/pedagang/pengajuan -- simpan data usaha.
+  /// [tanggalLahir] "YYYY-MM-DD"; [jenisDagangan] "makanan_minuman" /
+  /// "bukan_makanan_minuman"; [jenisLapak] "rombong" / "meja".
   static Future<void> submitPengajuan({
     required String nik,
     required String namaLengkap,
@@ -51,51 +46,50 @@ class PedagangRemoteDatasource {
     );
   }
 
-  /// GET /api/pedagang/checkout
-  static Future<CheckoutData> getCheckoutData() async {
-    final data = await ApiClient.get('/api/pedagang/checkout');
-    return CheckoutData.fromJson(data as Map<String, dynamic>);
+  // ───────────────────────── event ─────────────────────────
+
+  /// GET /api/pedagang/events -- event yang bisa diikuti + sisa tempat.
+  static Future<DaftarEventPedagang> getEvents() async {
+    final data = await ApiClient.get('/api/pedagang/events');
+    final d = data is Map<String, dynamic> ? data['data'] : null;
+    if (d is! Map<String, dynamic>) throw ApiException('Format data event tidak dikenal.');
+    return DaftarEventPedagang.fromJson(d);
   }
 
-  /// POST /api/pedagang/checkout
-  static Future<void> submitCheckout(int omset) async {
-    await ApiClient.post('/api/pedagang/checkout', body: {'omset': omset});
+  /// GET /api/pedagang/events/saya -- event yang diikuti (kartu + QR).
+  static Future<List<Keikutsertaan>> getEventSaya() async {
+    final data = await ApiClient.get('/api/pedagang/events/saya');
+    final list = data is Map<String, dynamic> ? data['data'] : null;
+    if (list is! List) return const [];
+    return list.whereType<Map<String, dynamic>>().map(Keikutsertaan.fromJson).toList();
   }
 
-  /// GET /api/pedagang/lapak/status
-  static Future<LapakStatus> getLapakStatus() async {
-    final data = await ApiClient.get('/api/pedagang/lapak/status');
-    return LapakStatus.fromJson(data as Map<String, dynamic>);
+  /// POST /api/pedagang/events/:id/ikut -- server mengacak lokasi & nomor stan.
+  static Future<Keikutsertaan> ikut(String eventId) async {
+    final data = await ApiClient.post('/api/pedagang/events/$eventId/ikut');
+    final d = data is Map<String, dynamic> ? data['data'] : null;
+    if (d is! Map<String, dynamic>) throw ApiException('Format data keikutsertaan tidak dikenal.');
+    return Keikutsertaan.fromJson(d);
   }
 
-  /// POST /api/pedagang/lapak/klaim -- TANPA body. Backend yang milih
-  /// lokasi (jalan/ruas) + nomor lapak secara acak dari slot yang udah
-  /// disiapkan admin lewat Acak Lapak. Sama persis kayak web.
-  static Future<HasilKlaim> klaimLapak() async {
-    final data = await ApiClient.post('/api/pedagang/lapak/klaim');
-
-    return HasilKlaim(
-      nomorStand: data['nomor_lapak'] as String? ?? '-',
-      kecamatan: data['nama_kecamatan'] as String? ?? '-',
-      namaJalan: data['nama_jalan'] as String? ?? '-',
-      namaRuas: data['nama_ruas'] as String? ?? '',
-    );
+  /// DELETE /api/pedagang/events/:id/ikut -- batal ikut (sebelum check-in).
+  static Future<void> batal(String eventId) async {
+    await ApiClient.delete('/api/pedagang/events/$eventId/ikut');
   }
 
-  /// GET /api/pedagang/check-in/status
-  ///
-  /// Dipakai buat polling di halaman Lapak: begitu petugas scan QR
-  /// pedagang, `sudah_check_in` jadi true dan halaman auto-pindah ke
-  /// Checkout. Sengaja fail-silent (return false) kalau network gagal
-  /// ATAU request-nya ditolak -- biar polling coba lagi di tick
-  /// berikutnya tanpa nge-flash error.
-  static Future<bool> getCheckInStatus() async {
-    try {
-      final data = await ApiClient.get('/api/pedagang/check-in/status');
-      if (data is! Map<String, dynamic>) return false;
-      return data['sudah_check_in'] as bool? ?? false;
-    } catch (_) {
-      return false;
-    }
+  // ───────────────────────── checkout ─────────────────────────
+
+  /// GET /api/pedagang/events/checkout -- null kalau tidak ada event yang
+  /// perlu / pernah di-checkout hari ini (belum check-in di mana pun).
+  static Future<CheckoutData?> getCheckoutData() async {
+    final data = await ApiClient.get('/api/pedagang/events/checkout');
+    final d = data is Map<String, dynamic> ? data['data'] : null;
+    if (d is! Map<String, dynamic>) return null;
+    return CheckoutData.fromJson(d);
+  }
+
+  /// POST /api/pedagang/events/:id/checkout {omset}
+  static Future<void> submitCheckout(String eventId, int omset) async {
+    await ApiClient.post('/api/pedagang/events/$eventId/checkout', body: {'omset': omset});
   }
 }

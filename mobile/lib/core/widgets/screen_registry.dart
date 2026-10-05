@@ -10,6 +10,7 @@ import 'package:mobile/features/user/presentation/pages/manajemen_user_screen.da
 import 'package:mobile/features/user/presentation/pages/user_management_screen.dart';
 import 'package:mobile/features/superadmin/presentation/pages/acak_lapak_screen.dart';
 import 'package:mobile/features/superadmin/presentation/pages/manajemen_lapak_screen.dart';
+import 'package:mobile/features/superadmin/presentation/pages/sesi_screen.dart';
 
 /// Pemetaan route (kolom `route` di tabel `menus` backend) -> widget
 /// BODY-nya doang (bukan halaman penuh -- Scaffold/AppBar udah dipegang
@@ -36,7 +37,9 @@ final Map<String, WidgetBuilder> screenRegistry = {
   '/admin': (_) => const SuperadminDashboardScreen(),
   '/admin/acak-lapak': (_) => const AcakLapakScreen(),
   '/admin/manajemen-lapak': (_) => const ManajemenLapakScreen(),
-  '/admin/jam-operasional': (_) => const JamOperasionalScreen(),
+  // Superadmin: sesi/event CFD (sama dengan web) -- bukan lagi
+  // JamOperasionalScreen sistem sesi lama milik petugas.
+  '/admin/jam-operasional': (_) => const SesiScreen(),
   '/admin/manajemen-user': (_) => const ManajemenUserScreen(),
   '/admin/manajemen-user/pedagang': (_) =>
       const UserManagementScreen(role: UserRole.pedagang),

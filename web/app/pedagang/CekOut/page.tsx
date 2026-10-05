@@ -134,7 +134,7 @@ export default function MerchantCheckoutPage() {
         kecamatan: json.namaKecamatan ?? "",
         namaJalan: json.namaJalan ?? "",
         namaRuas: json.namaRuas ?? "",
-        nomorStan: json.nomor != null ? String(json.nomor) : "",
+        nomorStan: json.kodeStan ?? (json.nomor != null ? String(json.nomor) : ""),
         nik: json.nik ?? "",
         namaLengkap: json.namaLengkap ?? "",
         tanggalLahir: json.tanggalLahir ?? "",

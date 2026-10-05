@@ -580,6 +580,7 @@ func (r *EventRepository) ListPeserta(ctx context.Context, eventID string) ([]en
 			&p.CheckInAt, &p.CheckOutAt, &p.AutoCheckout); err != nil {
 			return nil, err
 		}
+		p.KodeStan = eventaturan.KodeStan(p.Nomor)
 		list = append(list, p)
 	}
 	return list, rows.Err()

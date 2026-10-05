@@ -63,6 +63,7 @@ type Keikutsertaan struct {
 	NamaJalan     string     `json:"namaJalan"`
 	NamaRuas      string     `json:"namaRuas"`
 	Nomor         int        `json:"nomor"`
+	KodeStan      string     `json:"kodeStan"` // nomor stan untuk ditampilkan, mis. "CFD-012361"
 	Kategori      string     `json:"kategori"`
 	KuotaDipakai  string     `json:"kuotaDipakai"`
 	Status        string     `json:"status"`
@@ -99,6 +100,7 @@ type DataCheckout struct {
 	NamaJalan     string  `json:"namaJalan"`
 	NamaRuas      string  `json:"namaRuas"`
 	Nomor         int     `json:"nomor"`
+	KodeStan      string  `json:"kodeStan"` // nomor stan untuk ditampilkan, mis. "CFD-012361"
 
 	NIK           string `json:"nik"`
 	NamaLengkap   string `json:"namaLengkap"`

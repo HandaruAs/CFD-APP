@@ -4,6 +4,7 @@ import (
 	"context"
 
 	"cfd-backend/modules/admin/laporan/entity"
+	"cfd-backend/modules/shared/eventaturan"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 )
@@ -242,7 +243,7 @@ func (r *laporanRepository) ListKehadiran(ctx context.Context, mulai, selesai st
 			COALESCE(NULLIF(p.nama_lengkap, ''), u.name),
 			COALESCE(p.jenis_dagangan::text, ''),
 			mj.nama_jalan || ' · ' || r.nama_ruas,
-			ep.nomor::text,
+			`+eventaturan.SQLKodeStan("ep.nomor")+`,
 			to_char(ep.check_in_at AT TIME ZONE 'Asia/Jakarta', 'HH24:MI'),
 			COALESCE(to_char(ep.check_out_at AT TIME ZONE 'Asia/Jakarta', 'HH24:MI'), ''),
 			ep.omset,
