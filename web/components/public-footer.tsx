@@ -35,21 +35,38 @@ export function PublicFooter() {
               </ul>
             </div>
             <div>
-              <p className="text-xs font-semibold uppercase tracking-wider text-ink-soft">Hubungi Kami</p>
-              <ul className="mt-3 space-y-3 text-sm text-ink-soft">
+  <p className="text-xs font-semibold uppercase tracking-wider text-ink-soft">Hubungi Kami</p>
+  <p className="mt-3 text-sm font-medium text-ink-strong">Diskominfo Kota Surabaya</p>
 
-                <li className="flex items-start gap-2">
-                  <Mail className="mt-0.5 h-3.5 w-3.5 shrink-0 text-blue" strokeWidth={2.2} />
-                  <span>testing</span>
-                </li>
-              
-                <li className="flex items-start gap-2">
-                  <Phone className="mt-0.5 h-3.5 w-3.5 shrink-0 text-blue" strokeWidth={2.2} />
-                  <span>08xxxxxx</span>
-                </li>
+  <ul className="mt-3 space-y-2.5 text-sm text-ink-soft">
+    <li className="flex items-start gap-2.5">
+      <Phone className="mt-0.5 h-3.5 w-3.5 shrink-0 text-blue" strokeWidth={2.2} />
+      <div className="flex flex-col gap-1">
+        <a href="tel:+62315321444" className="focus-ring hover:text-ink-strong">(031) 5321444</a>
+        <a href="tel:+623199277339" className="focus-ring hover:text-ink-strong">(031) 99277339</a>
+      </div>
+    </li>
 
-              </ul>
-            </div>
+    <li className="flex items-start gap-2.5">
+      <Mail className="mt-0.5 h-3.5 w-3.5 shrink-0 text-blue" strokeWidth={2.2} />
+      <div className="flex flex-col gap-1">
+        <a href="mailto:dinkominfo@surabaya.go.id" className="focus-ring hover:text-ink-strong">
+          dinkominfo@surabaya.go.id
+        </a>
+        <a href="mailto:mediacenter@surabaya.go.id" className="focus-ring hover:text-ink-strong">
+          mediacenter@surabaya.go.id
+        </a>
+      </div>
+    </li>
+
+    <li className="flex items-start gap-2.5">
+      <MapPin className="mt-0.5 h-3.5 w-3.5 shrink-0 text-blue" strokeWidth={2.2} />
+      <address className="max-w-[16rem] not-italic leading-relaxed">
+        Jl. Jimerto No. 25-27, Ketabang, Kec. Genteng, Kota Surabaya, Jawa Timur 60272
+      </address>
+    </li>
+  </ul>
+</div>
           </div>
         </div>
         <p className="pt-6 text-center text-xs text-ink-soft">

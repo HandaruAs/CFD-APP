@@ -4,9 +4,9 @@ import { useState, useEffect, useCallback } from "react";
 import { PublicNavbar } from "@/components/public-navbar";
 import { PublicFooter } from "@/components/public-footer";
 import {
-  MapPinned,
-  Clock4,
-  ClipboardCheck,
+  CalendarCheck,
+  QrCode,
+  BadgeCheck,
   History,
   Store,
   ChevronDown,
@@ -21,24 +21,19 @@ import {
 
 const features = [
   {
-    icon: MapPinned,
-    title: "Titik Lapak di Peta",
-    desc: "Lihat titik lapak Anda di peta, lengkap dengan status ketersediaan lapak sekitar secara langsung.",
+    icon: CalendarCheck,
+    title: "Daftar Event dari HP",
+    desc: "Pilih event CFD yang pendaftarannya dibuka dan daftar langsung, tanpa antre ke posko.",
   },
   {
-    icon: Clock4,
-    title: "Jam Operasional",
-    desc: "Cek jadwal buka-tutup CFD tiap minggu dari HP, biar gak kepagian atau malah kesorean datang.",
-  },
-  {
-    icon: ClipboardCheck,
-    title: "Verifikasi UMKM",
-    desc: "Ajukan dan pantau status verifikasi usaha Anda langsung dari HP, tanpa perlu bolak-balik ke posko.",
+    icon: QrCode,
+    title: "Nomor Stan & QR Otomatis",
+    desc: "Nomor stan dan kode QR langsung terbit. Lokasi lapak diacak sistem, jadi adil untuk semua pedagang.",
   },
   {
     icon: History,
-    title: "Riwayat & Status Lapak",
-    desc: "Lihat riwayat check-in dan status pendaftaran Anda kapan saja, gak perlu nanya-nanya ke petugas.",
+    title: "Riwayat",
+    desc: "Lihat riwayat check-in dan status pendaftaran Anda kapan saja.",
   },
 ];
 
@@ -365,7 +360,7 @@ export default function Home() {
           <div className="max-w-2xl">
             <p className="font-mono text-xs font-medium uppercase tracking-wider text-blue">Buat pedagang</p>
             <h2 className="mt-3 font-display text-3xl font-semibold tracking-tight text-ink-strong sm:text-[2.5rem]">
-              Semua yang Anda butuhkan buat jualan di CFD
+            Jualan di CFD jadi lebih muda
             </h2>
           </div>
           <div className="mt-14 divide-y divide-line border-y border-line">
