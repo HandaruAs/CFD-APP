@@ -66,7 +66,8 @@ func (u *eventUsecase) ListEventTersedia(ctx context.Context, userID string) (*e
 	now := u.now()
 	for i := range events {
 		ev := &events[i]
-		ev.StatusPendaftaran = eventaturan.StatusPendaftaran(ev.Status, ev.PendaftaranBukaAt, ev.PendaftaranTutupAt, ev.MulaiAt, now)
+		ev.StatusPendaftaran = eventaturan.StatusPendaftaran(ev.Status, ev.PendaftaranBukaAt, ev.PendaftaranTutupAt,
+			eventaturan.SelesaiAt(ev.Tanggal, ev.JamSelesai), now)
 		ev.KuotaLamaDilepas = eventaturan.KuotaLamaDilepas(ev.LepasKuotaAt, now)
 		ev.Lokasi = make([]entity.LokasiRingkas, 0, len(lapak[ev.ID]))
 		tempatKosong := 0
@@ -90,7 +91,8 @@ func (u *eventUsecase) ListEventTersedia(ctx context.Context, userID string) (*e
 
 func (u *eventUsecase) lengkapi(k *entity.Keikutsertaan) {
 	k.BisaBatal = k.Status == eventaturan.PesertaTerdaftar &&
-		eventaturan.StatusPendaftaran(k.StatusEvent, k.PendaftaranBukaAt, k.PendaftaranTutupAt, k.MulaiAt, u.now()) == eventaturan.PendaftaranDibuka
+		eventaturan.StatusPendaftaran(k.StatusEvent, k.PendaftaranBukaAt, k.PendaftaranTutupAt,
+			eventaturan.SelesaiAt(k.Tanggal, k.JamSelesai), u.now()) == eventaturan.PendaftaranDibuka
 }
 
 func (u *eventUsecase) Ikut(ctx context.Context, userID, eventID string) (*entity.Keikutsertaan, error) {

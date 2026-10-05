@@ -39,6 +39,7 @@ func mapError(c fiber.Ctx, err error) error {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": err.Error()})
 	case errors.Is(err, repository.ErrStatusTidakSesuai),
 		errors.Is(err, repository.ErrTidakAdaKandidat),
+		errors.Is(err, repository.ErrSudahAdaLokasi),
 		errors.Is(err, usecase.ErrBelumAdaTitik),
 		errors.Is(err, usecase.ErrBukanHariH),
 		errors.Is(err, usecase.ErrJadwalTerkunci),

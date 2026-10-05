@@ -17,7 +17,7 @@ import (
 var (
 	ErrValidasi             = errors.New("data event tidak valid")
 	ErrAksiTidakValid       = errors.New("aksi tidak valid")
-	ErrBelumAdaTitik        = errors.New("event belum punya titik lokasi, acak lokasi dulu sebelum diterbitkan")
+	ErrBelumAdaTitik        = errors.New("lokasi sesi belum diacak, acak lokasi dulu sebelum diterbitkan")
 	ErrBukanHariH           = errors.New("event hanya bisa dimulai manual di hari pelaksanaannya")
 	ErrJadwalTerkunci       = errors.New("tanggal dan jam event tidak bisa diubah karena sudah ada pedagang yang terdaftar")
 	ErrKuotaTurun           = errors.New("pendaftaran sudah dibuka, kuota total hanya boleh dinaikkan")
@@ -91,7 +91,8 @@ func NewEventUsecase(repo EventRepository) EventUsecase {
 // lengkapi mengisi field turunan yang tidak disimpan di DB.
 func (u *eventUsecase) lengkapi(ev *entity.Event) {
 	now := u.now()
-	ev.StatusPendaftaran = eventaturan.StatusPendaftaran(ev.Status, ev.PendaftaranBukaAt, ev.PendaftaranTutupAt, ev.MulaiAt, now)
+	ev.StatusPendaftaran = eventaturan.StatusPendaftaran(ev.Status, ev.PendaftaranBukaAt, ev.PendaftaranTutupAt,
+		eventaturan.SelesaiAt(ev.Tanggal, ev.JamSelesai), now)
 	ev.KuotaLamaDilepas = eventaturan.KuotaLamaDilepas(ev.LepasKuotaAt, now)
 }
 
@@ -186,12 +187,12 @@ func (u *eventUsecase) validasiEvent(req *entity.EventRequest) (*entity.EventInp
 		return nil, err
 	}
 
-	mulaiAt := time.Date(tgl.Year(), tgl.Month(), tgl.Day(), mulai.Hour(), mulai.Minute(), 0, 0, eventaturan.WIB)
 	if buka != nil && tutup != nil && !tutup.After(*buka) {
 		return nil, invalid("waktu tutup pendaftaran harus setelah waktu buka")
 	}
-	if tutup != nil && tutup.After(mulaiAt) {
-		return nil, invalid("pendaftaran harus sudah ditutup sebelum event dimulai")
+	selesaiAt := time.Date(tgl.Year(), tgl.Month(), tgl.Day(), selesai.Hour(), selesai.Minute(), 0, 0, eventaturan.WIB)
+	if tutup != nil && tutup.After(selesaiAt) {
+		return nil, invalid("pendaftaran harus sudah ditutup sebelum event selesai")
 	}
 	if lepas != nil {
 		if buka != nil && lepas.Before(*buka) {
@@ -233,6 +234,10 @@ func (u *eventUsecase) CreateEvent(ctx context.Context, actorID string, req *ent
 	if err != nil {
 		return nil, err
 	}
+	// Sesi yang jam selesainya sudah lewat tidak bisa diikuti siapa pun.
+	if !u.now().Before(eventaturan.SelesaiAt(in.Tanggal, in.JamSelesai)) {
+		return nil, invalid("jam selesai sesi sudah lewat, pilih tanggal atau jam yang akan datang")
+	}
 	id, err := u.repo.CreateEvent(ctx, in, actorID)
 	if err != nil {
 		return nil, err
@@ -264,17 +269,14 @@ func (u *eventUsecase) UpdateEvent(ctx context.Context, actorID, id string, req 
 	}
 	// Aturan kuota per event:
 	//  - tidak boleh di bawah pedagang yang sudah terdaftar (per kategori jatah);
-	//  - setelah pendaftaran dibuka, kuota total hanya boleh naik;
-	//  - kalau event sudah terbit, kuota tidak boleh melebihi kapasitas titik.
+	//  - setelah pendaftaran dibuka, kuota total hanya boleh naik.
+	// Lokasi sesi ikut muat sebanyak kuota (disamakan di repository).
 	u.lengkapi(sebelum)
 	if in.KuotaLama < sebelum.TerisiLama || in.KuotaTotal-in.KuotaLama < sebelum.TerisiBaru {
 		return nil, ErrKuotaDiBawahTerisi
 	}
 	if sebelum.StatusPendaftaran != eventaturan.PendaftaranBelumDibuka && in.KuotaTotal < sebelum.KuotaTotal {
 		return nil, ErrKuotaTurun
-	}
-	if sebelum.Status == eventaturan.StatusTerjadwal && in.KuotaTotal > sebelum.KapasitasTitik {
-		return nil, &ErrKapasitasKurang{Kuota: in.KuotaTotal, Kapasitas: sebelum.KapasitasTitik}
 	}
 	if err := u.repo.UpdateEvent(ctx, id, in, sebelum, actorID); err != nil {
 		return nil, err
@@ -300,9 +302,7 @@ func (u *eventUsecase) UbahStatus(ctx context.Context, actorID, id string, req *
 		if ev.KuotaTotal < 1 {
 			return nil, ErrKuotaBelumDiisi
 		}
-		if ev.KuotaTotal > ev.KapasitasTitik {
-			return nil, &ErrKapasitasKurang{Kuota: ev.KuotaTotal, Kapasitas: ev.KapasitasTitik}
-		}
+
 		dari, ke = []string{eventaturan.StatusDraft}, eventaturan.StatusTerjadwal
 	case entity.AksiMulai:
 		if ev.Tanggal != u.now().In(eventaturan.WIB).Format("2006-01-02") {
@@ -356,9 +356,6 @@ func (u *eventUsecase) DeleteEvent(ctx context.Context, actorID, id string) erro
 }
 
 func (u *eventUsecase) AcakLokasi(ctx context.Context, actorID, eventID string, req *entity.AcakLokasiRequest) (*entity.AcakLokasiResponse, error) {
-	if req.JumlahTitik < 0 {
-		return nil, invalid("jumlah titik tidak boleh negatif")
-	}
 	ids, err := rapikanWilayah(req)
 	if err != nil {
 		return nil, err
