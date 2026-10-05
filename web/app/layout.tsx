@@ -25,6 +25,17 @@ export const metadata: Metadata = {
   title: "CFD Pedagang | Portal Pedagang",
   description:
     "Portal pedagang untuk pendaftaran, verifikasi, dan pengelolaan lapak Car Free Day Surabaya.",
+  // Logo E-Event Surabaya di tab browser. File-nya ada di public/images/,
+  // jadi path-nya ditulis mulai dari "/images/..." (tanpa "/public").
+  // CATATAN: jangan taruh lagi favicon.ico di folder app/ -- kalau ada,
+  // Next.js memakai file itu dan logo di bawah ini tidak tampil.
+  icons: {
+    icon: [
+      { url: "/images/favicon.ico", sizes: "any" },
+      { url: "/images/icon.png", type: "image/png", sizes: "256x256" },
+    ],
+    apple: { url: "/images/apple-icon.png", sizes: "180x180" },
+  },
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {
