@@ -212,7 +212,6 @@ type CreatePedagangRequest struct {
 	JenisDagangan  string `json:"jenisDagangan"` // makanan_minuman | bukan_makanan_minuman, boleh kosong
 	Phone          string `json:"phone" validate:"omitempty,max=13"`
 	Alamat         string `json:"alamat"`
-	LokasiLapak    string `json:"lokasiLapak"`
 	PerkiraanHarga string `json:"perkiraanHarga"`
 	TanggalLahir   string `json:"tanggalLahir"` // YYYY-MM-DD, boleh kosong
 	JenisLapak     string `json:"jenisLapak"`    // rombong | meja, boleh kosong
