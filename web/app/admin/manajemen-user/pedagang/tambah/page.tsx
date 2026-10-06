@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Loader2, ArrowLeft, CreditCard, Tag, ShoppingCart, Table2, Copy, Check } from "lucide-react";
 
@@ -16,18 +16,12 @@ type PedagangFormValues = {
   namaUsaha: string;
   jenisDagangan: string;
   jenisLapak: StallType;
-  lokasiLapak: string;
 };
 
 type AkunBaru = {
   pedagangId: string;
   email: string;
   password: string;
-};
-
-type Kecamatan = {
-  kecamatan: string;
-  jalan: { id: string; namaJalan: string }[];
 };
 
 const EMPTY_FORM: PedagangFormValues = {
@@ -40,36 +34,15 @@ const EMPTY_FORM: PedagangFormValues = {
   namaUsaha: "",
   jenisDagangan: "",
   jenisLapak: "",
-  lokasiLapak: "",
 };
 
 export default function TambahPedagangPage() {
   const router = useRouter();
   const [values, setValues] = useState<PedagangFormValues>(EMPTY_FORM);
-  const [daftarJalan, setDaftarJalan] = useState<string[]>([]);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const [akunBaru, setAkunBaru] = useState<AkunBaru | null>(null);
   const [copied, setCopied] = useState(false);
-
-  // Daftar jalan buat dropdown Lokasi Lapak
-  useEffect(() => {
-    async function fetchWilayah() {
-      try {
-        const token = localStorage.getItem("cfd_token");
-        const res = await fetch("http://localhost:8080/api/admin/wilayah", {
-          headers: { Authorization: `Bearer ${token}` },
-        });
-        if (!res.ok) return;
-        const data = await res.json();
-        const list: Kecamatan[] = data.data ?? [];
-        setDaftarJalan(list.flatMap((k) => k.jalan.map((j) => `${j.namaJalan} (${k.kecamatan})`)));
-      } catch {
-        // Dropdown kosong saja kalau gagal
-      }
-    }
-    fetchWilayah();
-  }, []);
 
   function update<K extends keyof PedagangFormValues>(key: K, value: PedagangFormValues[K]) {
     setValues((prev) => ({ ...prev, [key]: value }));
@@ -105,7 +78,6 @@ export default function TambahPedagangPage() {
           namaUsaha: values.namaUsaha,
           jenisDagangan: values.jenisDagangan || undefined,
           jenisLapak: values.jenisLapak || undefined,
-          lokasiLapak: values.lokasiLapak || undefined,
         }),
       });
 
@@ -276,31 +248,19 @@ export default function TambahPedagangPage() {
               </Field>
             </div>
 
-            <Field label="Kategori Dagangan">
-              <select
-                value={values.jenisDagangan}
-                onChange={(e) => update("jenisDagangan", e.target.value)}
-                className={inputClass}
-              >
-                <option value="">Pilih Kategori</option>
-                <option value="makanan_minuman">Makanan dan Minuman</option>
-                <option value="bukan_makanan_minuman">Bukan Makanan dan Minuman</option>
-              </select>
-            </Field>
-            <Field label="Lokasi Lapak">
-              <select
-                value={values.lokasiLapak}
-                onChange={(e) => update("lokasiLapak", e.target.value)}
-                className={inputClass}
-              >
-                <option value="">Pilih Jalan</option>
-                {daftarJalan.map((label) => (
-                  <option key={label} value={label}>
-                    {label}
-                  </option>
-                ))}
-              </select>
-            </Field>
+            <div className="sm:col-span-2">
+              <Field label="Kategori Dagangan">
+                <select
+                  value={values.jenisDagangan}
+                  onChange={(e) => update("jenisDagangan", e.target.value)}
+                  className={inputClass}
+                >
+                  <option value="">Pilih Kategori</option>
+                  <option value="makanan_minuman">Makanan dan Minuman</option>
+                  <option value="bukan_makanan_minuman">Bukan Makanan dan Minuman</option>
+                </select>
+              </Field>
+            </div>
 
             <div className="sm:col-span-2">
               <Field label="Pilihan Lapak">
