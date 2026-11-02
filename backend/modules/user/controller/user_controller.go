@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
+	"strings"
 
 	"cfd-backend/modules/user/entity"
 	"cfd-backend/modules/user/usecase"
@@ -233,32 +234,33 @@ func (ctrl *UserController) ListUsersByRole(c fiber.Ctx) error {
 func (ctrl *UserController) CreateUserByRole(c fiber.Ctx) error {
 	roleSlug := c.Query("role")
 	if roleSlug == "" {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
-			"error": "Parameter 'role' wajib diisi",
-		})
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Parameter 'role' wajib diisi"})
 	}
+	return ctrl.createUser(c, roleSlug)
+}
 
+// CreateSuperadmin hanya membuat role superadmin; role tidak dipilih dari query.
+func (ctrl *UserController) CreateSuperadmin(c fiber.Ctx) error {
+	return ctrl.createUser(c, "superadmin")
+}
+
+func (ctrl *UserController) createUser(c fiber.Ctx, roleSlug string) error {
 	var req CreateUserByRoleRequest
 	if err := c.Bind().Body(&req); err != nil {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
-			"error": err.Error(),
-		})
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Data pengguna tidak valid"})
+	}
+	req.Name = strings.TrimSpace(req.Name)
+	req.Email = strings.TrimSpace(req.Email)
+	req.Phone = strings.TrimSpace(req.Phone)
+	if req.Name == "" || req.Email == "" || req.Phone == "" || len(req.Password) < 8 {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Nama, email, telepon wajib diisi dan password minimal 8 karakter"})
 	}
 
-	userID, err := ctrl.userUsecase.CreateUserByRole(
-		c.Context(),
-		req.Name, req.Email, req.Phone, req.Password, roleSlug,
-	)
+	userID, err := ctrl.userUsecase.CreateUserByRole(c.Context(), req.Name, req.Email, req.Phone, req.Password, roleSlug)
 	if err != nil {
-		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
-			"error": "Gagal membuat user: " + err.Error(),
-		})
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Gagal membuat user: " + err.Error()})
 	}
-
-	return c.Status(fiber.StatusCreated).JSON(fiber.Map{
-		"message": "User berhasil ditambahkan",
-		"user_id": userID,
-	})
+	return c.Status(fiber.StatusCreated).JSON(fiber.Map{"message": "User berhasil ditambahkan", "user_id": userID})
 }
 
 type UpdateUserBasicRequest struct {

@@ -7,24 +7,29 @@
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import 'package:mobile/main.dart';
+import 'package:mobile/features/auth/presentation/pages/register_screen.dart';
 
 void main() {
-  testWidgets('Counter increments smoke test', (WidgetTester tester) async {
-    // Build our app and trigger a frame.
-    await tester.pumpWidget(const MyApp());
-
-    // Verify that our counter starts at 0.
-    expect(find.text('0'), findsOneWidget);
-    expect(find.text('1'), findsNothing);
-
-    // Tap the '+' icon and trigger a frame.
-    await tester.tap(find.byIcon(Icons.add));
-    await tester.pump();
-
-    // Verify that our counter has incremented.
-    expect(find.text('0'), findsNothing);
-    expect(find.text('1'), findsOneWidget);
+  test('NIK validation accepts exactly 16 ASCII digits', () {
+    expect(nikValid16Digit('1234567890123456'), isTrue);
+    expect(nikValid16Digit('123456789012345'), isFalse);
+    expect(nikValid16Digit('12345678901234567'), isFalse);
+    expect(nikValid16Digit('123456789012345a'), isFalse);
   });
+
+  testWidgets(
+    'register screen explains account continues to business and stall signup',
+    (WidgetTester tester) async {
+      await tester.pumpWidget(
+        const ProviderScope(child: MaterialApp(home: RegisterScreen())),
+      );
+
+      expect(find.text('Langkah 1 dari 3'), findsOneWidget);
+      expect(find.text('Nama Lengkap'), findsOneWidget);
+      expect(find.text('Email'), findsOneWidget);
+      expect(find.text('Lanjut ke Data Usaha'), findsOneWidget);
+    },
+  );
 }

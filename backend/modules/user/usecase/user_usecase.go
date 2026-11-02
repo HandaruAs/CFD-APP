@@ -20,6 +20,7 @@ type UserRepository interface {
 	UpdateUserBasic(ctx context.Context, id, name, phone string) error
 	DeleteUser(ctx context.Context, id string) error
 	CountByRole(ctx context.Context, roleSlug string) (int, error)
+	DeleteSuperadmin(ctx context.Context, targetID string) error
 	GetPedagangStage(ctx context.Context, userID string) (string, error)
 	UpdateAvatar(ctx context.Context, id, avatarURL string) (string, error)
 }
@@ -141,13 +142,5 @@ func (u *userUsecase) DeleteSuperadmin(ctx context.Context, requesterID, targetI
 		return entity.ErrCannotDeleteSelf
 	}
 
-	count, err := u.userRepo.CountByRole(ctx, "superadmin")
-	if err != nil {
-		return err
-	}
-	if count <= 1 {
-		return entity.ErrLastSuperadmin
-	}
-
-	return u.userRepo.DeleteUser(ctx, targetID)
+	return u.userRepo.DeleteSuperadmin(ctx, targetID)
 }

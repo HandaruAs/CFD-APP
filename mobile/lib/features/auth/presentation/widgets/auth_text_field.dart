@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:mobile/core/themes/app_theme.dart';
 
 /// TextFormField model "pil" (fill abu muda, tanpa garis border) yang
@@ -13,6 +14,7 @@ class AuthTextField extends StatelessWidget {
   final Widget? suffixIcon;
   final TextInputType? keyboardType;
   final TextInputAction? textInputAction;
+  final List<TextInputFormatter>? inputFormatters;
   final ValueChanged<String>? onFieldSubmitted;
   final String? Function(String?)? validator;
 
@@ -26,6 +28,7 @@ class AuthTextField extends StatelessWidget {
     this.suffixIcon,
     this.keyboardType,
     this.textInputAction,
+    this.inputFormatters,
     this.onFieldSubmitted,
     this.validator,
   });
@@ -38,6 +41,7 @@ class AuthTextField extends StatelessWidget {
       obscureText: obscureText,
       keyboardType: keyboardType,
       textInputAction: textInputAction,
+      inputFormatters: inputFormatters,
       onFieldSubmitted: onFieldSubmitted,
       validator: validator,
       decoration: InputDecoration(

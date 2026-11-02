@@ -12,10 +12,7 @@ const _jenisDaganganLabel = {
   'bukan_makanan_minuman': 'Bukan Makanan & Minuman',
 };
 
-const _jenisLapakLabel = {
-  'rombong': 'Rombong',
-  'meja': 'Meja',
-};
+const _jenisLapakLabel = {'rombong': 'Rombong', 'meja': 'Meja'};
 
 /// BODY Manajemen User buat satu role (bukan halaman penuh -- Scaffold
 /// dan AppBar udah dipegang MainLayout). Mirror web: pencarian,
@@ -30,7 +27,8 @@ class UserManagementScreen extends ConsumerStatefulWidget {
   const UserManagementScreen({super.key, required this.role});
 
   @override
-  ConsumerState<UserManagementScreen> createState() => _UserManagementScreenState();
+  ConsumerState<UserManagementScreen> createState() =>
+      _UserManagementScreenState();
 }
 
 class _UserManagementScreenState extends ConsumerState<UserManagementScreen>
@@ -73,8 +71,9 @@ class _UserManagementScreenState extends ConsumerState<UserManagementScreen>
       builder: (_) => _UserFormSheet(
         role: widget.role,
         user: user,
-        onSubmit: (data) =>
-            user == null ? _notifier.create(data) : _notifier.update(user.id, data),
+        onSubmit: (data) => user == null
+            ? _notifier.create(data)
+            : _notifier.update(user.id, data),
         onDelete: user == null ? null : () => _notifier.delete(user.id),
       ),
     );
@@ -93,7 +92,8 @@ class _UserManagementScreenState extends ConsumerState<UserManagementScreen>
     return Scaffold(
       backgroundColor: Colors.transparent,
       floatingActionButton: FloatingActionButton.extended(
-        heroTag: null, // 3 tab (pedagang/petugas/superadmin) hidup bareng -> hindari error "multiple heroes"
+        heroTag:
+            null, // 3 tab (pedagang/petugas/superadmin) hidup bareng -> hindari error "multiple heroes"
         onPressed: () => _bukaForm(),
         backgroundColor: kBrandColor,
         foregroundColor: Colors.white,
@@ -135,27 +135,32 @@ class _UserManagementScreenState extends ConsumerState<UserManagementScreen>
           if (widget.role == UserRole.pedagang)
             Padding(
               padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
-              child: Row(
-                children: [
-                  for (final f in const [
-                    ('', 'Semua'),
-                    ('baru', 'Pedagang Baru'),
-                    ('lama', 'Pedagang Lama'),
-                  ])
-                    Padding(
-                      padding: const EdgeInsets.only(right: 8),
-                      child: ChoiceChip(
-                        label: Text(f.$2),
-                        selected: state.status == f.$1,
-                        onSelected: (_) => _notifier.setStatus(f.$1),
-                        selectedColor: kBrandColor.withValues(alpha: 0.14),
-                        labelStyle: TextStyle(
-                          fontWeight: FontWeight.w600,
-                          color: state.status == f.$1 ? kBrandColor : Colors.black87,
+              child: SingleChildScrollView(
+                scrollDirection: Axis.horizontal,
+                child: Row(
+                  children: [
+                    for (final f in const [
+                      ('', 'Semua'),
+                      ('baru', 'Pedagang Baru'),
+                      ('lama', 'Pedagang Lama'),
+                    ])
+                      Padding(
+                        padding: const EdgeInsets.only(right: 8),
+                        child: ChoiceChip(
+                          label: Text(f.$2),
+                          selected: state.status == f.$1,
+                          onSelected: (_) => _notifier.setStatus(f.$1),
+                          selectedColor: kBrandColor.withValues(alpha: 0.14),
+                          labelStyle: TextStyle(
+                            fontWeight: FontWeight.w600,
+                            color: state.status == f.$1
+                                ? kBrandColor
+                                : Colors.black87,
+                          ),
                         ),
                       ),
-                    ),
-                ],
+                  ],
+                ),
               ),
             ),
           Expanded(child: _buildList(state)),
@@ -248,7 +253,9 @@ class _UserTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final baris2 = isPedagang && user.namaUsaha != null ? user.namaUsaha! : user.email;
+    final baris2 = isPedagang && user.namaUsaha != null
+        ? user.namaUsaha!
+        : user.email;
     final baris3 = [
       if (user.phone.isNotEmpty) user.phone,
       if (_bergabung.isNotEmpty) 'Bergabung $_bergabung',
@@ -268,7 +275,10 @@ class _UserTile extends StatelessWidget {
                 backgroundColor: kBrandColor.withValues(alpha: 0.12),
                 child: Text(
                   user.initial,
-                  style: const TextStyle(color: kBrandColor, fontWeight: FontWeight.w700),
+                  style: const TextStyle(
+                    color: kBrandColor,
+                    fontWeight: FontWeight.w700,
+                  ),
                 ),
               ),
               const SizedBox(width: 12),
@@ -284,14 +294,20 @@ class _UserTile extends StatelessWidget {
                     ),
                     Text(
                       baris2,
-                      style: const TextStyle(fontSize: 13, color: Colors.black87),
+                      style: const TextStyle(
+                        fontSize: 13,
+                        color: Colors.black87,
+                      ),
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                     ),
                     if (baris3.isNotEmpty)
                       Text(
                         baris3,
-                        style: const TextStyle(fontSize: 12, color: Colors.black54),
+                        style: const TextStyle(
+                          fontSize: 12,
+                          color: Colors.black54,
+                        ),
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                       ),
@@ -328,7 +344,11 @@ class _TipeBadge extends StatelessWidget {
       ),
       child: Text(
         baru ? 'Baru' : 'Lama',
-        style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: color),
+        style: TextStyle(
+          fontSize: 11,
+          fontWeight: FontWeight.w700,
+          color: color,
+        ),
       ),
     );
   }
@@ -350,7 +370,11 @@ class _StatusBadge extends StatelessWidget {
       ),
       child: Text(
         active ? 'Aktif' : 'Ditangguhkan',
-        style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: color),
+        style: TextStyle(
+          fontSize: 11,
+          fontWeight: FontWeight.w700,
+          color: color,
+        ),
       ),
     );
   }
@@ -409,9 +433,12 @@ class _UserFormSheetState extends State<_UserFormSheet> {
     _nik = TextEditingController(text: u?.nik ?? '');
     _tanggalLahir = TextEditingController();
     _namaUsaha = TextEditingController(text: u?.namaUsaha ?? '');
-    _jenisDagangan =
-        _jenisDaganganLabel.containsKey(u?.jenisDagangan) ? u?.jenisDagangan : null;
-    _jenisLapak = _jenisLapakLabel.containsKey(u?.jenisLapak) ? u?.jenisLapak : null;
+    _jenisDagangan = _jenisDaganganLabel.containsKey(u?.jenisDagangan)
+        ? u?.jenisDagangan
+        : null;
+    _jenisLapak = _jenisLapakLabel.containsKey(u?.jenisLapak)
+        ? u?.jenisLapak
+        : null;
   }
 
   @override
@@ -441,8 +468,10 @@ class _UserFormSheetState extends State<_UserFormSheet> {
     if (picked == null) return;
     String dua(int n) => n.toString().padLeft(2, '0');
     setState(() {
-      _tanggalLahirIso = '${picked.year}-${dua(picked.month)}-${dua(picked.day)}';
-      _tanggalLahir.text = '${dua(picked.day)}/${dua(picked.month)}/${picked.year}';
+      _tanggalLahirIso =
+          '${picked.year}-${dua(picked.month)}-${dua(picked.day)}';
+      _tanggalLahir.text =
+          '${dua(picked.day)}/${dua(picked.month)}/${picked.year}';
     });
   }
 
@@ -453,17 +482,19 @@ class _UserFormSheetState extends State<_UserFormSheet> {
       _error = null;
     });
 
-    final err = await widget.onSubmit(UserFormData(
-      name: _name.text,
-      email: _email.text,
-      phone: _phone.text,
-      password: _password.text,
-      nik: _nik.text,
-      tanggalLahir: _tanggalLahirIso ?? '',
-      namaUsaha: _namaUsaha.text,
-      jenisDagangan: _jenisDagangan ?? '',
-      jenisLapak: _jenisLapak ?? '',
-    ));
+    final err = await widget.onSubmit(
+      UserFormData(
+        name: _name.text,
+        email: _email.text,
+        phone: _phone.text,
+        password: _password.text,
+        nik: _nik.text,
+        tanggalLahir: _tanggalLahirIso ?? '',
+        namaUsaha: _namaUsaha.text,
+        jenisDagangan: _jenisDagangan ?? '',
+        jenisLapak: _jenisLapak ?? '',
+      ),
+    );
     if (!mounted) return;
 
     if (err != null) {
@@ -474,7 +505,9 @@ class _UserFormSheetState extends State<_UserFormSheet> {
       return;
     }
     Navigator.of(context).pop(
-      _edit ? 'Data berhasil diperbarui' : '${widget.role.label} berhasil ditambahkan',
+      _edit
+          ? 'Data berhasil diperbarui'
+          : '${widget.role.label} berhasil ditambahkan',
     );
   }
 
@@ -483,7 +516,9 @@ class _UserFormSheetState extends State<_UserFormSheet> {
       context: context,
       builder: (ctx) => AlertDialog(
         title: Text('Hapus ${widget.role.label}?'),
-        content: Text('${widget.user!.name} akan dihapus dan tidak bisa login lagi.'),
+        content: Text(
+          '${widget.user!.name} akan dihapus dan tidak bisa login lagi.',
+        ),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(ctx).pop(false),
@@ -518,7 +553,9 @@ class _UserFormSheetState extends State<_UserFormSheet> {
 
   @override
   Widget build(BuildContext context) {
-    final judul = _edit ? 'Edit ${widget.role.label}' : 'Tambah ${widget.role.label}';
+    final judul = _edit
+        ? 'Edit ${widget.role.label}'
+        : 'Tambah ${widget.role.label}';
 
     return Padding(
       padding: EdgeInsets.fromLTRB(
@@ -534,12 +571,21 @@ class _UserFormSheetState extends State<_UserFormSheet> {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              Text(judul, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w700)),
+              Text(
+                judul,
+                style: const TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
               const SizedBox(height: 16),
               TextFormField(
                 controller: _name,
                 textCapitalization: TextCapitalization.words,
-                decoration: const InputDecoration(labelText: 'Nama', border: OutlineInputBorder()),
+                decoration: const InputDecoration(
+                  labelText: 'Nama',
+                  border: OutlineInputBorder(),
+                ),
                 validator: (v) => _wajib(v, 'Nama'),
               ),
               const SizedBox(height: 12),
@@ -547,7 +593,10 @@ class _UserFormSheetState extends State<_UserFormSheet> {
                 controller: _email,
                 enabled: !_edit, // email gak bisa diubah dari endpoint update
                 keyboardType: TextInputType.emailAddress,
-                decoration: const InputDecoration(labelText: 'Email', border: OutlineInputBorder()),
+                decoration: const InputDecoration(
+                  labelText: 'Email',
+                  border: OutlineInputBorder(),
+                ),
                 validator: (v) {
                   if (_edit) return null;
                   final s = v?.trim() ?? '';
@@ -562,7 +611,10 @@ class _UserFormSheetState extends State<_UserFormSheet> {
               TextFormField(
                 controller: _phone,
                 keyboardType: TextInputType.phone,
-                decoration: const InputDecoration(labelText: 'No. Telepon', border: OutlineInputBorder()),
+                decoration: const InputDecoration(
+                  labelText: 'No. Telepon',
+                  border: OutlineInputBorder(),
+                ),
                 validator: (v) => _wajib(v, 'No. telepon'),
               ),
               if (!_edit) ...[
@@ -575,12 +627,16 @@ class _UserFormSheetState extends State<_UserFormSheet> {
                     helperText: 'Minimal 8 karakter',
                     border: const OutlineInputBorder(),
                     suffixIcon: IconButton(
-                      icon: Icon(_hidePassword ? Icons.visibility_off : Icons.visibility),
-                      onPressed: () => setState(() => _hidePassword = !_hidePassword),
+                      icon: Icon(
+                        _hidePassword ? Icons.visibility_off : Icons.visibility,
+                      ),
+                      onPressed: () =>
+                          setState(() => _hidePassword = !_hidePassword),
                     ),
                   ),
-                  validator: (v) =>
-                      (v == null || v.length < 8) ? 'Password minimal 8 karakter' : null,
+                  validator: (v) => (v == null || v.length < 8)
+                      ? 'Password minimal 8 karakter'
+                      : null,
                 ),
               ],
               if (_pedagang) ...[
@@ -613,22 +669,29 @@ class _UserFormSheetState extends State<_UserFormSheet> {
                       border: OutlineInputBorder(),
                       suffixIcon: Icon(Icons.calendar_today_outlined),
                     ),
-                    validator: (_) =>
-                        _tanggalLahirIso == null ? 'Tanggal lahir wajib diisi' : null,
+                    validator: (_) => _tanggalLahirIso == null
+                        ? 'Tanggal lahir wajib diisi'
+                        : null,
                   ),
                 ] else if (widget.user!.nik != null) ...[
                   const SizedBox(height: 12),
                   TextFormField(
                     initialValue: widget.user!.nik,
                     enabled: false,
-                    decoration: const InputDecoration(labelText: 'NIK', border: OutlineInputBorder()),
+                    decoration: const InputDecoration(
+                      labelText: 'NIK',
+                      border: OutlineInputBorder(),
+                    ),
                   ),
                 ],
                 const SizedBox(height: 12),
                 TextFormField(
                   controller: _namaUsaha,
                   textCapitalization: TextCapitalization.words,
-                  decoration: const InputDecoration(labelText: 'Nama Usaha', border: OutlineInputBorder()),
+                  decoration: const InputDecoration(
+                    labelText: 'Nama Usaha',
+                    border: OutlineInputBorder(),
+                  ),
                   validator: (v) => _wajib(v, 'Nama usaha'),
                 ),
                 const SizedBox(height: 12),
@@ -636,7 +699,10 @@ class _UserFormSheetState extends State<_UserFormSheet> {
                   // ignore: deprecated_member_use
                   value: _jenisDagangan,
                   isExpanded: true,
-                  decoration: const InputDecoration(labelText: 'Jenis Dagangan', border: OutlineInputBorder()),
+                  decoration: const InputDecoration(
+                    labelText: 'Jenis Dagangan',
+                    border: OutlineInputBorder(),
+                  ),
                   items: [
                     for (final e in _jenisDaganganLabel.entries)
                       DropdownMenuItem(value: e.key, child: Text(e.value)),
@@ -649,7 +715,10 @@ class _UserFormSheetState extends State<_UserFormSheet> {
                   // ignore: deprecated_member_use
                   value: _jenisLapak,
                   isExpanded: true,
-                  decoration: const InputDecoration(labelText: 'Jenis Lapak', border: OutlineInputBorder()),
+                  decoration: const InputDecoration(
+                    labelText: 'Jenis Lapak',
+                    border: OutlineInputBorder(),
+                  ),
                   items: [
                     for (final e in _jenisLapakLabel.entries)
                       DropdownMenuItem(value: e.key, child: Text(e.value)),
@@ -673,7 +742,10 @@ class _UserFormSheetState extends State<_UserFormSheet> {
                     ? const SizedBox(
                         height: 18,
                         width: 18,
-                        child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          color: Colors.white,
+                        ),
                       )
                     : Text(_edit ? 'Simpan Perubahan' : 'Tambah'),
               ),
