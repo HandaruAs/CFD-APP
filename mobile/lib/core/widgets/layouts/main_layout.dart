@@ -4,6 +4,7 @@ import 'package:mobile/core/models/menu_model.dart';
 import 'package:mobile/core/providers/nav_provider.dart';
 import 'package:mobile/core/themes/app_theme.dart';
 import 'package:mobile/core/widgets/profile_tab.dart';
+import 'package:mobile/core/widgets/custom_bottom_nav.dart';
 import 'package:mobile/core/widgets/screen_registry.dart';
 import 'package:mobile/features/auth/presentation/providers/auth_provider.dart';
 
@@ -41,9 +42,7 @@ const _kAppBarHeight = 92.0;
 // Di-key pakai `route`, bukan teks label, biar gak "diam-diam basi" kalau
 // besok nama menunya diedit dari halaman Manajemen Menu (web) -- kalau
 // route-nya gak ketemu di sini, fallback ke label asli apa adanya.
-const Map<String, String> _kNavLabelOverride = {
-  '/petugas/scan-qr': 'Scan QR',
-};
+const Map<String, String> _kNavLabelOverride = {'/petugas/scan-qr': 'Scan QR'};
 
 String _navLabel(MenuModel m) => _kNavLabelOverride[m.path] ?? m.label;
 
@@ -113,7 +112,9 @@ class _MainLayoutState extends ConsumerState<MainLayout> {
     // Pendaftaran biar gak ada 2 tab yang isinya sama. Kalau ternyata
     // cuma Pendaftaran yang ada, dia tetap tampil (di-mapping ke
     // LapakScreen juga di screenRegistry).
-    final adaNomerStand = backendMenus.any((m) => m.path == '/pedagang/nomer-stand');
+    final adaNomerStand = backendMenus.any(
+      (m) => m.path == '/pedagang/nomer-stand',
+    );
     // Menu web-only ditandai lewat menus.flags {"mobile": false} di DB
     // (lihat migrasi 000027), bukan lagi daftar path hardcoded di sini.
     // Cuma aturan "Pendaftaran digabung ke Nomor Stand" yang masih
@@ -141,7 +142,9 @@ class _MainLayoutState extends ConsumerState<MainLayout> {
     if (!_initialIndexApplied) {
       _initialIndexApplied = true;
       if (widget.initialPath != null) {
-        final idx = visibleBackendMenus.indexWhere((m) => m.path == widget.initialPath);
+        final idx = visibleBackendMenus.indexWhere(
+          (m) => m.path == widget.initialPath,
+        );
         if (idx != -1) {
           WidgetsBinding.instance.addPostFrameCallback((_) {
             ref.read(bottomNavIndexProvider.notifier).state = idx;
@@ -150,7 +153,9 @@ class _MainLayoutState extends ConsumerState<MainLayout> {
       }
     }
 
-    final selectedIndex = ref.watch(bottomNavIndexProvider).clamp(0, items.length - 1);
+    final selectedIndex = ref
+        .watch(bottomNavIndexProvider)
+        .clamp(0, items.length - 1);
     final currentItem = items[selectedIndex];
     final user = ref.watch(userProvider);
 
@@ -167,8 +172,14 @@ class _MainLayoutState extends ConsumerState<MainLayout> {
         index: selectedIndex,
         children: items.map((m) => _buildTabBody(m)).toList(),
       ),
-      bottomNavigationBar:
-          useSidebar ? null : _buildBottomNav(items, selectedIndex, onSelect),
+      bottomNavigationBar: useSidebar
+          ? null
+          : CustomBottomNav(
+              items: items,
+              selectedIndex: selectedIndex,
+              onSelect: onSelect,
+              getIcon: _getIcon,
+            ),
     );
   }
 
@@ -212,8 +223,11 @@ class _MainLayoutState extends ConsumerState<MainLayout> {
                     child: Image.asset(
                       'assets/images/logo.png',
                       fit: BoxFit.contain,
-                      errorBuilder: (_, __, ___) =>
-                          const Icon(Icons.storefront, color: kBrandColor, size: 18),
+                      errorBuilder: (_, __, ___) => const Icon(
+                        Icons.storefront,
+                        color: kBrandColor,
+                        size: 18,
+                      ),
                     ),
                   ),
                 ),
@@ -246,27 +260,6 @@ class _MainLayoutState extends ConsumerState<MainLayout> {
           ),
         ],
       ),
-    );
-  }
-
-  Widget _buildBottomNav(
-    List<MenuModel> items,
-    int selectedIndex,
-    ValueChanged<int> onSelect,
-  ) {
-    return NavigationBar(
-      selectedIndex: selectedIndex,
-      onDestinationSelected: onSelect,
-      destinations: items
-          .map(
-            (m) => NavigationDestination(
-              icon: Icon(_getIcon(m.iconName)),
-              selectedIcon: Icon(_getIcon(m.iconName), color: kBrandColor),
-              label: _navLabel(m),
-              tooltip: m.label,
-            ),
-          )
-          .toList(),
     );
   }
 
