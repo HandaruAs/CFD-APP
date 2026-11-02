@@ -724,7 +724,7 @@ function ImportPedagangModal({ onClose, onSaved }: { onClose: () => void; onSave
           <div className="rounded-xl bg-surface-container-low p-md text-label-sm font-normal text-on-surface-variant">
             <p className="font-semibold text-on-surface">Format CSV (baris pertama header):</p>
             <code className="mt-1 block break-all font-mono">
-              nama_lengkap,nik,email,nama_usaha,jenis_dagangan,phone,alamat,lokasi_lapak,tanggal_lahir,jenis_lapak
+              nama_lengkap,nik,email,nama_usaha,jenis_dagangan,phone,alamat,tanggal_lahir,jenis_lapak
             </code>
             <p className="mt-sm">
               Kolom nama_lengkap, nik, email, dan nama_usaha wajib diisi; sisanya boleh kosong. Dari Excel, simpan dulu sebagai

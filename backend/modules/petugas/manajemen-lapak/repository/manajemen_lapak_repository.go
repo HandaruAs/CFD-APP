@@ -12,7 +12,7 @@ import (
 	"time"
 
 	"cfd-backend/modules/petugas/manajemen-lapak/entity"
-	"github.com/google/uuid"
+	"cfd-backend/modules/shared/eventaturan"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -680,7 +680,10 @@ func (r *Repository) CreatePedagangManual(ctx context.Context, req *entity.Creat
 	}
 	defer tx.Rollback(ctx)
 
-	randomPassword := uuid.NewString()
+	randomPassword, err := passwordAngka()
+	if err != nil {
+		return nil, err
+	}
 	hashed, err := bcrypt.GenerateFromPassword([]byte(randomPassword), bcrypt.DefaultCost)
 	if err != nil {
 		return nil, err
@@ -720,12 +723,12 @@ func (r *Repository) CreatePedagangManual(ctx context.Context, req *entity.Creat
 	err = tx.QueryRow(ctx, `
 		INSERT INTO pedagang_profiles
 			(id, user_id, nik, nama_usaha, jenis_dagangan, nama_lengkap, phone,
-			 alamat, lokasi_lapak, perkiraan_harga, tanggal_lahir, jenis_lapak,
+			 alamat, perkiraan_harga, tanggal_lahir, jenis_lapak,
 			 status_verifikasi, submitted_at, kategori)
-		VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, 'approved', NULL, 'lama')
+		VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, 'approved', NULL, 'lama')
 		RETURNING id
 	`, userID, req.NIK, req.NamaUsaha, jenisDaganganParam, req.NamaLengkap, req.Phone,
-		req.Alamat, req.LokasiLapak, req.PerkiraanHarga, tanggalLahirParam, jenisLapakParam).Scan(&pedagangID)
+		req.Alamat, req.PerkiraanHarga, tanggalLahirParam, jenisLapakParam).Scan(&pedagangID)
 	if err != nil {
 		return nil, terjemahkanError(err)
 	}
@@ -734,6 +737,17 @@ func (r *Repository) CreatePedagangManual(ctx context.Context, req *entity.Creat
 		return nil, err
 	}
 	return &entity.CreatePedagangResult{PedagangID: pedagangID, Email: req.Email, Password: randomPassword}, nil
+}
+
+// passwordAngka membuat password awal 8 digit angka acak (10000000-99999999)
+// dengan crypto/rand, beda tiap pedagang. Gampang diketik dan disampaikan
+// ke pedagang; yang disimpan ke database tetap hash bcrypt-nya.
+func passwordAngka() (string, error) {
+	n, err := eventaturan.RandIntn(90_000_000)
+	if err != nil {
+		return "", err
+	}
+	return strconv.Itoa(10_000_000 + n), nil
 }
 
 func (r *Repository) ImportPedagangBatch(ctx context.Context, rows []entity.CreatePedagangRequest) (int, int, []string) {

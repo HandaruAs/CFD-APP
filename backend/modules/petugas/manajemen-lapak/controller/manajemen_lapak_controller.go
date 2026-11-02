@@ -191,7 +191,10 @@ func (ctrl *ManajemenLapakController) CreatePedagang(c fiber.Ctx) (retErr error)
 //
 // Format CSV (baris pertama header, dipisah koma):
 //
-//	nama_lengkap,nik,email,nama_usaha,jenis_dagangan,phone,alamat,lokasi_lapak,perkiraan_harga,tanggal_lahir,jenis_lapak
+//	nama_lengkap,nik,email,nama_usaha,jenis_dagangan,phone,alamat,perkiraan_harga,tanggal_lahir,jenis_lapak
+//
+// Kolom lain (mis. lokasi_lapak dari file lama) diabaikan: lokasi berjualan
+// ditentukan oleh sesi, bukan oleh data pedagang.
 //
 // Kolom nama_lengkap, nik, email, nama_usaha wajib ada isinya; sisanya
 // boleh dikosongin. Format JSON: array objek dengan field yang sama
@@ -250,8 +253,8 @@ func (ctrl *ManajemenLapakController) ImportPedagang(c fiber.Ctx) (retErr error)
 
 // parseCSVPedagang -- header wajib ada, urutan kolom bebas asal nama
 // headernya cocok (case-insensitive): nama_lengkap, nik, email,
-// nama_usaha, jenis_dagangan, phone, alamat, lokasi_lapak,
-// perkiraan_harga, tanggal_lahir, jenis_lapak.
+// nama_usaha, jenis_dagangan, phone, alamat, perkiraan_harga,
+// tanggal_lahir, jenis_lapak.
 func parseCSVPedagang(raw []byte) ([]entity.CreatePedagangRequest, error) {
 	reader := csv.NewReader(bytes.NewReader(raw))
 	reader.TrimLeadingSpace = true
@@ -288,7 +291,6 @@ func parseCSVPedagang(raw []byte) ([]entity.CreatePedagangRequest, error) {
 			JenisDagangan:  get(row, "jenis_dagangan"),
 			Phone:          get(row, "phone"),
 			Alamat:         get(row, "alamat"),
-			LokasiLapak:    get(row, "lokasi_lapak"),
 			PerkiraanHarga: get(row, "perkiraan_harga"),
 			TanggalLahir:   get(row, "tanggal_lahir"),
 			JenisLapak:     get(row, "jenis_lapak"),

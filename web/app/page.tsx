@@ -1,6 +1,15 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
+import {
+  motion,
+  animate as motionAnimate,
+  useInView,
+  useMotionValue,
+  useReducedMotion,
+  useTransform,
+} from "motion/react";
+import { Bricolage_Grotesque } from "next/font/google";
 import { PublicNavbar } from "@/components/public-navbar";
 import { PublicFooter } from "@/components/public-footer";
 import {
@@ -14,6 +23,112 @@ import {
   MapPin,
   Circle,
 } from "lucide-react";
+
+/* =========================================================
+   FONT JUDUL -- Bricolage Grotesque
+========================================================= */
+
+const bricolage = Bricolage_Grotesque({
+  subsets: ["latin"],
+  weight: ["700"],
+  display: "swap",
+});
+
+/* =========================================================
+   JUDUL ANIMASI -- huruf muncul satu per satu dari atas,
+   warna solid hitam dan merah.
+   Animasi jalan saat judul masuk layar (sekali saja).
+   variant="light" dipakai di atas background gelap (hero).
+========================================================= */
+
+function AnimatedHeading({
+  as = "h2",
+  variant = "dark",
+  className = "",
+  children,
+}: {
+  as?: "h1" | "h2";
+  variant?: "dark" | "light";
+  className?: string;
+  children: string;
+}) {
+  const reduce = useReducedMotion();
+  const ref = useRef<HTMLDivElement>(null);
+  const inView = useInView(ref, { once: true });
+  const Tag = as;
+
+  // Dua warna solid (bukan gradasi): bagian awal hitam, bagian akhir merah.
+  // Di hero (background gelap) semuanya putih supaya tetap terbaca.
+  const [colorA, colorB] = variant === "light" ? ["#ffffff", "#ffffff"] : ["#0b0b0b", "#dc2626"];
+
+  let idx = 0;
+  const words = children.split(" ");
+
+  // Kalau ada koma, warna merah mulai tepat setelah kata yang berkoma
+  // (mis. "Empat tahap," hitam, "dari pendaftaran hingga berjualan" merah).
+  // Kalau tidak ada koma, judul dibagi dua seperti sebelumnya.
+  const commaIdx = words.findIndex((w) => w.endsWith(","));
+  const splitAt = commaIdx >= 0 ? commaIdx + 1 : Math.ceil(words.length / 2);
+
+  // Huruf muncul satu per satu, jatuh pelan dari atas, saat judul masuk layar.
+  // Ukuran font / tracking / margin dari `className` diteruskan lewat wrapper.
+  return (
+    <div ref={ref} className={`pb-[0.15em] ${className}`}>
+      <Tag className={bricolage.className} aria-label={children}>
+        {words.map((word, w) => (
+          <span
+            key={w}
+            aria-hidden="true"
+            className="inline-block whitespace-nowrap"
+            style={{ color: w < splitAt ? colorA : colorB }}
+          >
+            {word.split("").map((ch) => {
+              const i = idx++;
+              return (
+                <motion.span
+                  key={i}
+                  className="inline-block"
+                  initial={reduce ? false : { opacity: 0, y: "-0.7em" }}
+                  animate={reduce || inView ? { opacity: 1, y: 0 } : { opacity: 0, y: "-0.7em" }}
+                  transition={{ duration: 1.1, delay: 0.2 + i * 0.07, ease: [0.22, 1, 0.36, 1] }}
+                >
+                  {ch}
+                </motion.span>
+              );
+            })}
+            {w < words.length - 1 ? "\u00A0" : null}
+          </span>
+        ))}
+      </Tag>
+    </div>
+  );
+}
+
+/* =========================================================
+   ANGKA BERJALAN (count up) -- 0, 1, 2, ... sampai nilai akhir.
+   Jalan saat angka masuk layar, dan menghitung ulang dari nilai
+   sebelumnya kalau datanya berubah (refresh tiap 30 detik).
+========================================================= */
+
+function CountUp({ value }: { value: number }) {
+  const ref = useRef<HTMLSpanElement>(null);
+  const inView = useInView(ref, { once: true });
+  const reduce = useReducedMotion();
+  const mv = useMotionValue(0);
+  const rounded = useTransform(mv, (v) => Math.round(v));
+
+  useEffect(() => {
+    if (!inView) return;
+    if (reduce) {
+      mv.set(value);
+      return;
+    }
+    const controls = motionAnimate(mv, value, { duration: 1.8, ease: [0.22, 0.61, 0.36, 1] });
+    return () => controls.stop();
+  }, [inView, value, reduce, mv]);
+
+  return <motion.span ref={ref}>{rounded}</motion.span>;
+}
 
 /* =========================================================
    DATA
@@ -140,9 +255,9 @@ function SisaLapakRealtime() {
       <div className="flex flex-wrap items-end justify-between gap-4">
         <div className="max-w-2xl">
           <p className="font-mono text-xs font-medium uppercase tracking-wider text-blue">Data langsung</p>
-          <h2 className="mt-3 font-display text-3xl font-semibold tracking-tight text-ink-strong sm:text-[2.5rem]">
+          <AnimatedHeading className="mt-3 w-fit max-w-full text-3xl tracking-tight sm:text-[2.5rem]">
             Event CFD & sisa lapak
-          </h2>
+          </AnimatedHeading>
           <p className="mt-4 text-[15px] leading-relaxed text-ink-soft">
             Event hari ini sampai 2 minggu ke depan. Diperbarui otomatis tiap 30 detik. Klik event untuk melihat
             lokasinya.
@@ -152,8 +267,11 @@ function SisaLapakRealtime() {
           {!loading && !error && (
             <div className="rounded-2xl border border-line bg-white px-5 py-3 text-right">
               <p className="font-display text-2xl font-semibold text-ink-strong">
-                {totalSisa}
-                <span className="text-sm font-normal text-ink-soft"> / {totalKuota}</span>
+                <CountUp value={totalSisa} />
+                <span className="text-sm font-normal text-ink-soft">
+                  {" "}
+                  / <CountUp value={totalKuota} />
+                </span>
               </p>
               <p className="text-xs text-ink-soft">lapak tersisa (pendaftaran dibuka)</p>
             </div>
@@ -230,7 +348,13 @@ function SisaLapakRealtime() {
                           penuh ? "bg-[#fdecec] text-[#ba1a1a]" : "bg-leaf/10 text-leaf"
                         }`}
                       >
-                        {penuh ? "Penuh" : `Sisa ${ev.sisa} / ${ev.kuotaTotal}`}
+                        {penuh ? (
+                          "Penuh"
+                        ) : (
+                          <>
+                            Sisa <CountUp value={ev.sisa} /> / <CountUp value={ev.kuotaTotal} />
+                          </>
+                        )}
                       </span>
                       <ChevronDown
                         className={`h-4 w-4 text-ink-soft transition-transform ${isOpen ? "rotate-180" : ""}`}
@@ -300,9 +424,13 @@ function Hero() {
      
 
       <div className="relative mx-auto flex min-h-[640px] max-w-4xl flex-col items-center justify-center px-6 py-24 text-center sm:min-h-[720px] lg:px-8">
-        <h1 className="font-display text-[2.75rem] font-semibold leading-[1.05] tracking-tight text-white sm:text-[3.6rem]">
+        <AnimatedHeading
+          as="h1"
+          variant="light"
+          className="text-[2.75rem] leading-[1.05] tracking-tight sm:text-[3.6rem]"
+        >
           E-Event Surabaya
-        </h1>
+        </AnimatedHeading>
         <p className="mx-auto mt-5 max-w-xl text-[16px] leading-relaxed text-white/85 sm:text-[17px]">
           Portal resmi pendaftaran pedagang Car Free Day se-Surabaya. Daftar, isi data usaha, dan
           dapatkan nomor stan langsung dari HP -- tanpa antre ke posko.
@@ -359,9 +487,9 @@ export default function Home() {
         <div className="mx-auto max-w-5xl px-6 lg:px-8">
           <div className="max-w-2xl">
             <p className="font-mono text-xs font-medium uppercase tracking-wider text-blue">Buat pedagang</p>
-            <h2 className="mt-3 font-display text-3xl font-semibold tracking-tight text-ink-strong sm:text-[2.5rem]">
-            Jualan di CFD jadi lebih muda
-            </h2>
+            <AnimatedHeading className="mt-3 w-fit max-w-full text-3xl tracking-tight sm:text-[2.5rem]">
+              Jualan di CFD jadi lebih mudah
+            </AnimatedHeading>
           </div>
           <div className="mt-14 divide-y divide-line border-y border-line">
             {features.map((f, i) => {
@@ -388,9 +516,9 @@ export default function Home() {
         <div className="mx-auto max-w-6xl px-6 lg:px-8">
           <div className="max-w-2xl">
             <p className="font-mono text-xs font-medium uppercase tracking-wider text-blue">Alur pendaftaran pedagang</p>
-            <h2 className="mt-3 font-display text-3xl font-semibold tracking-tight text-ink-strong sm:text-[2.5rem]">
+            <AnimatedHeading className="mt-3 w-fit max-w-full text-3xl tracking-tight sm:text-[2.5rem]">
               Empat tahap, dari pendaftaran hingga berjualan
-            </h2>
+            </AnimatedHeading>
           </div>
 
           <div className="relative mt-16">
