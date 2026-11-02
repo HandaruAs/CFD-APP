@@ -3,8 +3,8 @@ package main
 import (
 	"context"
 	"log"
-	"time"
 	"os"
+	"time"
 
 	"cfd-backend/config"
 	"cfd-backend/database"
@@ -47,17 +47,17 @@ import (
 
 	// Repository Multi-Event (admin & pedagang)
 	adminEventRepo "cfd-backend/modules/admin/event/repository"
+	eventInfoRepo "cfd-backend/modules/event-info/repository"
 	pedagangEventRepo "cfd-backend/modules/pedagang/event/repository"
 	eventCheckInRepo "cfd-backend/modules/petugas/event-checkin/repository"
-	eventInfoRepo "cfd-backend/modules/event-info/repository"
 
 	// Modul Usecase
 	authUsecase "cfd-backend/modules/auth/usecase"
-	"cfd-backend/pkg/mailer"
 	menuUsecase "cfd-backend/modules/menu/usecase"
 	operasionalUsecase "cfd-backend/modules/operasional/usecase"
 	pedagangUsecase "cfd-backend/modules/pedagang/usecase"
 	userUsecase "cfd-backend/modules/user/usecase"
+	"cfd-backend/pkg/mailer"
 
 	// Modul Usecase - Lapak
 	lapakUsecase "cfd-backend/modules/pedagang/lapak/usecase"
@@ -88,9 +88,9 @@ import (
 
 	// Usecase Multi-Event
 	adminEventUsecase "cfd-backend/modules/admin/event/usecase"
+	eventInfoUsecase "cfd-backend/modules/event-info/usecase"
 	pedagangEventUsecase "cfd-backend/modules/pedagang/event/usecase"
 	eventCheckInUsecase "cfd-backend/modules/petugas/event-checkin/usecase"
-	eventInfoUsecase "cfd-backend/modules/event-info/usecase"
 
 	// Modul Controller
 	authController "cfd-backend/modules/auth/controller"
@@ -128,9 +128,9 @@ import (
 
 	// Controller Multi-Event
 	adminEventController "cfd-backend/modules/admin/event/controller"
+	eventInfoController "cfd-backend/modules/event-info/controller"
 	pedagangEventController "cfd-backend/modules/pedagang/event/controller"
 	eventCheckInController "cfd-backend/modules/petugas/event-checkin/controller"
-	eventInfoController "cfd-backend/modules/event-info/controller"
 
 	"github.com/gofiber/fiber/v3"
 	"github.com/gofiber/fiber/v3/middleware/cors"
@@ -290,17 +290,17 @@ func main() {
 	})
 
 	// Middleware
-app.Use(recover.New())
-app.Use(logger.New())
-app.Use(cors.New(cors.Config{
-	AllowOrigins:     cfg.CORSAllowedOrigins,
-	AllowMethods:     []string{"GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"},
-	AllowHeaders:     []string{"Origin", "Content-Type", "Authorization"},
-	AllowCredentials: true,
-}))
+	app.Use(recover.New())
+	app.Use(logger.New())
+	app.Use(cors.New(cors.Config{
+		AllowOrigins:     cfg.CORSAllowedOrigins,
+		AllowMethods:     []string{"GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"},
+		AllowHeaders:     []string{"Origin", "Content-Type", "Authorization"},
+		AllowCredentials: true,
+	}))
 
-// Sajikan foto yang di-upload (avatar, dll.)
-app.Use("/uploads", static.New("./uploads"))
+	// Sajikan foto yang di-upload (avatar, dll.)
+	app.Use("/uploads", static.New("./uploads"))
 
 	// Health check
 	app.Get("/health", func(c fiber.Ctx) error {
@@ -948,7 +948,7 @@ app.Use("/uploads", static.New("./uploads"))
 	app.Post("/api/admin/users/superadmin",
 		middleware.AuthMiddleware(cfg.JWTSecret),
 		middleware.RoleMiddleware(userRepository, "superadmin"),
-		userController.CreateUserByRole,
+		userController.CreateSuperadmin,
 	)
 
 	app.Get("/api/admin/users/superadmin/:id",

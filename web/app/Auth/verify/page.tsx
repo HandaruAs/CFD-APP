@@ -1,12 +1,12 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { Suspense, useEffect, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 
 const OTP_LENGTH = 6;
 const RESEND_SECONDS = 60;
 
-export default function VerifyOtpPage() {
+function VerifyOtpContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const email = searchParams.get("email") || "";
@@ -266,5 +266,13 @@ export default function VerifyOtpPage() {
         </div>
       </div>
     </div>
+  );
+}
+
+export default function VerifyOtpPage() {
+  return (
+    <Suspense fallback={<main className="min-h-screen flex items-center justify-center text-sm text-slate-500">Memuat halaman verifikasi...</main>}>
+      <VerifyOtpContent />
+    </Suspense>
   );
 }

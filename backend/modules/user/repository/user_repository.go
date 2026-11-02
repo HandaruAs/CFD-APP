@@ -145,6 +145,47 @@ func (r *UserRepository) GetPedagangStage(ctx context.Context, userID string) (s
 
 // CountByRole hitung berapa user (yang belum dihapus) punya role tertentu.
 // Dipakai buat guard "jangan sampai superadmin terakhir kehapus".
+// DeleteSuperadmin atomically checks the remaining admin count and soft-deletes the target.
+// The advisory transaction lock serializes concurrent deletion attempts.
+func (r *UserRepository) DeleteSuperadmin(ctx context.Context, targetID string) error {
+	tx, err := r.db.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback(ctx)
+
+	if _, err = tx.Exec(ctx, `SELECT pg_advisory_xact_lock(724901)`); err != nil {
+		return err
+	}
+
+	var count int
+	if err = tx.QueryRow(ctx,
+		`SELECT COUNT(*) FROM users u
+		 JOIN user_roles ur ON ur.user_id = u.id AND ur.deleted_at IS NULL
+		 JOIN roles r ON r.id = ur.role_id AND r.deleted_at IS NULL
+		 WHERE r.slug = 'superadmin' AND u.deleted_at IS NULL`,
+	).Scan(&count); err != nil {
+		return err
+	}
+	if count <= 1 {
+		return entity.ErrLastSuperadmin
+	}
+
+	result, err := tx.Exec(ctx,
+		`UPDATE users SET deleted_at = now() WHERE id = $1 AND deleted_at IS NULL
+		 AND EXISTS (SELECT 1 FROM user_roles ur JOIN roles r ON r.id = ur.role_id
+		 WHERE ur.user_id = users.id AND ur.deleted_at IS NULL AND r.slug = 'superadmin' AND r.deleted_at IS NULL)`,
+		targetID,
+	)
+	if err != nil {
+		return err
+	}
+	if result.RowsAffected() == 0 {
+		return pgx.ErrNoRows
+	}
+	return tx.Commit(ctx)
+}
+
 func (r *UserRepository) CountByRole(ctx context.Context, roleSlug string) (int, error) {
 	var count int
 	err := r.db.QueryRow(ctx,

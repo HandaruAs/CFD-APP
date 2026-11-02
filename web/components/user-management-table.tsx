@@ -45,12 +45,8 @@ const avatarPalette = [
   "bg-rose-100 text-rose-700",
 ];
 
-const STATUS_OPTIONS = [
-  { value: "", label: "Semua Status" },
-  { value: "active", label: "Aktif" },
-  { value: "suspended", label: "Ditangguhkan" },
-  { value: "banned", label: "Diblokir" },
-];
+const STATUS_OPTIONS = [{ value: "", label: "Semua Admin" }];
+
 
 // Jumlah baris per halaman untuk SEMUA tabel manajemen user. Ubah di sini
 // saja -- halaman (Petugas, Admin, dst) tidak perlu menulis angkanya sendiri.
@@ -69,8 +65,8 @@ export function UserManagementTable({
   onAddClick,
   onEditUser,
   onDeleteUser,
-  onToggleActive,
   pageSize = DEFAULT_PAGE_SIZE,
+  showStatusFilter = true,
 }: {
   title: string;
   subtitle: string;
@@ -84,8 +80,8 @@ export function UserManagementTable({
   onAddClick?: () => void;
   onEditUser?: (user: User) => void;
   onDeleteUser?: (user: User) => void;
-  onToggleActive?: (user: User) => Promise<void>;
   pageSize?: number;
+  showStatusFilter?: boolean;
 }) {
   const [users, setUsers] = useState<User[]>([]);
   const [searchInput, setSearchInput] = useState("");
@@ -94,6 +90,8 @@ export function UserManagementTable({
   const [filterOpen, setFilterOpen] = useState(false);
   const [page, setPage] = useState(1);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState("");
+  const [reloadCounter, setReloadCounter] = useState(0);
   const [totalData, setTotalData] = useState(0);
 
   // Debounce: tunggu 400ms setelah user berhenti ngetik sebelum nembak fetch,
@@ -111,6 +109,7 @@ export function UserManagementTable({
 
     async function fetchData() {
       setLoading(true);
+      setLoadError("");
       try {
         const token = localStorage.getItem("cfd_token");
         const params = new URLSearchParams({
@@ -134,6 +133,7 @@ export function UserManagementTable({
         if (!cancelled) {
           setUsers([]);
           setTotalData(0);
+          setLoadError("Data admin gagal dimuat. Periksa koneksi lalu coba lagi.");
         }
       } finally {
         if (!cancelled) setLoading(false);
@@ -145,23 +145,8 @@ export function UserManagementTable({
       cancelled = true;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [search, status, page, pageSize, apiEndpoint, reloadSignal, JSON.stringify(extraParams)]);
+  }, [search, status, page, pageSize, apiEndpoint, reloadSignal, reloadCounter, JSON.stringify(extraParams)]);
 
-  const toggleActive = async (u: User) => {
-    setUsers((prev) =>
-      prev.map((x) => (x.id === u.id ? { ...x, active: !x.active } : x))
-    );
-
-    if (!onToggleActive) return;
-
-    try {
-      await onToggleActive(u);
-    } catch {
-      setUsers((prev) =>
-        prev.map((x) => (x.id === u.id ? { ...x, active: u.active } : x))
-      );
-    }
-  };
 
   const hasRowActions = Boolean(onEditUser || onDeleteUser);
   const columnCount = hasRowActions ? 4 : 3;
@@ -249,7 +234,7 @@ export function UserManagementTable({
           />
         </div>
 
-        <div className="relative">
+        {showStatusFilter && <div className="relative">
           <button
             onClick={() => setFilterOpen((prev) => !prev)}
             className="flex items-center gap-2 text-sm font-semibold text-slate-600 border border-slate-200 rounded-lg px-4 py-3 hover:bg-slate-50"
@@ -279,7 +264,7 @@ export function UserManagementTable({
               ))}
             </div>
           )}
-        </div>
+        </div>}
       </div>
 
       {/* Table */}
@@ -313,6 +298,8 @@ export function UserManagementTable({
                   Memuat data...
                 </td>
               </tr>
+            ) : loadError ? (
+              <tr><td colSpan={columnCount} className="px-5 py-12 text-center"><p role="alert" className="text-sm font-medium text-red-700">{loadError}</p><button type="button" onClick={() => setReloadCounter((current) => current + 1)} className="mt-3 rounded-lg border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50">Coba lagi</button></td></tr>
             ) : users.length === 0 ? (
               <tr>
                 <td colSpan={columnCount} className="px-5 py-16">

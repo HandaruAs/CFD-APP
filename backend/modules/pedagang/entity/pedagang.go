@@ -6,7 +6,7 @@ package entity
 type PengajuanUsahaRequest struct {
 	NIK           string `json:"nik" validate:"required,len=16"`
 	NamaLengkap   string `json:"nama_lengkap" validate:"required"`
-	TanggalLahir  string `json:"tanggal_lahir" validate:"required,datetime=2006-01-02"` 
+	TanggalLahir  string `json:"tanggal_lahir" validate:"required,datetime=2006-01-02"`
 	NamaUsaha     string `json:"nama_usaha" validate:"required"`
 	JenisDagangan string `json:"jenis_dagangan" validate:"required,oneof=makanan_minuman bukan_makanan_minuman"`
 	JenisLapak    string `json:"jenis_lapak" validate:"required,oneof=rombong meja"`
@@ -48,6 +48,7 @@ type PedagangUserDTO struct {
 	Alamat           *string `json:"alamat"`
 	LokasiLapak      *string `json:"lokasiLapak"`
 	StatusVerifikasi *string `json:"statusVerifikasi"`
+	StatusPedagang   *string `json:"statusPedagang"`
 }
 
 type ListPedagangResponse struct {

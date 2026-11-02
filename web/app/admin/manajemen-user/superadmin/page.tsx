@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Users, ShieldCheck, Ban } from "lucide-react";
+import { Users, ShieldCheck } from "lucide-react";
 import { UserManagementTable, type StatCard, type User } from "@/components/user-management-table";
 import { ConfirmDialog } from "@/components/confirm-dialog";
 
@@ -11,8 +11,7 @@ export default function ManajemenUserSuperadminPage() {
   const [stats, setStats] = useState<{
     total: number | null;
     active: number | null;
-    suspended: number | null;
-  }>({ total: null, active: null, suspended: null });
+  }>({ total: null, active: null });
   const [reloadSignal, setReloadSignal] = useState(0);
 
   // ID akun yang lagi login -- dipakai buat cegah user hapus akunnya
@@ -24,15 +23,6 @@ export default function ManajemenUserSuperadminPage() {
   const [deleteTarget, setDeleteTarget] = useState<User | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
   const [deleteError, setDeleteError] = useState("");
-  // Pesan kecil (bukan alert() browser) saat mencoba menghapus akun sendiri
-  const [infoSendiri, setInfoSendiri] = useState(false);
-
-  useEffect(() => {
-    if (!infoSendiri) return;
-    const t = setTimeout(() => setInfoSendiri(false), 3500);
-    return () => clearTimeout(t);
-  }, [infoSendiri]);
-
   useEffect(() => {
     async function fetchStats() {
       try {
@@ -46,7 +36,6 @@ export default function ManajemenUserSuperadminPage() {
           setStats({
             total: data.total ?? 0,
             active: data.active ?? 0,
-            suspended: data.suspended ?? 0,
           });
         }
       } catch {
@@ -92,7 +81,7 @@ export default function ManajemenUserSuperadminPage() {
       icon: ShieldCheck,
       iconBg: "bg-secondary-container/60",
       iconColor: "text-on-secondary-container",
-      sublabel: "Punya akses penuh",
+      sublabel: "Akun dapat mengakses sistem",
     },
   ];
 
@@ -104,8 +93,7 @@ export default function ManajemenUserSuperadminPage() {
     // Guard sisi UI -- cegah dialog hapus kebuka buat akun sendiri.
     // Guard "beneran" tetap di backend.
     if (user.id === myId) {
-      setDeleteError("Kamu tidak bisa menghapus akunmu sendiri.");
-      setInfoSendiri(true);
+      setDeleteError("Akun yang sedang digunakan tidak dapat dihapus.");
       return;
     }
     setDeleteError("");
@@ -156,14 +144,9 @@ export default function ManajemenUserSuperadminPage() {
         onAddClick={() => router.push("/admin/manajemen-user/superadmin/tambah")}
         onDeleteUser={handleDeleteClick}
         onEditUser={handleEditUser}
+        showStatusFilter={false}
       />
 
-      {infoSendiri && (
-        <div role="status" className="pt-toast pt-toast-error">
-          <Ban className="h-4 w-4 shrink-0" />
-          Kamu tidak bisa menghapus akunmu sendiri.
-        </div>
-      )}
 
       <ConfirmDialog
         open={!!deleteTarget}

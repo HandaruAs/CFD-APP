@@ -37,7 +37,10 @@ class ManajemenLapakScreen extends StatelessWidget {
               ),
               labelColor: Colors.white,
               unselectedLabelColor: kBrandColor,
-              labelStyle: const TextStyle(fontWeight: FontWeight.w700, fontSize: 14),
+              labelStyle: const TextStyle(
+                fontWeight: FontWeight.w700,
+                fontSize: 14,
+              ),
               tabs: const [
                 Tab(height: 40, text: 'Ruas & Kuota'),
                 Tab(height: 40, text: 'Laporan'),
@@ -45,12 +48,7 @@ class ManajemenLapakScreen extends StatelessWidget {
             ),
           ),
           const Expanded(
-            child: TabBarView(
-              children: [
-                _RuasKuotaTab(),
-                LaporanScreen(),
-              ],
-            ),
+            child: TabBarView(children: [_RuasKuotaTab(), LaporanScreen()]),
           ),
         ],
       ),
@@ -102,7 +100,11 @@ class _RuasKuotaTabState extends ConsumerState<_RuasKuotaTab>
     );
   }
 
-  Widget _buildBody(BuildContext context, ManajemenLapakState state, ManajemenLapakNotifier notifier) {
+  Widget _buildBody(
+    BuildContext context,
+    ManajemenLapakState state,
+    ManajemenLapakNotifier notifier,
+  ) {
     if (state.isLoading && state.wilayah.isEmpty) {
       return const Center(child: CircularProgressIndicator());
     }
@@ -121,7 +123,10 @@ class _RuasKuotaTabState extends ConsumerState<_RuasKuotaTab>
             child: ElevatedButton(
               onPressed: notifier.load,
               style: ElevatedButton.styleFrom(backgroundColor: kBrandColor),
-              child: const Text('Coba Lagi', style: TextStyle(color: Colors.white)),
+              child: const Text(
+                'Coba Lagi',
+                style: TextStyle(color: Colors.white),
+              ),
             ),
           ),
         ],
@@ -146,10 +151,14 @@ class _RuasKuotaTabState extends ConsumerState<_RuasKuotaTab>
       padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
       children: [
         _SectionLabel(
-          'Kecamatan',
+          'Pilih wilayah',
           trailing: state.kecamatanBisaDihapus && state.kecamatanDipilih != null
               ? TextButton.icon(
-                  onPressed: () => _confirmDeleteKecamatan(context, ref, state.kecamatanDipilih!),
+                  onPressed: () => _confirmDeleteKecamatan(
+                    context,
+                    ref,
+                    state.kecamatanDipilih!,
+                  ),
                   icon: const Icon(Icons.delete_outline_rounded, size: 16),
                   label: const Text('Hapus'),
                   style: TextButton.styleFrom(
@@ -159,50 +168,108 @@ class _RuasKuotaTabState extends ConsumerState<_RuasKuotaTab>
                 )
               : null,
         ),
-        _ChipRow(children: [
-          for (final e in state.kecamatanOpsi)
-            _SelectChip(
-              label: e.value.nama,
-              selected: e.key == state.kecamatanKey,
-              onTap: () => notifier.setKecamatan(e.key),
-            ),
-          _AddChip(label: 'Kecamatan', onTap: () => _openKecamatanDialog(context, ref)),
-        ]),
-        const SizedBox(height: 14),
-        const _SectionLabel('Jalan'),
-        _ChipRow(children: [
-          for (final j in state.jalanOpsi)
-            _SelectChip(
-              label: '${j.kodeJalan} · ${j.namaJalan}',
-              selected: j.id == state.jalanId,
-              onTap: () => notifier.setJalan(j.id),
-            ),
-          if (state.bisaTambahJalan)
-            _AddChip(
-              label: 'Jalan',
-              onTap: () {
-                final kecId = state.kecamatanDipilih?.id;
-                if (kecId != null) _openJalanFormDialog(context, ref, kecamatanId: kecId);
-              },
-            ),
-        ]),
+        _StepCard(
+          number: '1',
+          title: 'Pilih kecamatan',
+          subtitle:
+              state.kecamatanDipilih?.nama ??
+              'Pilih wilayah untuk melihat daftar jalan',
+          child: _ChipRow(
+            children: [
+              for (final e in state.kecamatanOpsi)
+                _SelectChip(
+                  label: e.value.nama,
+                  selected: e.key == state.kecamatanKey,
+                  onTap: () => notifier.setKecamatan(e.key),
+                ),
+              _AddChip(
+                label: 'Kecamatan',
+                onTap: () => _openKecamatanDialog(context, ref),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 12),
+        _StepCard(
+          number: '2',
+          title: 'Pilih jalan',
+          subtitle: state.kecamatanDipilih == null
+              ? 'Pilih kecamatan terlebih dahulu'
+              : (jalan == null
+                    ? 'Belum ada jalan di kecamatan ini'
+                    : '${jalan.kodeJalan} · ${jalan.namaJalan}'),
+          child: _ChipRow(
+            children: [
+              for (final j in state.jalanOpsi)
+                _SelectChip(
+                  label: '${j.kodeJalan} · ${j.namaJalan}',
+                  selected: j.id == state.jalanId,
+                  onTap: () => notifier.setJalan(j.id),
+                ),
+              if (state.bisaTambahJalan)
+                _AddChip(
+                  label: 'Jalan',
+                  onTap: () {
+                    final kecId = state.kecamatanDipilih?.id;
+                    if (kecId != null)
+                      _openJalanFormDialog(context, ref, kecamatanId: kecId);
+                  },
+                ),
+            ],
+          ),
+        ),
+        if (jalan != null) ...[
+          const SizedBox(height: 16),
+          Row(
+            children: [
+              const Icon(
+                Icons.location_on_outlined,
+                size: 17,
+                color: kBrandColor,
+              ),
+              const SizedBox(width: 5),
+              Expanded(
+                child: Text(
+                  '${state.kecamatanDipilih?.nama ?? ''}  ›  ${jalan.namaJalan}',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    fontSize: 12,
+                    color: Colors.black54,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ],
         if (state.jalanOpsi.isEmpty)
           const Padding(
             padding: EdgeInsets.only(top: 6),
-            child: Text('Kecamatan ini belum punya jalan',
-                style: TextStyle(fontSize: 12.5, color: Colors.black54)),
+            child: Text(
+              'Kecamatan ini belum punya jalan',
+              style: TextStyle(fontSize: 12.5, color: Colors.black54),
+            ),
           ),
         const SizedBox(height: 16),
         if (jalan != null) ...[
           _JalanSummaryCard(
             jalan: jalan,
-            onEdit: () => _openJalanFormDialog(context, ref, kecamatanId: null, jalan: jalan),
+            onEdit: () => _openJalanFormDialog(
+              context,
+              ref,
+              kecamatanId: null,
+              jalan: jalan,
+            ),
             onDelete: () => _confirmDeleteJalan(context, ref, jalan),
           ),
           const SizedBox(height: 16),
           Row(
             children: [
-              const Text('Daftar Ruas', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 16)),
+              const Text(
+                'Daftar Ruas',
+                style: TextStyle(fontWeight: FontWeight.w800, fontSize: 16),
+              ),
               const SizedBox(width: 8),
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
@@ -210,9 +277,14 @@ class _RuasKuotaTabState extends ConsumerState<_RuasKuotaTab>
                   color: kBrandColor.withValues(alpha: 0.1),
                   borderRadius: BorderRadius.circular(10),
                 ),
-                child: Text('${jalan.ruas.length}',
-                    style: const TextStyle(
-                        fontSize: 12, fontWeight: FontWeight.w700, color: kBrandColor)),
+                child: Text(
+                  '${jalan.ruas.length}',
+                  style: const TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w700,
+                    color: kBrandColor,
+                  ),
+                ),
               ),
               const Spacer(),
               FilledButton.tonalIcon(
@@ -238,9 +310,16 @@ class _RuasKuotaTabState extends ConsumerState<_RuasKuotaTab>
               ),
               child: const Column(
                 children: [
-                  Icon(Icons.signpost_outlined, color: Colors.black38, size: 32),
+                  Icon(
+                    Icons.signpost_outlined,
+                    color: Colors.black38,
+                    size: 32,
+                  ),
                   SizedBox(height: 8),
-                  Text('Belum ada ruas di jalan ini.', style: TextStyle(color: Colors.black54)),
+                  Text(
+                    'Belum ada ruas di jalan ini.',
+                    style: TextStyle(color: Colors.black54),
+                  ),
                 ],
               ),
             )
@@ -257,6 +336,87 @@ class _RuasKuotaTabState extends ConsumerState<_RuasKuotaTab>
 
 // ---------------------------------------------------------------- widgets
 
+class _StepCard extends StatelessWidget {
+  final String number;
+  final String title;
+  final String subtitle;
+  final Widget child;
+
+  const _StepCard({
+    required this.number,
+    required this.title,
+    required this.subtitle,
+    required this.child,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.fromLTRB(14, 13, 14, 12),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: const Color(0xFFE7ECF3)),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.025),
+            blurRadius: 12,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                width: 28,
+                height: 28,
+                alignment: Alignment.center,
+                decoration: BoxDecoration(
+                  color: kBrandColor.withValues(alpha: 0.10),
+                  shape: BoxShape.circle,
+                ),
+                child: Text(
+                  number,
+                  style: const TextStyle(
+                    color: kBrandColor,
+                    fontWeight: FontWeight.w800,
+                    fontSize: 13,
+                  ),
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  title,
+                  style: const TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+              ),
+              Text(
+                subtitle,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(
+                  fontSize: 11.5,
+                  color: Colors.black54,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          child,
+        ],
+      ),
+    );
+  }
+}
+
 class _SectionLabel extends StatelessWidget {
   final String text;
   final Widget? trailing;
@@ -268,8 +428,14 @@ class _SectionLabel extends StatelessWidget {
       height: 36,
       child: Row(
         children: [
-          Text(text,
-              style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: Colors.black54)),
+          Text(
+            text,
+            style: const TextStyle(
+              fontSize: 13,
+              fontWeight: FontWeight.w700,
+              color: Colors.black54,
+            ),
+          ),
           const Spacer(),
           if (trailing != null) trailing!,
         ],
@@ -301,7 +467,11 @@ class _SelectChip extends StatelessWidget {
   final String label;
   final bool selected;
   final VoidCallback onTap;
-  const _SelectChip({required this.label, required this.selected, required this.onTap});
+  const _SelectChip({
+    required this.label,
+    required this.selected,
+    required this.onTap,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -309,7 +479,9 @@ class _SelectChip extends StatelessWidget {
       color: selected ? kBrandColor : Colors.white,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(14),
-        side: BorderSide(color: selected ? kBrandColor : kBrandColor.withValues(alpha: 0.15)),
+        side: BorderSide(
+          color: selected ? kBrandColor : kBrandColor.withValues(alpha: 0.15),
+        ),
       ),
       child: InkWell(
         borderRadius: BorderRadius.circular(14),
@@ -328,12 +500,14 @@ class _SelectChip extends StatelessWidget {
                 const Icon(Icons.check_rounded, size: 16, color: Colors.white),
                 const SizedBox(width: 6),
               ],
-              Text(label,
-                  style: TextStyle(
-                    fontSize: 13.5,
-                    fontWeight: FontWeight.w700,
-                    color: selected ? Colors.white : kBrandColor,
-                  )),
+              Text(
+                label,
+                style: TextStyle(
+                  fontSize: 13.5,
+                  fontWeight: FontWeight.w700,
+                  color: selected ? Colors.white : kBrandColor,
+                ),
+              ),
             ],
           ),
         ),
@@ -367,9 +541,14 @@ class _AddChip extends StatelessWidget {
             children: [
               const Icon(Icons.add_rounded, size: 18, color: kBrandColor),
               const SizedBox(width: 4),
-              Text(label,
-                  style: const TextStyle(
-                      fontSize: 13.5, fontWeight: FontWeight.w700, color: kBrandColor)),
+              Text(
+                label,
+                style: const TextStyle(
+                  fontSize: 13.5,
+                  fontWeight: FontWeight.w700,
+                  color: kBrandColor,
+                ),
+              ),
             ],
           ),
         ),
@@ -385,7 +564,11 @@ class _JalanSummaryCard extends StatelessWidget {
   final VoidCallback onEdit;
   final VoidCallback onDelete;
 
-  const _JalanSummaryCard({required this.jalan, required this.onEdit, required this.onDelete});
+  const _JalanSummaryCard({
+    required this.jalan,
+    required this.onEdit,
+    required this.onDelete,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -399,12 +582,20 @@ class _JalanSummaryCard extends StatelessWidget {
       padding: const EdgeInsets.all(18),
       decoration: BoxDecoration(
         gradient: LinearGradient(
-          colors: over ? [const Color(0xFFB91C1C), const Color(0xFFDC2626)] : [kBrandColor, kBrandColorLight],
+          colors: over
+              ? [const Color(0xFFB91C1C), const Color(0xFFDC2626)]
+              : [kBrandColor, kBrandColorLight],
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
         ),
         borderRadius: BorderRadius.circular(20),
-        boxShadow: [BoxShadow(color: warna.withValues(alpha: 0.25), blurRadius: 18, offset: const Offset(0, 8))],
+        boxShadow: [
+          BoxShadow(
+            color: warna.withValues(alpha: 0.25),
+            blurRadius: 18,
+            offset: const Offset(0, 8),
+          ),
+        ],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -412,21 +603,35 @@ class _JalanSummaryCard extends StatelessWidget {
           Row(
             children: [
               Expanded(
-                child: Text('${jalan.kodeJalan} - ${jalan.namaJalan}',
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w700, fontSize: 14)),
+                child: Text(
+                  '${jalan.kodeJalan} - ${jalan.namaJalan}',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontWeight: FontWeight.w700,
+                    fontSize: 14,
+                  ),
+                ),
               ),
               IconButton(
                 tooltip: 'Edit jalan',
                 onPressed: onEdit,
-                icon: const Icon(Icons.edit_outlined, size: 20, color: Colors.white),
+                icon: const Icon(
+                  Icons.edit_outlined,
+                  size: 20,
+                  color: Colors.white,
+                ),
                 visualDensity: VisualDensity.compact,
               ),
               IconButton(
                 tooltip: 'Hapus jalan',
                 onPressed: onDelete,
-                icon: const Icon(Icons.delete_outline_rounded, size: 20, color: Colors.white),
+                icon: const Icon(
+                  Icons.delete_outline_rounded,
+                  size: 20,
+                  color: Colors.white,
+                ),
                 visualDensity: VisualDensity.compact,
               ),
             ],
@@ -435,18 +640,39 @@ class _JalanSummaryCard extends StatelessWidget {
           Row(
             crossAxisAlignment: CrossAxisAlignment.end,
             children: [
-              Text('$totalRuas',
-                  style: const TextStyle(color: Colors.white, fontSize: 34, fontWeight: FontWeight.w800, height: 1)),
-              Text(' / ${jalan.kapasitas}',
-                  style: const TextStyle(color: Colors.white70, fontSize: 16, fontWeight: FontWeight.w600)),
+              Text(
+                '$totalRuas',
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 34,
+                  fontWeight: FontWeight.w800,
+                  height: 1,
+                ),
+              ),
+              Text(
+                ' / ${jalan.kapasitas}',
+                style: const TextStyle(
+                  color: Colors.white70,
+                  fontSize: 16,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
               const Spacer(),
-              Text('${(persen * 100).round()}%',
-                  style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.w700)),
+              Text(
+                '${(persen * 100).round()}%',
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 16,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
             ],
           ),
           const SizedBox(height: 4),
-          const Text('Kapasitas jalan terbagi ke ruas',
-              style: TextStyle(color: Colors.white70, fontSize: 12)),
+          const Text(
+            'Kapasitas jalan terbagi ke ruas',
+            style: TextStyle(color: Colors.white70, fontSize: 12),
+          ),
           const SizedBox(height: 12),
           ClipRRect(
             borderRadius: BorderRadius.circular(8),
@@ -465,19 +691,35 @@ class _JalanSummaryCard extends StatelessWidget {
                 color: Colors.white.withValues(alpha: 0.16),
                 borderRadius: BorderRadius.circular(10),
               ),
-              child: Text('Kuota event aktif  ${jalan.terisi} / ${jalan.kuotaEvent}',
-                  style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.w600)),
+              child: Text(
+                'Kuota event aktif  ${jalan.terisi} / ${jalan.kuotaEvent}',
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
             ),
           ],
           if (over) ...[
             const SizedBox(height: 10),
             const Row(
               children: [
-                Icon(Icons.warning_amber_rounded, color: Colors.white, size: 16),
+                Icon(
+                  Icons.warning_amber_rounded,
+                  color: Colors.white,
+                  size: 16,
+                ),
                 SizedBox(width: 6),
                 Expanded(
-                  child: Text('Total kuota ruas melebihi kapasitas jalan.',
-                      style: TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.w600)),
+                  child: Text(
+                    'Total kuota ruas melebihi kapasitas jalan.',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
                 ),
               ],
             ),
@@ -504,77 +746,112 @@ class _RuasCard extends ConsumerWidget {
       behavior: HitTestBehavior.opaque,
       onTap: () => _showRuasSheet(context, ref, jalan, ruas),
       child: Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(18),
-        boxShadow: [BoxShadow(color: kBrandColor.withValues(alpha: 0.06), blurRadius: 16, offset: const Offset(0, 6))],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Container(
-                width: 44,
-                height: 44,
-                decoration: BoxDecoration(
-                  color: kBrandColor.withValues(alpha: 0.10),
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: const Icon(Icons.signpost_rounded, color: kBrandColor, size: 22),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(ruas.namaRuas, style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 15)),
-                    const SizedBox(height: 2),
-                    Text('Nomor ${ruas.nomorMulai}–${ruas.nomorSelesai}',
-                        style: const TextStyle(fontSize: 12.5, color: Colors.black54)),
-                  ],
-                ),
-              ),
-              _StatusChip(penuh: penuh, sisa: ruas.sisa),
-              IconButton(
-                onPressed: () => _showRuasSheet(context, ref, jalan, ruas),
-                icon: const Icon(Icons.more_horiz_rounded, color: Colors.black54),
-                visualDensity: VisualDensity.compact,
-              ),
-            ],
-          ),
-          const SizedBox(height: 14),
-          ClipRRect(
-            borderRadius: BorderRadius.circular(8),
-            child: LinearProgressIndicator(
-              value: persen.clamp(0, 1),
-              minHeight: 8,
-              backgroundColor: kBrandColor.withValues(alpha: 0.08),
-              color: warna,
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(18),
+          boxShadow: [
+            BoxShadow(
+              color: kBrandColor.withValues(alpha: 0.06),
+              blurRadius: 16,
+              offset: const Offset(0, 6),
             ),
-          ),
-          const SizedBox(height: 12),
-          Row(
-            children: [
-              _MiniStat('Kuota', ruas.kuota),
-              _MiniStat('Lama', ruas.terisiLama),
-              _MiniStat('Baru', ruas.terisiBaru),
-              _MiniStat('Sisa', ruas.sisa, warna: penuh ? Colors.red : const Color(0xFF15803D)),
-            ],
-          ),
-        ],
-      ),
+          ],
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Container(
+                  width: 44,
+                  height: 44,
+                  decoration: BoxDecoration(
+                    color: kBrandColor.withValues(alpha: 0.10),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: const Icon(
+                    Icons.signpost_rounded,
+                    color: kBrandColor,
+                    size: 22,
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        ruas.namaRuas,
+                        style: const TextStyle(
+                          fontWeight: FontWeight.w800,
+                          fontSize: 15,
+                        ),
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        'Nomor ${ruas.nomorMulai}–${ruas.nomorSelesai}',
+                        style: const TextStyle(
+                          fontSize: 12.5,
+                          color: Colors.black54,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                _StatusChip(penuh: penuh, sisa: ruas.sisa),
+                IconButton(
+                  onPressed: () => _showRuasSheet(context, ref, jalan, ruas),
+                  icon: const Icon(
+                    Icons.more_horiz_rounded,
+                    color: Colors.black54,
+                  ),
+                  visualDensity: VisualDensity.compact,
+                ),
+              ],
+            ),
+            const SizedBox(height: 14),
+            ClipRRect(
+              borderRadius: BorderRadius.circular(8),
+              child: LinearProgressIndicator(
+                value: persen.clamp(0, 1),
+                minHeight: 8,
+                backgroundColor: kBrandColor.withValues(alpha: 0.08),
+                color: warna,
+              ),
+            ),
+            const SizedBox(height: 12),
+            Row(
+              children: [
+                _MiniStat('Kuota', ruas.kuota),
+                _MiniStat('Lama', ruas.terisiLama),
+                _MiniStat('Baru', ruas.terisiBaru),
+                _MiniStat(
+                  'Sisa',
+                  ruas.sisa,
+                  warna: penuh ? Colors.red : const Color(0xFF15803D),
+                ),
+              ],
+            ),
+          ],
+        ),
       ),
     );
   }
 }
 
-Future<void> _showRuasSheet(BuildContext context, WidgetRef ref, JalanLengkap jalan, RuasLengkap ruas) {
+Future<void> _showRuasSheet(
+  BuildContext context,
+  WidgetRef ref,
+  JalanLengkap jalan,
+  RuasLengkap ruas,
+) {
   return showModalBottomSheet<void>(
     context: context,
     showDragHandle: true,
-    shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
+    shape: const RoundedRectangleBorder(
+      borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+    ),
     builder: (ctx) => SafeArea(
       child: Column(
         mainAxisSize: MainAxisSize.min,
@@ -583,8 +860,13 @@ Future<void> _showRuasSheet(BuildContext context, WidgetRef ref, JalanLengkap ja
             padding: const EdgeInsets.fromLTRB(20, 0, 20, 8),
             child: Align(
               alignment: Alignment.centerLeft,
-              child: Text(ruas.namaRuas,
-                  style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w800)),
+              child: Text(
+                ruas.namaRuas,
+                style: const TextStyle(
+                  fontSize: 17,
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
             ),
           ),
           ListTile(
@@ -596,8 +878,14 @@ Future<void> _showRuasSheet(BuildContext context, WidgetRef ref, JalanLengkap ja
             },
           ),
           ListTile(
-            leading: const Icon(Icons.delete_outline_rounded, color: Colors.red),
-            title: const Text('Hapus Ruas', style: TextStyle(color: Colors.red)),
+            leading: const Icon(
+              Icons.delete_outline_rounded,
+              color: Colors.red,
+            ),
+            title: const Text(
+              'Hapus Ruas',
+              style: TextStyle(color: Colors.red),
+            ),
             onTap: () {
               Navigator.pop(ctx);
               _confirmDelete(context, ref, ruas);
@@ -622,9 +910,19 @@ class _MiniStat extends StatelessWidget {
     return Expanded(
       child: Column(
         children: [
-          Text('$value', style: TextStyle(fontSize: 17, fontWeight: FontWeight.w800, color: warna)),
+          Text(
+            '$value',
+            style: TextStyle(
+              fontSize: 17,
+              fontWeight: FontWeight.w800,
+              color: warna,
+            ),
+          ),
           const SizedBox(height: 1),
-          Text(label, style: const TextStyle(fontSize: 11.5, color: Colors.black54)),
+          Text(
+            label,
+            style: const TextStyle(fontSize: 11.5, color: Colors.black54),
+          ),
         ],
       ),
     );
@@ -643,9 +941,18 @@ class _StatusChip extends StatelessWidget {
     return Container(
       margin: const EdgeInsets.only(left: 8),
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-      decoration: BoxDecoration(color: warna.withValues(alpha: 0.12), borderRadius: BorderRadius.circular(20)),
-      child: Text(penuh ? 'Penuh' : 'Sisa $sisa',
-          style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700, color: warna)),
+      decoration: BoxDecoration(
+        color: warna.withValues(alpha: 0.12),
+        borderRadius: BorderRadius.circular(20),
+      ),
+      child: Text(
+        penuh ? 'Penuh' : 'Sisa $sisa',
+        style: TextStyle(
+          fontSize: 11.5,
+          fontWeight: FontWeight.w700,
+          color: warna,
+        ),
+      ),
     );
   }
 }
@@ -666,21 +973,33 @@ Future<void> _openKecamatanDialog(BuildContext context, WidgetRef ref) async {
         child: TextFormField(
           controller: namaController,
           decoration: const InputDecoration(labelText: 'Nama Kecamatan'),
-          validator: (v) => (v == null || v.trim().isEmpty) ? 'Wajib diisi' : null,
+          validator: (v) =>
+              (v == null || v.trim().isEmpty) ? 'Wajib diisi' : null,
           autofocus: true,
         ),
       ),
       actions: [
-        TextButton(onPressed: () => Navigator.pop(dialogContext), child: const Text('Batal')),
+        TextButton(
+          onPressed: () => Navigator.pop(dialogContext),
+          child: const Text('Batal'),
+        ),
         ElevatedButton(
           onPressed: () async {
             if (!formKey.currentState!.validate()) return;
             Navigator.pop(dialogContext);
-            final ok = await notifier.createKecamatan(namaController.text.trim());
+            final ok = await notifier.createKecamatan(
+              namaController.text.trim(),
+            );
             if (!context.mounted) return;
             final error = ref.read(manajemenLapakProvider).error;
             ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(content: Text(ok ? 'Kecamatan berhasil ditambahkan.' : (error ?? 'Gagal menambah kecamatan.'))),
+              SnackBar(
+                content: Text(
+                  ok
+                      ? 'Kecamatan berhasil ditambahkan.'
+                      : (error ?? 'Gagal menambah kecamatan.'),
+                ),
+              ),
             );
           },
           style: ElevatedButton.styleFrom(backgroundColor: kBrandColor),
@@ -691,7 +1010,11 @@ Future<void> _openKecamatanDialog(BuildContext context, WidgetRef ref) async {
   );
 }
 
-Future<void> _confirmDeleteKecamatan(BuildContext context, WidgetRef ref, KecamatanLengkap kec) async {
+Future<void> _confirmDeleteKecamatan(
+  BuildContext context,
+  WidgetRef ref,
+  KecamatanLengkap kec,
+) async {
   final id = kec.id;
   if (id == null) return;
   final confirm = await showDialog<bool>(
@@ -703,7 +1026,10 @@ Future<void> _confirmDeleteKecamatan(BuildContext context, WidgetRef ref, Kecama
         '${kec.jalan.isNotEmpty ? ' beserta ${kec.jalan.length} jalan di dalamnya' : ''}.',
       ),
       actions: [
-        TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Batal')),
+        TextButton(
+          onPressed: () => Navigator.pop(context, false),
+          child: const Text('Batal'),
+        ),
         TextButton(
           onPressed: () => Navigator.pop(context, true),
           child: const Text('Hapus', style: TextStyle(color: Colors.red)),
@@ -712,11 +1038,19 @@ Future<void> _confirmDeleteKecamatan(BuildContext context, WidgetRef ref, Kecama
     ),
   );
   if (confirm != true) return;
-  final ok = await ref.read(manajemenLapakProvider.notifier).deleteKecamatan(id);
+  final ok = await ref
+      .read(manajemenLapakProvider.notifier)
+      .deleteKecamatan(id);
   if (!context.mounted) return;
   final error = ref.read(manajemenLapakProvider).error;
   ScaffoldMessenger.of(context).showSnackBar(
-    SnackBar(content: Text(ok ? 'Kecamatan berhasil dihapus.' : (error ?? 'Gagal menghapus kecamatan.'))),
+    SnackBar(
+      content: Text(
+        ok
+            ? 'Kecamatan berhasil dihapus.'
+            : (error ?? 'Gagal menghapus kecamatan.'),
+      ),
+    ),
   );
 }
 
@@ -731,7 +1065,9 @@ Future<void> _openJalanFormDialog(
   final isEdit = jalan != null;
   final kodeController = TextEditingController(text: jalan?.kodeJalan ?? '');
   final namaController = TextEditingController(text: jalan?.namaJalan ?? '');
-  final kapasitasController = TextEditingController(text: jalan?.kapasitas.toString() ?? '');
+  final kapasitasController = TextEditingController(
+    text: jalan?.kapasitas.toString() ?? '',
+  );
   final formKey = GlobalKey<FormState>();
   final notifier = ref.read(manajemenLapakProvider.notifier);
 
@@ -748,13 +1084,15 @@ Future<void> _openJalanFormDialog(
               TextFormField(
                 controller: kodeController,
                 decoration: const InputDecoration(labelText: 'Kode Jalan'),
-                validator: (v) => (v == null || v.trim().isEmpty) ? 'Wajib diisi' : null,
+                validator: (v) =>
+                    (v == null || v.trim().isEmpty) ? 'Wajib diisi' : null,
               ),
               const SizedBox(height: 12),
               TextFormField(
                 controller: namaController,
                 decoration: const InputDecoration(labelText: 'Nama Jalan'),
-                validator: (v) => (v == null || v.trim().isEmpty) ? 'Wajib diisi' : null,
+                validator: (v) =>
+                    (v == null || v.trim().isEmpty) ? 'Wajib diisi' : null,
               ),
               const SizedBox(height: 12),
               TextFormField(
@@ -772,7 +1110,10 @@ Future<void> _openJalanFormDialog(
         ),
       ),
       actions: [
-        TextButton(onPressed: () => Navigator.pop(dialogContext), child: const Text('Batal')),
+        TextButton(
+          onPressed: () => Navigator.pop(dialogContext),
+          child: const Text('Batal'),
+        ),
         ElevatedButton(
           onPressed: () async {
             if (!formKey.currentState!.validate()) return;
@@ -798,7 +1139,9 @@ Future<void> _openJalanFormDialog(
               SnackBar(
                 content: Text(
                   ok
-                      ? (isEdit ? 'Jalan berhasil diubah.' : 'Jalan berhasil ditambahkan.')
+                      ? (isEdit
+                            ? 'Jalan berhasil diubah.'
+                            : 'Jalan berhasil ditambahkan.')
                       : (error ?? 'Gagal menyimpan jalan.'),
                 ),
               ),
@@ -812,7 +1155,11 @@ Future<void> _openJalanFormDialog(
   );
 }
 
-Future<void> _confirmDeleteJalan(BuildContext context, WidgetRef ref, JalanLengkap jalan) async {
+Future<void> _confirmDeleteJalan(
+  BuildContext context,
+  WidgetRef ref,
+  JalanLengkap jalan,
+) async {
   final confirm = await showDialog<bool>(
     context: context,
     builder: (_) => AlertDialog(
@@ -822,7 +1169,10 @@ Future<void> _confirmDeleteJalan(BuildContext context, WidgetRef ref, JalanLengk
         '${jalan.ruas.isNotEmpty ? ' beserta ${jalan.ruas.length} ruas di dalamnya' : ''}.',
       ),
       actions: [
-        TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Batal')),
+        TextButton(
+          onPressed: () => Navigator.pop(context, false),
+          child: const Text('Batal'),
+        ),
         TextButton(
           onPressed: () => Navigator.pop(context, true),
           child: const Text('Hapus', style: TextStyle(color: Colors.red)),
@@ -831,24 +1181,37 @@ Future<void> _confirmDeleteJalan(BuildContext context, WidgetRef ref, JalanLengk
     ),
   );
   if (confirm != true) return;
-  final ok = await ref.read(manajemenLapakProvider.notifier).deleteJalan(jalan.id);
+  final ok = await ref
+      .read(manajemenLapakProvider.notifier)
+      .deleteJalan(jalan.id);
   if (!context.mounted) return;
   final error = ref.read(manajemenLapakProvider).error;
   ScaffoldMessenger.of(context).showSnackBar(
-    SnackBar(content: Text(ok ? 'Jalan berhasil dihapus.' : (error ?? 'Gagal menghapus jalan.'))),
+    SnackBar(
+      content: Text(
+        ok ? 'Jalan berhasil dihapus.' : (error ?? 'Gagal menghapus jalan.'),
+      ),
+    ),
   );
 }
 
 // ---------------------------------------------------------------- actions: ruas
 
-Future<void> _confirmDelete(BuildContext context, WidgetRef ref, RuasLengkap ruas) async {
+Future<void> _confirmDelete(
+  BuildContext context,
+  WidgetRef ref,
+  RuasLengkap ruas,
+) async {
   final confirm = await showDialog<bool>(
     context: context,
     builder: (_) => AlertDialog(
       title: const Text('Hapus Ruas?'),
       content: Text('Ruas "${ruas.namaRuas}" akan dihapus permanen.'),
       actions: [
-        TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Batal')),
+        TextButton(
+          onPressed: () => Navigator.pop(context, false),
+          child: const Text('Batal'),
+        ),
         TextButton(
           onPressed: () => Navigator.pop(context, true),
           child: const Text('Hapus', style: TextStyle(color: Colors.red)),
@@ -857,11 +1220,17 @@ Future<void> _confirmDelete(BuildContext context, WidgetRef ref, RuasLengkap rua
     ),
   );
   if (confirm != true) return;
-  final ok = await ref.read(manajemenLapakProvider.notifier).deleteRuas(ruas.id);
+  final ok = await ref
+      .read(manajemenLapakProvider.notifier)
+      .deleteRuas(ruas.id);
   if (!context.mounted) return;
   final error = ref.read(manajemenLapakProvider).error;
   ScaffoldMessenger.of(context).showSnackBar(
-    SnackBar(content: Text(ok ? 'Ruas berhasil dihapus.' : (error ?? 'Gagal menghapus ruas.'))),
+    SnackBar(
+      content: Text(
+        ok ? 'Ruas berhasil dihapus.' : (error ?? 'Gagal menghapus ruas.'),
+      ),
+    ),
   );
 }
 
@@ -873,7 +1242,9 @@ Future<void> _openRuasDialog(
 }) async {
   final isEdit = ruas != null;
   final namaController = TextEditingController(text: ruas?.namaRuas ?? '');
-  final kuotaController = TextEditingController(text: ruas?.kuota.toString() ?? '');
+  final kuotaController = TextEditingController(
+    text: ruas?.kuota.toString() ?? '',
+  );
   final formKey = GlobalKey<FormState>();
   final notifier = ref.read(manajemenLapakProvider.notifier);
 
@@ -891,7 +1262,8 @@ Future<void> _openRuasDialog(
                 TextFormField(
                   controller: namaController,
                   decoration: const InputDecoration(labelText: 'Nama Ruas'),
-                  validator: (v) => (v == null || v.trim().isEmpty) ? 'Wajib diisi' : null,
+                  validator: (v) =>
+                      (v == null || v.trim().isEmpty) ? 'Wajib diisi' : null,
                 ),
                 const SizedBox(height: 12),
                 TextFormField(
@@ -936,7 +1308,9 @@ Future<void> _openRuasDialog(
                 SnackBar(
                   content: Text(
                     ok
-                        ? (isEdit ? 'Ruas berhasil diubah.' : 'Ruas berhasil ditambahkan.')
+                        ? (isEdit
+                              ? 'Ruas berhasil diubah.'
+                              : 'Ruas berhasil ditambahkan.')
                         : (error ?? 'Gagal menyimpan ruas.'),
                   ),
                 ),

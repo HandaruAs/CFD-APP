@@ -27,9 +27,12 @@ func NewPedagangRepository(db *pgxpool.Pool) *PedagangRepository {
 // begitu terdaftar, supaya menu pedagang (stage "verified") langsung muncul.
 //
 // mandiri = true  -> pedagang daftar sendiri: submitted_at diisi NOW(),
-//                    jadi terhitung "Pedagang Baru".
+//
+//	jadi terhitung "Pedagang Baru".
+//
 // mandiri = false -> ditambahkan admin: submitted_at dibiarkan NULL,
-//                    jadi terhitung "Pedagang Lama".
+//
+//	jadi terhitung "Pedagang Lama".
 func (r *PedagangRepository) CreatePengajuanMandiri(
 	ctx context.Context,
 	userID, nik, namaLengkap, tanggalLahir, namaUsaha, jenisDagangan, jenisLapak string,
@@ -153,7 +156,7 @@ func (r *PedagangRepository) ListPedagang(ctx context.Context) ([]entity.Pedagan
 		SELECT 
 			u.id, u.name, u.email, u.phone, u.created_at, u.status,
 			p.nik, p.nama_lengkap, p.tanggal_lahir::text, p.nama_usaha, p.jenis_dagangan,
-			p.jenis_lapak, p.perkiraan_harga, p.alamat, p.status_verifikasi
+			p.jenis_lapak, p.perkiraan_harga, p.alamat, p.status_verifikasi, p.kategori
 		FROM users u
 		JOIN user_roles ur ON ur.user_id = u.id AND ur.deleted_at IS NULL
 		JOIN roles r ON r.id = ur.role_id AND r.deleted_at IS NULL
@@ -170,21 +173,24 @@ func (r *PedagangRepository) ListPedagang(ctx context.Context) ([]entity.Pedagan
 	var users []entity.PedagangUserDTO
 	for rows.Next() {
 		var u entity.PedagangUserDTO
-		var createdAt, status, nik, namaLengkap, tanggalLahir, namaUsaha, jenisDagangan, jenisLapak, perkiraanHarga, alamat, statusVerifikasi sql.NullString
+		var createdAt, status, phone, nik, namaLengkap, tanggalLahir, namaUsaha, jenisDagangan, jenisLapak, perkiraanHarga, alamat, statusVerifikasi, kategori sql.NullString
 
 		err := rows.Scan(
-			&u.ID, &u.Name, &u.Email, &u.Phone,
+			&u.ID, &u.Name, &u.Email, &phone,
 			&createdAt, &status,
 			&nik, &namaLengkap, &tanggalLahir, &namaUsaha, &jenisDagangan,
-			&jenisLapak, &perkiraanHarga, &alamat, &statusVerifikasi,
+			&jenisLapak, &perkiraanHarga, &alamat, &statusVerifikasi, &kategori,
 		)
 		if err != nil {
 			return nil, 0, err
 		}
 
+		u.Phone = phone.String
 		u.JoinedAt = createdAt.String
 		u.Active = status.String == "active"
-		u.Initial = string([]rune(u.Name)[0])
+		if nama := []rune(u.Name); len(nama) > 0 {
+			u.Initial = string(nama[0])
+		}
 		u.NIK = &nik.String
 		u.NamaLengkap = &namaLengkap.String
 		u.TanggalLahir = &tanggalLahir.String
@@ -194,6 +200,7 @@ func (r *PedagangRepository) ListPedagang(ctx context.Context) ([]entity.Pedagan
 		u.PerkiraanHarga = &perkiraanHarga.String
 		u.Alamat = &alamat.String
 		u.StatusVerifikasi = &statusVerifikasi.String
+		u.StatusPedagang = &kategori.String
 
 		users = append(users, u)
 	}
