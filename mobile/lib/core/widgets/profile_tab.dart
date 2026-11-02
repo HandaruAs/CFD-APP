@@ -1,43 +1,62 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:image_picker/image_picker.dart';
 import 'package:mobile/core/themes/app_theme.dart';
+import 'package:mobile/core/network/api_config.dart';
 import 'package:mobile/features/auth/domain/entities/user.dart';
 import 'package:mobile/features/auth/presentation/providers/auth_provider.dart';
+import 'package:mobile/features/auth/presentation/providers/profile_notifier.dart';
+import 'package:mobile/features/pedagang/presentation/providers/pedagang_provider.dart';
 import 'package:mobile/features/landing/presentation/pages/landing_screen.dart';
 
-/// Tab "Profil" -- dipasang sebagai item terakhir di bottom nav /
-/// sidebar (lihat MainLayout), bukan dari menu dinamis backend, sebab
-/// ini murni UI klien (data user + tombol logout), gak perlu row di
-/// tabel `menus`.
-///
-/// Sebelumnya tombol logout nempel di AppBar (cuma ikon polos, gak ada
-/// konfirmasi). Sekarang dipindah ke sini sesuai permintaan, dengan
-/// konfirmasi dialog biar gak kepencet gak sengaja.
+/// Tab "Profil" -- menampilkan informasi akun yang sesuai dengan role.
+/// Pedagang melihat nama usaha dan jenis dagangan; petugas/admin hanya info akun.
+/// Status verifikasi tidak ditampilkan karena tidak digunakan.
 class ProfileTab extends ConsumerWidget {
   const ProfileTab({super.key});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final user = ref.watch(userProvider);
+    final isPedagang = user?.role == 'pedagang';
 
     return SafeArea(
       child: ListView(
-        padding: const EdgeInsets.fromLTRB(20, 24, 20, 32),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
         children: [
           _ProfileHeader(user: user),
-          const SizedBox(height: 24),
+          const SizedBox(height: 12),
           _InfoTile(
-            icon: Icons.badge_outlined,
-            label: 'Role',
-            value: _roleLabel(user?.role),
+            icon: Icons.person_outline,
+            label: 'Nama Lengkap',
+            value: user?.name ?? '-',
           ),
           const SizedBox(height: 10),
+          if (user?.phone != null && user!.phone!.isNotEmpty)
+            _InfoTile(
+              icon: Icons.phone_outlined,
+              label: 'No. Telepon',
+              value: user.phone!,
+            ),
+          if (user?.phone != null && user!.phone!.isNotEmpty)
+            const SizedBox(height: 10),
           _InfoTile(
             icon: Icons.email_outlined,
             label: 'Email',
             value: user?.email ?? '-',
           ),
-          const SizedBox(height: 28),
+          const SizedBox(height: 10),
+          _InfoTile(
+            icon: Icons.badge_outlined,
+            label: 'Role',
+            value: _roleLabel(user?.role),
+          ),
+          if (isPedagang) ...[
+            const SizedBox(height: 20),
+            _PedagangInfoSection(user: user, ref: ref),
+          ],
+          const SizedBox(height: 20),
           OutlinedButton.icon(
             onPressed: () => _confirmLogout(context, ref),
             icon: const Icon(Icons.logout, color: Colors.red),
@@ -90,8 +109,6 @@ class ProfileTab extends ConsumerWidget {
 
     await ref.read(authProvider.notifier).logout();
     if (!context.mounted) return;
-    // Setelah keluar kembali ke beranda publik -- sama dengan kondisi saat
-    // aplikasi dibuka tanpa login.
     Navigator.of(context).pushAndRemoveUntil(
       MaterialPageRoute(builder: (_) => const LandingScreen()),
       (route) => false,
@@ -99,14 +116,71 @@ class ProfileTab extends ConsumerWidget {
   }
 }
 
-class _ProfileHeader extends StatelessWidget {
+class _PedagangInfoSection extends ConsumerWidget {
+  final AuthUser? user;
+  final WidgetRef ref;
+
+  const _PedagangInfoSection({required this.user, required this.ref});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final pedagangState = ref.watch(pedagangProvider);
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Text(
+          'Informasi Usaha',
+          style: TextStyle(
+            fontSize: 14,
+            fontWeight: FontWeight.w600,
+            color: Colors.black87,
+          ),
+        ),
+        const SizedBox(height: 12),
+        if (pedagangState.pengajuan != null) ...[
+          _InfoTile(
+            icon: Icons.storefront_outlined,
+            label: 'Nama Usaha',
+            value: pedagangState.pengajuan!.namaUsaha,
+          ),
+          const SizedBox(height: 10),
+          _InfoTile(
+            icon: Icons.category_outlined,
+            label: 'Jenis Dagangan',
+            value: _jenisDaganganLabel(pedagangState.pengajuan!.jenisDagangan),
+          ),
+        ] else
+          Text(
+            'Data usaha belum tersedia',
+            style: TextStyle(fontSize: 13, color: Colors.grey[600]),
+          ),
+      ],
+    );
+  }
+
+  String _jenisDaganganLabel(String jenis) {
+    switch (jenis) {
+      case 'makanan_minuman':
+        return 'Makanan & Minuman';
+      case 'bukan_makanan_minuman':
+        return 'Bukan Makanan & Minuman';
+      default:
+        return jenis;
+    }
+  }
+}
+
+class _ProfileHeader extends ConsumerWidget {
   final AuthUser? user;
 
   const _ProfileHeader({required this.user});
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final initials = _initials(user?.name);
+    final avatarUrl = user?.avatarUrl;
+    final uploadState = ref.watch(profileNotifier);
 
     return Container(
       padding: const EdgeInsets.all(20),
@@ -120,17 +194,59 @@ class _ProfileHeader extends StatelessWidget {
       ),
       child: Row(
         children: [
-          CircleAvatar(
-            radius: 30,
-            backgroundColor: Colors.white,
-            child: Text(
-              initials,
-              style: const TextStyle(
-                color: kBrandColor,
-                fontWeight: FontWeight.w700,
-                fontSize: 20,
+          Stack(
+            children: [
+              CircleAvatar(
+                radius: 30,
+                backgroundColor: Colors.white,
+                backgroundImage: avatarUrl != null && avatarUrl.isNotEmpty
+                    ? NetworkImage('${ApiConfig.baseUrl}$avatarUrl')
+                    : null,
+                child: avatarUrl == null || avatarUrl.isEmpty
+                    ? Text(
+                        initials,
+                        style: const TextStyle(
+                          color: kBrandColor,
+                          fontWeight: FontWeight.w700,
+                          fontSize: 20,
+                        ),
+                      )
+                    : null,
               ),
-            ),
+              Positioned(
+                bottom: 0,
+                right: 0,
+                child: GestureDetector(
+                  onTap: uploadState.isUploading
+                      ? null
+                      : () => _showPhotoMenu(context, ref),
+                  child: Container(
+                    padding: const EdgeInsets.all(4),
+                    decoration: BoxDecoration(
+                      color: kBrandColor,
+                      shape: BoxShape.circle,
+                      border: Border.all(color: Colors.white, width: 2),
+                    ),
+                    child: uploadState.isUploading
+                        ? const SizedBox(
+                            width: 16,
+                            height: 16,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              valueColor: AlwaysStoppedAnimation<Color>(
+                                Colors.white,
+                              ),
+                            ),
+                          )
+                        : const Icon(
+                            Icons.camera_alt,
+                            color: Colors.white,
+                            size: 16,
+                          ),
+                  ),
+                ),
+              ),
+            ],
           ),
           const SizedBox(width: 16),
           Expanded(
@@ -162,6 +278,78 @@ class _ProfileHeader extends StatelessWidget {
     );
   }
 
+  void _showPhotoMenu(BuildContext context, WidgetRef ref) {
+    showModalBottomSheet(
+      context: context,
+      builder: (ctx) => Container(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              leading: const Icon(Icons.camera_alt, color: kBrandColor),
+              title: const Text('Ambil Foto'),
+              onTap: () {
+                Navigator.pop(ctx);
+                _pickAndUploadPhoto(context, ref, ImageSource.camera);
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.image, color: kBrandColor),
+              title: const Text('Pilih dari Galeri'),
+              onTap: () {
+                Navigator.pop(ctx);
+                _pickAndUploadPhoto(context, ref, ImageSource.gallery);
+              },
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> _pickAndUploadPhoto(
+    BuildContext context,
+    WidgetRef ref,
+    ImageSource source,
+  ) async {
+    try {
+      final picker = ImagePicker();
+      final pickedFile = await picker.pickImage(source: source);
+
+      if (pickedFile == null) return;
+
+      // Upload foto
+      await ref
+          .read(profileNotifier.notifier)
+          .uploadProfilePhoto(File(pickedFile.path));
+
+      if (!context.mounted) return;
+
+      final uploadState = ref.read(profileNotifier);
+      if (uploadState.error != null) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(uploadState.error ?? 'Gagal upload foto'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Foto profil berhasil diperbarui'),
+            backgroundColor: Colors.green,
+          ),
+        );
+      }
+    } catch (e) {
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Error: $e'), backgroundColor: Colors.red),
+      );
+    }
+  }
+
   String _initials(String? name) {
     if (name == null || name.trim().isEmpty) return '?';
     final parts = name.trim().split(RegExp(r'\s+'));
@@ -191,15 +379,31 @@ class _InfoTile extends StatelessWidget {
         borderRadius: BorderRadius.circular(14),
         border: Border.all(color: Colors.black.withValues(alpha: 0.06)),
       ),
-      child: Row(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Icon(icon, color: kBrandColor, size: 20),
-          const SizedBox(width: 12),
-          Text(label, style: const TextStyle(color: Colors.black54, fontSize: 13)),
-          const Spacer(),
-          Text(
-            value,
-            style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13),
+          Row(
+            children: [
+              Icon(icon, color: kBrandColor, size: 20),
+              const SizedBox(width: 12),
+              Text(
+                label,
+                style: const TextStyle(color: Colors.black54, fontSize: 13),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Padding(
+            padding: const EdgeInsets.only(left: 32),
+            child: Text(
+              value,
+              style: const TextStyle(
+                color: Colors.black87,
+                fontSize: 13,
+                fontWeight: FontWeight.w500,
+              ),
+              softWrap: true,
+            ),
           ),
         ],
       ),

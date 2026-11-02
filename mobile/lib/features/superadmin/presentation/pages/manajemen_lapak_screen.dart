@@ -79,12 +79,22 @@ class _RuasKuotaTab extends ConsumerStatefulWidget {
 
 class _RuasKuotaTabState extends ConsumerState<_RuasKuotaTab>
     with AutomaticKeepAliveClientMixin {
+  String _filter = '';
+  final Set<String> _openKecamatan = {};
+  final Set<String> _openJalan = {};
   @override
   bool get wantKeepAlive => true;
 
   @override
   void initState() {
     super.initState();
+    final initialState = ref.read(manajemenLapakProvider);
+    final kecamatan = initialState.kecamatanDipilih;
+    if (kecamatan != null) {
+      _openKecamatan.add(kecamatan.id ?? kecamatan.nama);
+      final jalan = initialState.jalanDipilih;
+      if (jalan != null) _openJalan.add(jalan.id);
+    }
     Future.microtask(() => ref.read(manajemenLapakProvider.notifier).load());
   }
 
@@ -108,7 +118,6 @@ class _RuasKuotaTabState extends ConsumerState<_RuasKuotaTab>
     if (state.isLoading && state.wilayah.isEmpty) {
       return const Center(child: CircularProgressIndicator());
     }
-
     if (state.error != null && state.wilayah.isEmpty) {
       return ListView(
         physics: const AlwaysScrollableScrollPhysics(),
@@ -122,219 +131,318 @@ class _RuasKuotaTabState extends ConsumerState<_RuasKuotaTab>
           Center(
             child: ElevatedButton(
               onPressed: notifier.load,
-              style: ElevatedButton.styleFrom(backgroundColor: kBrandColor),
-              child: const Text(
-                'Coba Lagi',
-                style: TextStyle(color: Colors.white),
-              ),
+              child: const Text('Coba Lagi'),
             ),
           ),
         ],
       );
     }
 
-    if (state.wilayah.isEmpty) {
-      return ListView(
-        physics: const AlwaysScrollableScrollPhysics(),
-        padding: const EdgeInsets.all(24),
-        children: const [
-          SizedBox(height: 80),
-          Center(child: Text('Belum ada data kecamatan/jalan.')),
-        ],
-      );
-    }
-
-    final jalan = state.jalanDipilih;
+    final query = _filter.trim().toLowerCase();
+    final wilayah = state.wilayah.where((k) {
+      if (query.isEmpty) return true;
+      return k.nama.toLowerCase().contains(query) ||
+          k.jalan.any(
+            (j) =>
+                j.namaJalan.toLowerCase().contains(query) ||
+                j.kodeJalan.toLowerCase().contains(query) ||
+                j.ruas.any((r) => r.namaRuas.toLowerCase().contains(query)),
+          );
+    }).toList();
 
     return ListView(
       physics: const AlwaysScrollableScrollPhysics(),
       padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
       children: [
-        _SectionLabel(
-          'Pilih wilayah',
-          trailing: state.kecamatanBisaDihapus && state.kecamatanDipilih != null
-              ? TextButton.icon(
-                  onPressed: () => _confirmDeleteKecamatan(
-                    context,
-                    ref,
-                    state.kecamatanDipilih!,
+        TextField(
+          onChanged: (value) => setState(() => _filter = value),
+          decoration: InputDecoration(
+            hintText: 'Cari kecamatan, jalan, atau ruas',
+            prefixIcon: const Icon(Icons.search),
+            suffixIcon: _filter.isEmpty
+                ? null
+                : IconButton(
+                    tooltip: 'Hapus pencarian',
+                    onPressed: () => setState(() => _filter = ''),
+                    icon: const Icon(Icons.close),
                   ),
-                  icon: const Icon(Icons.delete_outline_rounded, size: 16),
-                  label: const Text('Hapus'),
-                  style: TextButton.styleFrom(
-                    foregroundColor: Colors.red,
-                    visualDensity: VisualDensity.compact,
-                  ),
-                )
-              : null,
-        ),
-        _StepCard(
-          number: '1',
-          title: 'Pilih kecamatan',
-          subtitle:
-              state.kecamatanDipilih?.nama ??
-              'Pilih wilayah untuk melihat daftar jalan',
-          child: _ChipRow(
-            children: [
-              for (final e in state.kecamatanOpsi)
-                _SelectChip(
-                  label: e.value.nama,
-                  selected: e.key == state.kecamatanKey,
-                  onTap: () => notifier.setKecamatan(e.key),
-                ),
-              _AddChip(
-                label: 'Kecamatan',
-                onTap: () => _openKecamatanDialog(context, ref),
-              ),
-            ],
+            filled: true,
+            fillColor: Colors.white,
+            border: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(14),
+              borderSide: BorderSide.none,
+            ),
           ),
         ),
         const SizedBox(height: 12),
-        _StepCard(
-          number: '2',
-          title: 'Pilih jalan',
-          subtitle: state.kecamatanDipilih == null
-              ? 'Pilih kecamatan terlebih dahulu'
-              : (jalan == null
-                    ? 'Belum ada jalan di kecamatan ini'
-                    : '${jalan.kodeJalan} · ${jalan.namaJalan}'),
-          child: _ChipRow(
-            children: [
-              for (final j in state.jalanOpsi)
-                _SelectChip(
-                  label: '${j.kodeJalan} · ${j.namaJalan}',
-                  selected: j.id == state.jalanId,
-                  onTap: () => notifier.setJalan(j.id),
-                ),
-              if (state.bisaTambahJalan)
-                _AddChip(
-                  label: 'Jalan',
-                  onTap: () {
-                    final kecId = state.kecamatanDipilih?.id;
-                    if (kecId != null)
-                      _openJalanFormDialog(context, ref, kecamatanId: kecId);
-                  },
-                ),
-            ],
-          ),
+        Row(
+          children: [
+            const Expanded(
+              child: Text(
+                'Semua kecamatan',
+                style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800),
+              ),
+            ),
+            TextButton.icon(
+              onPressed: () => _openKecamatanDialog(context, ref),
+              icon: const Icon(Icons.add, size: 18),
+              label: const Text('Tambah'),
+            ),
+          ],
         ),
-        if (jalan != null) ...[
-          const SizedBox(height: 16),
-          Row(
-            children: [
-              const Icon(
-                Icons.location_on_outlined,
-                size: 17,
-                color: kBrandColor,
-              ),
-              const SizedBox(width: 5),
-              Expanded(
-                child: Text(
-                  '${state.kecamatanDipilih?.nama ?? ''}  ›  ${jalan.namaJalan}',
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                    fontSize: 12,
-                    color: Colors.black54,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ],
-        if (state.jalanOpsi.isEmpty)
-          const Padding(
-            padding: EdgeInsets.only(top: 6),
+        if (wilayah.isEmpty)
+          Padding(
+            padding: const EdgeInsets.symmetric(vertical: 28),
             child: Text(
-              'Kecamatan ini belum punya jalan',
-              style: TextStyle(fontSize: 12.5, color: Colors.black54),
+              state.wilayah.isEmpty
+                  ? 'Belum ada data kecamatan/jalan.'
+                  : 'Tidak ada lokasi yang cocok.',
+              textAlign: TextAlign.center,
+              style: const TextStyle(color: Colors.black54),
             ),
           ),
-        const SizedBox(height: 16),
-        if (jalan != null) ...[
-          _JalanSummaryCard(
-            jalan: jalan,
-            onEdit: () => _openJalanFormDialog(
+        for (final kecamatan in wilayah)
+          _KecamatanTreeCard(
+            kecamatan: kecamatan,
+            isOpen: _openKecamatan.contains(kecamatan.id ?? kecamatan.nama),
+            openJalan: _openJalan,
+            filter: query,
+            onToggle: () {
+              final key = kecamatan.id ?? kecamatan.nama;
+              setState(() {
+                if (!_openKecamatan.add(key)) {
+                  _openKecamatan.remove(key);
+                } else if (kecamatan.jalan.isNotEmpty) {
+                  _openJalan.add(kecamatan.jalan.first.id);
+                }
+              });
+            },
+            onAddJalan: kecamatan.id == null
+                ? null
+                : () => _openJalanFormDialog(
+                    context,
+                    ref,
+                    kecamatanId: kecamatan.id!,
+                  ),
+            onDeleteKecamatan: kecamatan.id == null
+                ? null
+                : () => _confirmDeleteKecamatan(context, ref, kecamatan),
+            onToggleJalan: (jalan) {
+              setState(() {
+                if (!_openJalan.add(jalan.id)) _openJalan.remove(jalan.id);
+              });
+            },
+            onAddRuas: (jalan) => _openRuasDialog(context, ref, jalan: jalan),
+            onEditJalan: (jalan) => _openJalanFormDialog(
               context,
               ref,
               kecamatanId: null,
               jalan: jalan,
             ),
-            onDelete: () => _confirmDeleteJalan(context, ref, jalan),
+            onDeleteJalan: (jalan) => _confirmDeleteJalan(context, ref, jalan),
+            onEditRuas: (jalan, ruas) =>
+                _openRuasDialog(context, ref, jalan: jalan, ruas: ruas),
+            onDeleteRuas: (jalan, ruas) => _confirmDelete(context, ref, ruas),
           ),
-          const SizedBox(height: 16),
-          Row(
-            children: [
-              const Text(
-                'Daftar Ruas',
-                style: TextStyle(fontWeight: FontWeight.w800, fontSize: 16),
-              ),
-              const SizedBox(width: 8),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                decoration: BoxDecoration(
-                  color: kBrandColor.withValues(alpha: 0.1),
-                  borderRadius: BorderRadius.circular(10),
-                ),
-                child: Text(
-                  '${jalan.ruas.length}',
-                  style: const TextStyle(
-                    fontSize: 12,
-                    fontWeight: FontWeight.w700,
-                    color: kBrandColor,
-                  ),
-                ),
-              ),
-              const Spacer(),
-              FilledButton.tonalIcon(
-                onPressed: () => _openRuasDialog(context, ref, jalan: jalan),
-                icon: const Icon(Icons.add_rounded, size: 18),
-                label: const Text('Tambah'),
-                style: FilledButton.styleFrom(
-                  foregroundColor: kBrandColor,
-                  backgroundColor: kBrandColor.withValues(alpha: 0.10),
-                  visualDensity: VisualDensity.compact,
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 4),
-          if (jalan.ruas.isEmpty)
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.symmetric(vertical: 32),
-              decoration: BoxDecoration(
-                color: Colors.black.withValues(alpha: 0.03),
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: const Column(
-                children: [
-                  Icon(
-                    Icons.signpost_outlined,
-                    color: Colors.black38,
-                    size: 32,
-                  ),
-                  SizedBox(height: 8),
-                  Text(
-                    'Belum ada ruas di jalan ini.',
-                    style: TextStyle(color: Colors.black54),
-                  ),
-                ],
-              ),
-            )
-          else
-            for (final r in jalan.ruas) ...[
-              _RuasCard(jalan: jalan, ruas: r),
-              const SizedBox(height: 10),
-            ],
-        ],
       ],
     );
   }
 }
 
 // ---------------------------------------------------------------- widgets
+
+class _KecamatanTreeCard extends StatelessWidget {
+  final KecamatanLengkap kecamatan;
+  final bool isOpen;
+  final Set<String> openJalan;
+  final String filter;
+  final VoidCallback onToggle;
+  final VoidCallback? onAddJalan;
+  final VoidCallback? onDeleteKecamatan;
+  final ValueChanged<JalanLengkap> onToggleJalan;
+  final ValueChanged<JalanLengkap> onAddRuas;
+  final ValueChanged<JalanLengkap> onEditJalan;
+  final ValueChanged<JalanLengkap> onDeleteJalan;
+  final void Function(JalanLengkap, RuasLengkap) onEditRuas;
+  final void Function(JalanLengkap, RuasLengkap) onDeleteRuas;
+
+  const _KecamatanTreeCard({
+    required this.kecamatan,
+    required this.isOpen,
+    required this.openJalan,
+    required this.filter,
+    required this.onToggle,
+    required this.onAddJalan,
+    required this.onDeleteKecamatan,
+    required this.onToggleJalan,
+    required this.onAddRuas,
+    required this.onEditJalan,
+    required this.onDeleteJalan,
+    required this.onEditRuas,
+    required this.onDeleteRuas,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final jalanList = kecamatan.jalan.where((jalan) {
+      if (filter.isEmpty) return true;
+      return kecamatan.nama.toLowerCase().contains(filter) ||
+          jalan.namaJalan.toLowerCase().contains(filter) ||
+          jalan.kodeJalan.toLowerCase().contains(filter) ||
+          jalan.ruas.any(
+            (ruas) => ruas.namaRuas.toLowerCase().contains(filter),
+          );
+    }).toList();
+    final jumlahRuas = kecamatan.jalan.fold<int>(
+      0,
+      (jumlah, jalan) => jumlah + jalan.ruas.length,
+    );
+
+    return Card(
+      margin: const EdgeInsets.only(bottom: 10),
+      clipBehavior: Clip.antiAlias,
+      child: Column(
+        children: [
+          ListTile(
+            key: Key('kecamatan-${kecamatan.id ?? kecamatan.nama}'),
+            leading: const Icon(
+              Icons.location_city_outlined,
+              color: kBrandColor,
+            ),
+            title: Text(
+              kecamatan.nama,
+              style: const TextStyle(fontWeight: FontWeight.w800),
+            ),
+            subtitle: Text(
+              '${kecamatan.jalan.length} jalan · $jumlahRuas ruas',
+            ),
+            trailing: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                if (onDeleteKecamatan != null)
+                  IconButton(
+                    tooltip: 'Hapus kecamatan',
+                    onPressed: onDeleteKecamatan,
+                    icon: const Icon(Icons.delete_outline, color: Colors.red),
+                  ),
+                Icon(isOpen ? Icons.expand_less : Icons.expand_more),
+              ],
+            ),
+            onTap: onToggle,
+          ),
+          if (isOpen) ...[
+            const Divider(height: 1),
+            if (onAddJalan != null)
+              Align(
+                alignment: Alignment.centerRight,
+                child: TextButton.icon(
+                  onPressed: onAddJalan,
+                  icon: const Icon(Icons.add, size: 18),
+                  label: const Text('Tambah jalan'),
+                ),
+              ),
+            if (jalanList.isEmpty)
+              const Padding(
+                padding: EdgeInsets.all(16),
+                child: Text('Belum ada jalan di kecamatan ini.'),
+              ),
+            for (final jalan in jalanList)
+              Padding(
+                padding: const EdgeInsets.fromLTRB(8, 0, 8, 8),
+                child: Card(
+                  color: const Color(0xFFF6F8FC),
+                  elevation: 0,
+                  child: Column(
+                    children: [
+                      ListTile(
+                        key: Key('jalan-${jalan.id}'),
+                        title: Text(
+                          '${jalan.kodeJalan} · ${jalan.namaJalan}',
+                          style: const TextStyle(fontWeight: FontWeight.w700),
+                        ),
+                        subtitle: Text(
+                          '${jalan.ruas.length} ruas · kuota ${jalan.totalKuotaRuas}/${jalan.kapasitas}',
+                        ),
+                        trailing: PopupMenuButton<String>(
+                          onSelected: (value) {
+                            if (value == 'edit') onEditJalan(jalan);
+                            if (value == 'delete') onDeleteJalan(jalan);
+                          },
+                          itemBuilder: (_) => const [
+                            PopupMenuItem(
+                              value: 'edit',
+                              child: Text('Edit jalan'),
+                            ),
+                            PopupMenuItem(
+                              value: 'delete',
+                              child: Text('Hapus jalan'),
+                            ),
+                          ],
+                        ),
+                        onTap: () => onToggleJalan(jalan),
+                      ),
+                      if (openJalan.contains(jalan.id)) ...[
+                        const Divider(height: 1),
+                        for (final ruas in jalan.ruas.where(
+                          (ruas) =>
+                              filter.isEmpty ||
+                              kecamatan.nama.toLowerCase().contains(filter) ||
+                              jalan.namaJalan.toLowerCase().contains(filter) ||
+                              ruas.namaRuas.toLowerCase().contains(filter),
+                        ))
+                          ListTile(
+                            dense: true,
+                            leading: const Icon(
+                              Icons.signpost_outlined,
+                              size: 20,
+                            ),
+                            title: Text(ruas.namaRuas),
+                            subtitle: Text(
+                              'Kuota ${ruas.kuota} · Terisi ${ruas.terisi} · Sisa ${ruas.sisa}',
+                            ),
+                            trailing: PopupMenuButton<String>(
+                              onSelected: (value) {
+                                if (value == 'edit') onEditRuas(jalan, ruas);
+                                if (value == 'delete') {
+                                  onDeleteRuas(jalan, ruas);
+                                }
+                              },
+                              itemBuilder: (_) => const [
+                                PopupMenuItem(
+                                  value: 'edit',
+                                  child: Text('Edit ruas'),
+                                ),
+                                PopupMenuItem(
+                                  value: 'delete',
+                                  child: Text('Hapus ruas'),
+                                ),
+                              ],
+                            ),
+                          ),
+                        if (jalan.ruas.isEmpty)
+                          const Padding(
+                            padding: EdgeInsets.all(12),
+                            child: Text('Belum ada ruas.'),
+                          ),
+                        Align(
+                          alignment: Alignment.centerRight,
+                          child: TextButton.icon(
+                            onPressed: () => onAddRuas(jalan),
+                            icon: const Icon(Icons.add, size: 18),
+                            label: const Text('Tambah ruas'),
+                          ),
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
+              ),
+          ],
+        ],
+      ),
+    );
+  }
+}
 
 class _StepCard extends StatelessWidget {
   final String number;

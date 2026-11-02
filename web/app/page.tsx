@@ -8,7 +8,7 @@ import {
   useMotionValue,
   useReducedMotion,
   useTransform,
-} from "motion/react";
+} from "framer-motion";
 import { Bricolage_Grotesque } from "next/font/google";
 import { PublicNavbar } from "@/components/public-navbar";
 import { PublicFooter } from "@/components/public-footer";

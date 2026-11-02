@@ -57,6 +57,16 @@ class AuthNotifier extends StateNotifier<AuthState> {
     _resetSessionScopedState();
   }
 
+  /// Refresh data user dari /api/me, berguna setelah upload foto atau update profil
+  Future<void> refreshUser() async {
+    try {
+      final user = await AuthRemoteDatasource.getMe();
+      state = state.copyWith(user: user);
+    } catch (e) {
+      state = state.copyWith(error: 'Gagal refresh data: $e');
+    }
+  }
+
   void _resetSessionScopedState() {
     ref.invalidate(menuListProvider);
     ref.invalidate(pedagangProvider);
