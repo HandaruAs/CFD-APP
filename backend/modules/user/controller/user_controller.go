@@ -63,6 +63,7 @@ func (ctrl *UserController) Me(c fiber.Ctx) error {
 		"id":     userProfile.ID,
 		"name":   userProfile.Name,
 		"email":  userProfile.Email,
+		"phone":  userProfile.Phone,
 		"status": userProfile.Status,
 		"role":   role,
 	}

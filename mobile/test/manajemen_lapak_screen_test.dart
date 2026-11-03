@@ -13,7 +13,7 @@ class _FakeManajemenLapakNotifier extends ManajemenLapakNotifier {
 }
 
 void main() {
-  testWidgets('menampilkan langkah pemilihan lapak dan ringkasan pilihan', (
+  testWidgets('menampilkan hierarki lokasi beserta kuota dalam daftar', (
     tester,
   ) async {
     final notifier = _FakeManajemenLapakNotifier();
@@ -58,10 +58,10 @@ void main() {
     );
     await tester.pump();
 
-    expect(find.text('Pilih wilayah'), findsOneWidget);
-    expect(find.text('Kecamatan'), findsOneWidget);
-    expect(find.text('Jalan'), findsOneWidget);
-    expect(find.text('Tegalsari'), findsNWidgets(2));
-    expect(find.text('A1 · Jalan Tunjungan'), findsNWidgets(2));
+    expect(find.text('Tegalsari'), findsOneWidget);
+    expect(find.byKey(const Key('jalan-jalan-1')), findsOneWidget);
+    expect(find.text('A1 · Jalan Tunjungan'), findsOneWidget);
+    expect(find.text('Ruas Utara'), findsOneWidget);
+    expect(find.text('Kuota 20 · Terisi 5 · Sisa 15'), findsOneWidget);
   });
 }
