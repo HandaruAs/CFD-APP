@@ -18,7 +18,7 @@ const ROUTE_ALIASES: Record<string, string[]> = {
   "/pedagang/nomer-stand": ["/pedagang/CekOut"],
 };
 
-function matchesRoute(route: string, pathname: string): boolean {
+export function matchesRoute(route: string, pathname: string): boolean {
   if (pathname === route || pathname.startsWith(`${route}/`)) return true;
   const aliases = ROUTE_ALIASES[route];
   if (!aliases) return false;
@@ -30,7 +30,7 @@ function matchesRoute(route: string, pathname: string): boolean {
 // Parents that should be open by default because the current URL is
 // inside one of their children — purely derived from menus + pathname,
 // no state/effect needed for this part.
-function getAutoOpenIds(nodes: MenuNode[], pathname: string): Set<string> {
+export function getAutoOpenIds(nodes: MenuNode[], pathname: string): Set<string> {
   const result = new Set<string>();
   const markIfActive = (list: MenuNode[]): boolean => {
     let anyActive = false;
@@ -51,7 +51,7 @@ function getAutoOpenIds(nodes: MenuNode[], pathname: string): Set<string> {
 
 // ✅ FIX: kumpulkan semua route dari seluruh menu (termasuk children),
 // dipakai untuk mencari route paling spesifik yang cocok dengan pathname.
-function flattenRoutes(nodes: MenuNode[]): string[] {
+export function flattenRoutes(nodes: MenuNode[]): string[] {
   const routes: string[] = [];
   const walk = (list: MenuNode[]) => {
     for (const node of list) {
@@ -69,7 +69,7 @@ function flattenRoutes(nodes: MenuNode[]): string[] {
 // route yang PALING SPESIFIK (paling panjang) yang match, dan hanya itu
 // yang boleh dianggap active. Match sekarang juga lewat ROUTE_ALIASES di
 // atas (buat kasus check-in/check-out yang kepisah folder).
-function getBestMatchRoute(allRoutes: string[], pathname: string): string | null {
+export function getBestMatchRoute(allRoutes: string[], pathname: string): string | null {
   const matches = allRoutes.filter((r) => matchesRoute(r, pathname));
   if (matches.length === 0) return null;
   return matches.reduce((a, b) => (b.length > a.length ? b : a));

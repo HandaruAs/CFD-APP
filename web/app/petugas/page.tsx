@@ -2,33 +2,23 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { motion, useReducedMotion } from "framer-motion";
+import { Clock, MapPin, Store, TrendingUp, UserCheck, Users, Wallet } from "lucide-react";
 import {
-  animate,
-  motion,
-  useMotionValue,
-  useReducedMotion,
-  useTransform,
-  type Variants,
-} from "framer-motion";
-import {
-  Clock,
-  FileText,
-  Sparkles,
-  CircleCheck,
-  Hourglass,
-  Store,
-  TrendingUp,
-  RefreshCw,
-  LogOut,
-  MapPin,
-} from "lucide-react";
+  AlurPedagang,
+  BannerEvent,
+  JudulKartu,
+  KartuAngka,
+  isiCincin,
+  jamPendek,
+} from "@/components/admin/dashboard-ui";
 
 // ===== TYPES =====
 // Event hari ini dari GET /api/petugas/events/hari-ini. Satu hari boleh
 // punya beberapa event (bahkan berjalan bersamaan), jadi SELURUH dashboard
 // -- status & sisa waktu, kehadiran, kuota, omset, dan tabel pedagang --
-// selalu menampilkan SATU event yang dipilih petugas lewat tombol pilihan
-// event di atas. Data tidak lagi digabung dari beberapa event.
+// selalu menampilkan SATU event yang dipilih petugas lewat kartu pilihan
+// event di banner. Data tidak lagi digabung dari beberapa event.
 type EventHariIni = {
   id: string;
   nama: string;
@@ -43,18 +33,6 @@ type EventHariIni = {
   checkIn: number;
   checkOut: number;
 };
-type SesiAktif = {
-  id: string;
-  nama: string;
-  tanggal: string;
-  jamMulai: string;
-  jamSelesaiRencana: string;
-  status: string;
-  aktif: boolean;
-  sisaMenit: number;
-  totalMenit: number;
-};
-
 // Event yang dipilih otomatis saat dashboard dibuka (atau saat event
 // pilihan petugas sudah tidak ada): berjalan > terjadwal paling awal >
 // selesai paling akhir > dibatalkan.
@@ -68,27 +46,6 @@ function pilihEventUtama(events: EventHariIni[]): EventHariIni | null {
   return null;
 }
 
-function keSesi(e: EventHariIni | null): SesiAktif | null {
-  if (!e) return null;
-  return {
-    id: e.id,
-    nama: e.nama,
-    tanggal: e.tanggal,
-    jamMulai: e.jamMulai,
-    jamSelesaiRencana: e.jamSelesai,
-    status: e.status,
-    aktif: e.status === "berjalan",
-    sisaMenit: e.sisaMenit,
-    totalMenit: e.totalMenit,
-  };
-}
-
-const LABEL_STATUS_EVENT: Record<EventHariIni["status"], { label: string; pill: string }> = {
-  berjalan: { label: "Berlangsung", pill: "pt-pill-success" },
-  terjadwal: { label: "Terjadwal", pill: "pt-pill-warning" },
-  selesai: { label: "Selesai", pill: "pt-pill-neutral" },
-  dibatalkan: { label: "Dibatalkan", pill: "pt-pill-danger" },
-};
 type KehadiranItem = {
   id: string;
   pedagangId: string;
@@ -136,11 +93,6 @@ async function apiFetch(path: string, options: RequestInit = {}) {
   if (!res.ok) throw new Error(data.error || `request gagal (status ${res.status})`);
   return data;
 }
-function formatSisaWaktu(totalMenit: number) {
-  const jam = Math.floor(totalMenit / 60);
-  const menit = totalMenit % 60;
-  return `${String(jam).padStart(2, "0")}:${String(menit).padStart(2, "0")}`;
-}
 function formatRupiah(value: number) {
   return new Intl.NumberFormat("id-ID", {
     style: "currency",
@@ -155,21 +107,6 @@ function sapaan(jam: number) {
   if (jam < 15) return "Selamat Siang";
   if (jam < 18) return "Selamat Sore";
   return "Selamat Malam";
-}
-
-type SesiTone = "live" | "upcoming" | "ended" | "none";
-function turunkanStatusSesi(sesi: SesiAktif | null): { label: string; tone: SesiTone } {
-  if (!sesi) return { label: "Belum Ada Event", tone: "none" };
-  if (sesi.aktif) return { label: "Sedang Berlangsung", tone: "live" };
-  if (sesi.status === "dibatalkan") return { label: "Dibatalkan", tone: "ended" };
-  if (sesi.status === "selesai") return { label: "Sudah Selesai", tone: "ended" };
-
-  const now = new Date();
-  const nowMenit = now.getHours() * 60 + now.getMinutes();
-  const [jamMulaiH, jamMulaiM] = sesi.jamMulai.split(":").map(Number);
-  if (nowMenit < jamMulaiH * 60 + jamMulaiM) return { label: "Menunggu Mulai", tone: "upcoming" };
-
-  return { label: "Sudah Berakhir", tone: "ended" };
 }
 
 const STATUS_KEHADIRAN_STYLE: Record<KehadiranItem["status"], { label: string; bg: string; text: string; dot: string }> = {
@@ -187,86 +124,6 @@ const AVATAR_PALETTE = [
 function avatarStyleFor(seed: string) {
   const code = seed.charCodeAt(0) || 0;
   return AVATAR_PALETTE[code % AVATAR_PALETTE.length];
-}
-
-// ===== ANIMASI =====
-// Satu urutan masuk saat halaman dibuka: bagian-bagian muncul berurutan dari
-// atas ke bawah. Otomatis mati kalau perangkat mengatur "kurangi animasi".
-const WADAH: Variants = {
-  awal: {},
-  tampil: { transition: { staggerChildren: 0.07 } },
-};
-const BAGIAN: Variants = {
-  awal: { opacity: 0, y: 12 },
-  tampil: { opacity: 1, y: 0, transition: { duration: 0.45, ease: [0.22, 1, 0.36, 1] } },
-};
-
-// Angka yang "berhitung naik" ke nilai barunya, termasuk saat data di-refresh.
-function AngkaBerjalan({ nilai, format }: { nilai: number; format?: (n: number) => string }) {
-  const kurangiGerak = useReducedMotion();
-  const mv = useMotionValue(kurangiGerak ? nilai : 0);
-  const teks = useTransform(mv, (v) => (format ? format(Math.round(v)) : Math.round(v).toLocaleString("id-ID")));
-
-  useEffect(() => {
-    if (kurangiGerak) {
-      mv.set(nilai);
-      return;
-    }
-    const kontrol = animate(mv, nilai, { duration: 0.9, ease: [0.22, 1, 0.36, 1] });
-    return () => kontrol.stop();
-  }, [nilai, mv, kurangiGerak]);
-
-  return <motion.span className="tabular-nums">{teks}</motion.span>;
-}
-
-// ===== ILUSTRASI DEKORATIF (SVG inline, tanpa file gambar eksternal) =====
-function MarketIllustration({ light }: { light: boolean }) {
-  const stroke = light ? "rgba(255,255,255,0.9)" : "var(--color-primary)";
-  const fillSoft = light ? "rgba(255,255,255,0.15)" : "var(--color-primary-container)";
-  return (
-    <svg
-      viewBox="0 0 160 120"
-      className="hidden h-[110px] w-[140px] shrink-0 sm:block"
-      fill="none"
-      xmlns="http://www.w3.org/2000/svg"
-      aria-hidden="true"
-    >
-      <circle cx="80" cy="60" r="52" fill={fillSoft} opacity={light ? 0.5 : 0.4} />
-      <path d="M40 55L80 35L120 55" stroke={stroke} strokeWidth="4" strokeLinecap="round" strokeLinejoin="round" />
-      <rect x="45" y="55" width="70" height="35" rx="4" stroke={stroke} strokeWidth="4" />
-      <path d="M62 90V70C62 65.5817 65.5817 62 70 62H90C94.4183 62 98 65.5817 98 70V90" stroke={stroke} strokeWidth="4" strokeLinecap="round" />
-      <path d="M28 40C28 33.3726 33.3726 28 40 28C46.6274 28 52 33.3726 52 40" stroke={stroke} strokeWidth="3.5" strokeLinecap="round" />
-      <line x1="40" y1="28" x2="40" y2="18" stroke={stroke} strokeWidth="3.5" strokeLinecap="round" />
-      <circle cx="128" cy="34" r="4" fill={stroke} opacity="0.7" />
-      <circle cx="24" cy="82" r="3" fill={stroke} opacity="0.5" />
-    </svg>
-  );
-}
-
-// Cincin sisa waktu sesi (dipakai di hero saat sesi berlangsung).
-function CincinWaktu({ persen, children }: { persen: number; children: React.ReactNode }) {
-  const KELILING = 2 * Math.PI * 44;
-  return (
-    <div className="relative h-[104px] w-[104px] shrink-0">
-      <svg viewBox="0 0 100 100" className="h-full w-full -rotate-90" aria-hidden="true">
-        <circle cx="50" cy="50" r="44" fill="none" strokeWidth="8" stroke="rgba(255,255,255,0.18)" />
-        <motion.circle
-          cx="50"
-          cy="50"
-          r="44"
-          fill="none"
-          strokeWidth="8"
-          strokeLinecap="round"
-          stroke="white"
-          strokeDasharray={KELILING}
-          initial={false}
-          animate={{ strokeDashoffset: KELILING * (1 - Math.min(100, Math.max(0, persen)) / 100) }}
-          transition={{ duration: 1, ease: [0.22, 1, 0.36, 1] }}
-        />
-      </svg>
-      <div className="absolute inset-0 flex flex-col items-center justify-center">{children}</div>
-    </div>
-  );
 }
 
 // ===== CHART: bar horizontal omset per pedagang, tanpa library chart =====
@@ -353,7 +210,6 @@ function OmsetChart({ data }: { data: KehadiranItem[] }) {
 const INTERVAL_REFRESH_MS = 60_000;
 
 export default function PetugasHomePage() {
-  const kurangiGerak = useReducedMotion();
   const [events, setEvents] = useState<EventHariIni[]>([]);
   // Event yang dipilih petugas. null = ikut pilihan otomatis (pilihEventUtama).
   const [pilihanId, setPilihanId] = useState<string | null>(null);
@@ -386,7 +242,7 @@ export default function PetugasHomePage() {
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect
     load();
-    // Data diperbarui otomatis tiap menit, jam di header tiap 30 detik.
+    // Data diperbarui otomatis tiap menit, jam & sisa waktu tiap 30 detik.
     const refresh = setInterval(() => load(), INTERVAL_REFRESH_MS);
     const jam = setInterval(() => setSekarang(new Date()), 30_000);
     return () => {
@@ -397,8 +253,6 @@ export default function PetugasHomePage() {
 
   const eventTerpilih = events.find((e) => e.id === pilihanId) ?? pilihEventUtama(events);
   const idTerpilih = eventTerpilih?.id ?? null;
-  const sesi = keSesi(eventTerpilih);
-  const { label: labelSesi, tone: toneSesi } = turunkanStatusSesi(sesi);
 
   // Kehadiran, omset & tabel pedagang HANYA untuk event terpilih.
   useEffect(() => {
@@ -423,287 +277,124 @@ export default function PetugasHomePage() {
   const totalTerdaftar = laporanEvent?.totalTerdaftar ?? 0;
   const totalCheckin = laporanEvent?.totalCheckin ?? 0;
   const totalCheckout = laporanEvent?.totalCheckout ?? 0;
-  const persentaseHadir = laporanEvent?.persenHadir ?? 0;
   const pedagangHariIni = laporanEvent?.data ?? [];
   const kuotaTotal = eventTerpilih?.kuotaTotal ?? 0;
   const kuotaTerisi = eventTerpilih?.terisi ?? 0;
+  const penyebutHadir = Math.max(totalTerdaftar, totalCheckin);
+  const masihDiLapak = Math.max(0, totalCheckin - totalCheckout);
 
   // Sisa waktu dihitung mundur di browser sejak data terakhir diambil,
   // supaya angkanya tetap jalan di antara refresh.
   const menitBerlalu = diperbarui ? Math.max(0, Math.floor((sekarang.getTime() - diperbarui.getTime()) / 60_000)) : 0;
-  const sisaMenit = sesi ? Math.max(0, sesi.sisaMenit - menitBerlalu) : 0;
-  const elapsedPercent =
-    sesi && sesi.aktif && sesi.totalMenit > 0
-      ? Math.round(((sesi.totalMenit - sisaMenit) / sesi.totalMenit) * 100)
-      : 0;
-
-  const menitMenujuMulai = (() => {
-    if (!sesi || toneSesi !== "upcoming") return null;
-    const [h, m] = sesi.jamMulai.split(":").map(Number);
-    return h * 60 + m - (sekarang.getHours() * 60 + sekarang.getMinutes());
-  })();
+  const cincin = isiCincin(
+    eventTerpilih
+      ? {
+          status: eventTerpilih.status,
+          jamMulai: eventTerpilih.jamMulai,
+          jamSelesai: eventTerpilih.jamSelesai,
+          sisaMenit: Math.max(0, eventTerpilih.sisaMenit - menitBerlalu),
+          totalMenit: eventTerpilih.totalMenit || undefined,
+        }
+      : null,
+  );
 
   return (
-    <motion.div
-      className="flex flex-col gap-lg"
-      variants={WADAH}
-      initial={kurangiGerak ? false : "awal"}
-      animate="tampil"
-    >
-      {/* Header */}
-      <motion.div variants={BAGIAN} className="flex flex-wrap items-end justify-between gap-md">
-        <div>
-          <div className="flex flex-wrap items-center gap-sm">
-            <h2 className="text-headline-lg text-on-surface">{sapaan(sekarang.getHours())}, Petugas! 👋</h2>
-            <span className="inline-flex items-center gap-xs rounded-full bg-secondary-container/40 px-sm py-1 text-label-sm text-on-secondary-container">
-              <span className="relative flex h-1.5 w-1.5">
-                <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-secondary/70 motion-reduce:hidden" />
-                <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-secondary" />
-              </span>
-              Online
-            </span>
-          </div>
-          <p className="mt-xs text-body-md text-on-surface-variant">
-            {sekarang.toLocaleDateString("id-ID", {
-              weekday: "long",
-              day: "numeric",
-              month: "long",
-              year: "numeric",
-            })}
-            <span className="mx-xs text-outline">|</span>
-            <span className="tabular-nums">
-              {sekarang.toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit" })} WIB
-            </span>
-          </p>
-        </div>
-        <button
-          type="button"
-          onClick={() => load(true)}
-          disabled={refreshing || loading}
-          className="pt-btn pt-btn-secondary"
-          title={diperbarui ? `Diperbarui ${diperbarui.toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit" })}` : undefined}
-        >
-          <RefreshCw className={`h-4 w-4 ${refreshing ? "animate-spin" : ""}`} />
-          Muat ulang
-        </button>
-      </motion.div>
-
+    <div className="mx-auto flex w-full max-w-[1400px] flex-col gap-lg pb-xl">
       {loadError && (
-        <div className="rounded-lg border border-error-container bg-error-container/20 p-md text-body-sm text-on-error-container">
+        <div className="rounded-xl border border-error-container bg-error-container/30 px-md py-sm text-body-sm text-on-error-container">
           Gagal mengambil data terbaru: {loadError}
         </div>
       )}
 
-      {/* ===== PILIH EVENT (kalau hari ini lebih dari satu event) =====
-          Semua bagian di bawahnya mengikuti event yang dipilih di sini. */}
-      {!loading && events.length > 1 && (
-        <motion.div variants={BAGIAN} className="pt-card">
-          <div className="flex flex-wrap items-baseline justify-between gap-xs">
-            <p className="text-label-md font-semibold text-on-surface">Pilih event yang ingin dipantau</p>
-            <p className="text-label-sm text-on-surface-variant">{events.length} event hari ini</p>
-          </div>
-          <div role="tablist" aria-label="Event hari ini" className="mt-sm grid grid-cols-1 gap-sm sm:grid-cols-2 lg:grid-cols-3">
-            {events.map((e) => {
-              const aktif = e.id === idTerpilih;
-              const st = LABEL_STATUS_EVENT[e.status];
-              return (
-                <button
-                  key={e.id}
-                  type="button"
-                  role="tab"
-                  aria-selected={aktif}
-                  onClick={() => setPilihanId(e.id)}
-                  className={`flex min-h-[64px] flex-col items-start gap-1 rounded-xl border px-md py-sm text-left transition-colors ${
-                    aktif
-                      ? "border-primary bg-primary/10 shadow-[inset_3px_0_0_var(--color-primary)]"
-                      : "border-outline-variant bg-surface-container-lowest hover:bg-surface-container-low"
-                  }`}
-                >
-                  <span className="flex w-full items-center justify-between gap-sm">
-                    <span className="truncate text-body-md font-medium text-on-surface">{e.nama}</span>
-                    <span className={`pt-pill shrink-0 py-0.5 ${st.pill}`}>{st.label}</span>
-                  </span>
-                  <span className="text-label-sm tabular-nums text-on-surface-variant">
-                    {e.jamMulai.slice(0, 5)} – {e.jamSelesai.slice(0, 5)} WIB · {e.checkIn} hadir
-                  </span>
-                </button>
-              );
-            })}
-          </div>
-        </motion.div>
+      {/* ===== BANNER: EVENT TERPILIH ===== */}
+      {loading ? (
+        <div className="h-[260px] animate-pulse rounded-3xl bg-surface-container-high" />
+      ) : (
+        <BannerEvent
+          label={`${sapaan(sekarang.getHours())}, Petugas`}
+          tanggal={sekarang.toLocaleDateString("id-ID", { weekday: "long", day: "numeric", month: "long", year: "numeric" })}
+          diperbarui={diperbarui}
+          refreshing={refreshing}
+          onRefresh={() => load(true)}
+          judul={eventTerpilih ? eventTerpilih.nama : "Belum ada event hari ini"}
+          status={eventTerpilih ? eventTerpilih.status : "belum_ada"}
+          jam={eventTerpilih ? `${jamPendek(eventTerpilih.jamMulai)} – ${jamPendek(eventTerpilih.jamSelesai)} WIB` : null}
+          info={eventTerpilih ? { icon: Users, teks: `${eventTerpilih.checkIn} pedagang sudah check-in` } : null}
+          cincin={cincin}
+          events={events.map((e) => ({
+            id: e.id,
+            nama: e.nama,
+            status: e.status,
+            keterangan: `${jamPendek(e.jamMulai)}–${jamPendek(e.jamSelesai)} · ${e.checkIn} hadir`,
+          }))}
+          pilihanId={idTerpilih}
+          onPilih={setPilihanId}
+        />
       )}
 
-      {/* ===== HERO: STATUS EVENT TERPILIH ===== */}
-      <motion.div variants={BAGIAN}>
-        {loading ? (
-          <div className="h-[156px] animate-pulse rounded-2xl bg-surface-container-high" />
-        ) : (
-          <div
-            className={`relative overflow-hidden rounded-2xl p-lg shadow-[0_1px_3px_rgba(11,28,48,0.05)] sm:p-xl ${
-              toneSesi === "live"
-                ? "bg-gradient-to-br from-primary to-primary-container text-on-primary shadow-[0_18px_40px_-20px_rgba(0,40,142,0.6)]"
-                : "border border-outline-variant bg-surface-container-lowest text-on-surface"
-            }`}
-          >
-            {/* marka jalan CFD sebagai latar */}
-            <div
-              aria-hidden="true"
-              className={`pointer-events-none absolute inset-x-0 bottom-0 h-1 ${toneSesi === "live" ? "opacity-30" : "opacity-15"}`}
-              style={{
-                backgroundImage: `repeating-linear-gradient(90deg, ${
-                  toneSesi === "live" ? "white" : "var(--color-primary)"
-                } 0 32px, transparent 32px 56px)`,
-              }}
-            />
-
-            <div className="relative flex flex-wrap items-center justify-between gap-md">
-              <div className="flex items-start gap-md">
-                <span
-                  className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-full ${
-                    toneSesi === "live" ? "bg-white/15" : toneSesi === "upcoming" ? "bg-tertiary-fixed" : "bg-surface-container-high"
-                  }`}
-                >
-                  {toneSesi === "live" ? (
-                    <span className="relative flex h-2.5 w-2.5">
-                      <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-white/80 motion-reduce:hidden" />
-                      <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-white" />
-                    </span>
-                  ) : toneSesi === "upcoming" ? (
-                    <Hourglass className="h-5 w-5 text-on-tertiary-fixed" strokeWidth={2} />
-                  ) : toneSesi === "ended" ? (
-                    <CircleCheck className="h-5 w-5 text-on-surface-variant" strokeWidth={2} />
-                  ) : (
-                    <Clock className="h-5 w-5 text-on-surface-variant" strokeWidth={2} />
-                  )}
-                </span>
-                <div>
-                  <p className={`text-label-sm ${toneSesi === "live" ? "text-white/70" : "text-on-surface-variant"}`}>
-                    {sesi ? sesi.nama : "Status Event"}
-                  </p>
-                  <p className="mt-1 text-headline-md">{labelSesi}</p>
-                  {sesi && (
-                    <p className={`mt-1 text-body-sm ${toneSesi === "live" ? "text-white/80" : "text-on-surface-variant"}`}>
-                      {sesi.jamMulai.slice(0, 5)} – {sesi.jamSelesaiRencana.slice(0, 5)} WIB
-                    </p>
-                  )}
-                  {menitMenujuMulai !== null && menitMenujuMulai > 0 && (
-                    <p className="mt-sm inline-flex rounded-full bg-tertiary-fixed px-sm py-1 text-label-sm text-on-tertiary-fixed">
-                      Dimulai {menitMenujuMulai >= 60 ? `${Math.floor(menitMenujuMulai / 60)} jam ${menitMenujuMulai % 60} menit` : `${menitMenujuMulai} menit`} lagi
-                    </p>
-                  )}
-                  {toneSesi === "live" && (
-                    <div className="mt-md flex items-center gap-md sm:hidden">
-                      <div>
-                        <p className="text-label-sm text-white/70">Sisa Waktu</p>
-                        <p className="text-headline-md tabular-nums">{formatSisaWaktu(sisaMenit)}</p>
-                      </div>
-                      <div className="h-1.5 w-32 overflow-hidden rounded-full bg-white/20">
-                        <div className="h-full rounded-full bg-white transition-all duration-1000" style={{ width: `${elapsedPercent}%` }} />
-                      </div>
-                    </div>
-                  )}
-                </div>
-              </div>
-
-              {toneSesi === "live" ? (
-                <div className="hidden items-center gap-lg sm:flex">
-                  <CincinWaktu persen={100 - elapsedPercent}>
-                    <span className="text-title-lg font-semibold tabular-nums">{formatSisaWaktu(sisaMenit)}</span>
-                    <span className="text-label-sm text-white/70">tersisa</span>
-                  </CincinWaktu>
-                  <MarketIllustration light />
-                </div>
-              ) : (
-                <MarketIllustration light={false} />
-              )}
-            </div>
-          </div>
-        )}
-      </motion.div>
-
-
-      {/* ===== KEHADIRAN & PENDAFTARAN ===== */}
-      <motion.div variants={BAGIAN} className="grid grid-cols-1 gap-md sm:grid-cols-2">
-        {memuatLaporan ? (
-          <>
-            <div className="h-[156px] animate-pulse rounded-2xl bg-surface-container-high" />
-            <div className="h-[156px] animate-pulse rounded-2xl bg-surface-container-high" />
-          </>
-        ) : (
-          <>
-            <div className="pt-card transition-shadow hover:shadow-[0_10px_30px_-16px_rgba(11,28,48,0.25)]">
-              <div className="flex items-center gap-md">
-                <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-secondary-container/40 text-on-secondary-container">
-                  <FileText className="h-5 w-5" strokeWidth={2} />
-                </span>
-                <p className="text-headline-md font-semibold text-on-surface">
-                  <AngkaBerjalan nilai={totalCheckin} />
-                  <span className="text-body-md font-normal text-on-surface-variant"> / {totalTerdaftar}</span>
-                </p>
-              </div>
-              <p className="mt-sm text-label-md text-on-surface-variant">Kehadiran Pedagang di Event Ini</p>
-              <div className="mt-sm h-2 w-full overflow-hidden rounded-full bg-surface-container-high">
-                <motion.div
-                  className="h-full rounded-full bg-gradient-to-r from-secondary-fixed-dim to-secondary"
-                  initial={kurangiGerak ? false : { width: 0 }}
-                  animate={{ width: `${Math.min(100, persentaseHadir)}%` }}
-                  transition={{ duration: 0.9, ease: [0.22, 1, 0.36, 1] }}
-                />
-              </div>
-              <div className="mt-xs flex flex-wrap items-center justify-between gap-xs text-label-sm text-on-surface-variant">
-                <span>{persentaseHadir}% sudah check-in</span>
-                <span className="inline-flex items-center gap-xs">
-                  <LogOut className="h-3.5 w-3.5" strokeWidth={2} />
-                  {totalCheckout} sudah check-out
-                </span>
-              </div>
-            </div>
-
-            <div className="pt-card transition-shadow hover:shadow-[0_10px_30px_-16px_rgba(11,28,48,0.25)]">
-              <div className="flex items-center gap-md">
-                <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-tertiary-container/20 text-on-tertiary-container">
-                  <Sparkles className="h-5 w-5" strokeWidth={2} />
-                </span>
-                <div>
-                  {/* Kuota event terpilih saja (bukan gabungan semua event). */}
-                  <p className="text-label-md text-on-surface-variant">Kuota Event Ini</p>
-                  <p className="mt-0.5 text-headline-md font-semibold text-on-surface">
-                    {kuotaTerisi}
-                    <span className="text-body-md font-normal text-on-surface-variant"> / {kuotaTotal} pedagang terdaftar</span>
-                  </p>
-                </div>
-              </div>
-              <p className="mt-sm text-body-sm text-on-surface-variant">
-                {!eventTerpilih
-                  ? "Belum ada event hari ini."
-                  : `Sisa ${Math.max(0, kuotaTotal - kuotaTerisi)} tempat.`}
-              </p>
-            </div>
-          </>
-        )}
-      </motion.div>
-
-      {/* ===== GRAFIK OMSET ===== */}
-      <motion.div variants={BAGIAN} className="pt-card">
-        <div className="mb-md flex flex-wrap items-center gap-sm">
-          <span className="pt-section-icon">
-            <TrendingUp className="h-[18px] w-[18px]" strokeWidth={2} />
-          </span>
-          <div>
-            <h3 className="pt-section-title">Omset Event Ini</h3>
-            <p className="pt-section-desc">Ranking pedagang berdasarkan omset check-out</p>
-          </div>
-          {laporanEvent && laporanEvent.totalOmset > 0 && (
-            <div className="ml-auto flex flex-wrap gap-xs">
-              <span className="rounded-full bg-primary-fixed px-md py-1.5 text-label-sm font-semibold text-on-primary-fixed">
-                Total <AngkaBerjalan nilai={laporanEvent.totalOmset} format={formatRupiah} />
-              </span>
-              <span className="rounded-full bg-surface-container-high px-md py-1.5 text-label-sm text-on-surface-variant">
-                Rata-rata {formatRupiah(Math.round(laporanEvent.rataOmset))}
-              </span>
-            </div>
-          )}
+      {/* ===== ANGKA UTAMA ===== */}
+      {memuatLaporan ? (
+        <div className="grid grid-cols-1 gap-md sm:grid-cols-2 xl:grid-cols-4">
+          {[0, 1, 2, 3].map((i) => (
+            <div key={i} className="h-[150px] animate-pulse rounded-2xl bg-surface-container-high" />
+          ))}
         </div>
+      ) : (
+        <div className="grid grid-cols-1 gap-md sm:grid-cols-2 xl:grid-cols-4">
+          <KartuAngka
+            i={0}
+            icon={Users}
+            warna="#16a06c"
+            judul="Pedagang hadir"
+            nilai={totalCheckin}
+            dari={penyebutHadir}
+            keterangan={penyebutHadir === 0 ? (eventTerpilih ? "Belum ada pedagang yang ikut" : "Belum ada event") : `dari ${penyebutHadir} pedagang terdaftar`}
+          />
+          <KartuAngka
+            i={1}
+            icon={Store}
+            warna="#2f6fed"
+            judul="Kuota event ini"
+            nilai={kuotaTerisi}
+            dari={kuotaTotal}
+            keterangan={eventTerpilih ? `Sisa ${Math.max(0, kuotaTotal - kuotaTerisi)} tempat` : "Belum ada event hari ini"}
+          />
+          <KartuAngka
+            i={2}
+            icon={UserCheck}
+            warna="#f59e0b"
+            judul="Masih di lapak"
+            nilai={masihDiLapak}
+            keterangan={`${totalCheckout} pedagang sudah check-out`}
+          />
+          <KartuAngka
+            i={3}
+            icon={Wallet}
+            warna="#8b5cf6"
+            judul="Omset event ini"
+            nilai={laporanEvent?.totalOmset ?? 0}
+            rupiah
+            keterangan={
+              laporanEvent && laporanEvent.totalOmset > 0
+                ? `Rata-rata ${formatRupiah(Math.round(laporanEvent.rataOmset))} per pedagang`
+                : "Diisi pedagang saat check-out"
+            }
+          />
+        </div>
+      )}
+
+      {!memuatLaporan && (
+        <AlurPedagang klaim={totalTerdaftar} checkIn={totalCheckin} checkOut={totalCheckout} adaEvent={!!eventTerpilih} />
+      )}
+
+      {/* ===== RANKING OMSET ===== */}
+      <motion.div
+        initial={{ opacity: 0, y: 14 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.5, ease: [0.22, 1, 0.36, 1], delay: 0.35 }}
+        className="adm-kartu p-lg"
+      >
+        <JudulKartu icon={TrendingUp} judul="Ranking omset pedagang" keterangan="Berdasarkan omset yang diisi saat check-out" />
         {memuatLaporan ? (
           <div className="h-40 animate-pulse rounded-xl bg-surface-container-high" />
         ) : (
@@ -711,22 +402,27 @@ export default function PetugasHomePage() {
         )}
       </motion.div>
 
-      {/* ===== TABEL PEDAGANG HARI INI ===== */}
-      <motion.div variants={BAGIAN} className="pt-card !p-0 sm:!p-0 overflow-hidden">
-        <div className="flex items-center gap-sm p-lg pb-md sm:p-xl sm:pb-md">
-          <span className="pt-section-icon">
-            <Store className="h-[18px] w-[18px]" strokeWidth={2} />
+      {/* ===== PEDAGANG DI EVENT INI ===== */}
+      <motion.div
+        initial={{ opacity: 0, y: 14 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.5, ease: [0.22, 1, 0.36, 1], delay: 0.42 }}
+        className="adm-kartu overflow-hidden"
+      >
+        <div className="flex items-center gap-sm p-lg pb-md">
+          <span className="grid h-8 w-8 place-items-center rounded-lg bg-primary/10 text-primary">
+            <Store className="h-4 w-4" strokeWidth={2.2} />
           </span>
-          <h3 className="pt-section-title">Pedagang di Event Ini</h3>
+          <h4 className="text-title-md text-on-surface">Pedagang di event ini</h4>
           <span className="ml-auto rounded-full bg-surface-container-high px-sm py-1 text-label-sm text-on-surface-variant">
             {pedagangHariIni.length} lapak terisi
           </span>
         </div>
 
         {memuatLaporan ? (
-          <p className="px-lg py-xl text-center text-body-md text-on-surface-variant sm:px-xl">Memuat data...</p>
+          <p className="px-lg py-xl text-center text-body-md text-on-surface-variant">Memuat data...</p>
         ) : pedagangHariIni.length === 0 ? (
-          <div className="pt-empty mx-lg mb-lg sm:mx-xl sm:mb-xl">
+          <div className="pt-empty mx-lg mb-lg">
             <span className="pt-empty-icon">
               <Store className="h-6 w-6" strokeWidth={1.75} />
             </span>
@@ -825,7 +521,7 @@ export default function PetugasHomePage() {
           </>
         )}
       </motion.div>
-    </motion.div>
+    </div>
   );
 }
 

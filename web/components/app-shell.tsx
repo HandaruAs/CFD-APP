@@ -3,6 +3,7 @@
 import { usePathname } from "next/navigation";
 import { Sidebar } from "@/components/sidebar";
 import { Topbar } from "@/components/topbar";
+import { AdminShell } from "@/components/admin/admin-shell";
 
 const PUBLIC_PATHS = [
   "/",
@@ -22,6 +23,17 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
   if (isPublic) {
     return <>{children}</>;
+  }
+
+  // Superadmin, petugas & pedagang memakai kerangka baru (sidebar, topbar & menu mobile).
+  if (pathname === "/admin" || pathname.startsWith("/admin/")) {
+    return <AdminShell peran="superadmin">{children}</AdminShell>;
+  }
+  if (pathname === "/petugas" || pathname.startsWith("/petugas/")) {
+    return <AdminShell peran="petugas">{children}</AdminShell>;
+  }
+  if (pathname === "/pedagang" || pathname.startsWith("/pedagang/")) {
+    return <AdminShell peran="pedagang">{children}</AdminShell>;
   }
 
   return (
