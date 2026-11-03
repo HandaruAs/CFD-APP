@@ -283,7 +283,7 @@ export default function MerchantCheckoutPage() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-[#f8f9ff] flex items-center justify-center">
+      <div className="min-h-[70vh] flex items-center justify-center">
         <div className="flex flex-col items-center gap-3 text-[#5b5e6d]">
           <Loader2 className="w-6 h-6 animate-spin text-[#00288e]" />
           <p className="text-sm">Memuat data checkout...</p>
@@ -294,7 +294,7 @@ export default function MerchantCheckoutPage() {
 
   if (loadError) {
     return (
-      <div className="min-h-screen bg-[#f8f9ff] flex items-center justify-center p-4">
+      <div className="min-h-[70vh] flex items-center justify-center p-4">
         <div className="max-w-[420px] w-full bg-white rounded-xl border border-[#E2E8F0] shadow-sm p-6 text-center flex flex-col items-center gap-3">
           <AlertTriangle className="w-8 h-8 text-amber-500" />
           <p className="text-sm text-[#0b1c30]">{loadError}</p>
@@ -311,7 +311,7 @@ export default function MerchantCheckoutPage() {
 
   if (submitted) {
     return (
-      <div className="min-h-screen bg-[#f8f9ff] flex items-center justify-center p-4">
+      <div className="min-h-[70vh] flex items-center justify-center p-4">
         <div className="max-w-[420px] w-full bg-white rounded-xl border border-[#E2E8F0] shadow-sm p-6 text-center flex flex-col items-center gap-3">
           <CheckCircle2 className="w-10 h-10 text-emerald-600" />
           <h2 className="font-semibold text-[#0b1c30] text-lg">Cek-out Berhasil</h2>
@@ -337,7 +337,7 @@ export default function MerchantCheckoutPage() {
 
   if (!dataPedagang.sudahCheckIn) {
     return (
-      <div className="min-h-screen bg-[#f8f9ff] flex items-center justify-center p-4">
+      <div className="min-h-[70vh] flex items-center justify-center p-4">
         <div className="max-w-[420px] w-full bg-white rounded-xl border border-[#E2E8F0] shadow-sm p-6 text-center flex flex-col items-center gap-3">
           <AlertTriangle className="w-8 h-8 text-amber-500" />
           <p className="text-sm text-[#0b1c30]">
@@ -356,11 +356,11 @@ export default function MerchantCheckoutPage() {
   }
 
   return (
-    <div className="min-h-screen bg-[#f8f9ff] text-[#0b1c30] font-sans flex flex-col">
-      <header className="bg-white border-b border-[#E2E8F0] px-4 py-3 shadow-sm">
+    <div className="min-h-[70vh] text-[#0b1c30] font-sans flex flex-col gap-4">
+      <header className="mx-auto w-full max-w-[600px] rounded-2xl border border-[#e7e8f1] bg-white px-4 py-4 shadow-sm">
         <div className="max-w-[600px] mx-auto flex items-center justify-between gap-4">
           <div className="flex-1 text-center">
-            <h1 className="text-xl font-bold text-[#0b1c30]">Cek-out Pedagang</h1>
+            <h1 className="adm-display text-[22px] font-semibold text-[#0b1c30]">Cek-out Pedagang</h1>
             <p className="text-sm font-semibold text-[#00288e]">{dataPedagang.namaEvent}</p>
             <p className="text-sm text-[#5b5e6d]">
               {formatTanggal(dataPedagang.tanggal)} · {dataPedagang.jamMulai.replace(":", ".")} –{" "}
@@ -370,7 +370,7 @@ export default function MerchantCheckoutPage() {
         </div>
       </header>
 
-      <main className="flex-1 overflow-y-auto p-4 md:p-6 flex justify-center bg-[#f8f9ff]">
+      <main className="flex-1 flex justify-center">
         <form onSubmit={handleSubmit} className="w-full max-w-[600px] flex flex-col gap-4">
           {dataPedagang.wajibCheckout && (
             <div role="alert" className="flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 p-4">

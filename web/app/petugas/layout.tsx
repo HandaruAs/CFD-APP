@@ -14,7 +14,9 @@ import { ConfirmDialogProvider } from "../admin/manajemen-lapak/components/confi
 // useConfirmDialog() kalau nanti dibutuhkan di tempat lain juga.
 export default function PetugasLayout({ children }: { children: React.ReactNode }) {
   return (
-    <div data-petugas-scope>
+    // data-admin-scope: ikut penyempurnaan tampilan yang sama dengan halaman
+    // superadmin di app/globals.css (warna, tabel, form, judul halaman).
+    <div data-petugas-scope data-admin-scope>
       <ConfirmDialogProvider>{children}</ConfirmDialogProvider>
     </div>
   );

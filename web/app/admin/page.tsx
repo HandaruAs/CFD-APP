@@ -1,19 +1,40 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { motion } from "framer-motion";
 import {
-  AlertTriangle,
-  CalendarClock,
-  CircleCheck,
+  AlurPedagang,
+  BannerEvent,
+  EASE,
+  JudulKartu,
+  Kartu,
+  KartuAngka,
+  Kosong,
+  isiCincin,
+  jamPendek,
+} from "@/components/admin/dashboard-ui";
+import {
+  Area,
+  AreaChart,
+  Bar,
+  CartesianGrid,
+  ComposedChart,
+  Line,
+  ReferenceLine,
+  ResponsiveContainer,
+  Tooltip,
+  XAxis,
+  YAxis,
+} from "recharts";
+import {
   ClipboardList,
-  Clock,
   Loader2,
-  RefreshCw,
+  MapPin,
   ShieldAlert,
   Store,
+  UserCheck,
   Users,
   Wallet,
-  type LucideIcon,
 } from "lucide-react";
 
 // ============================================================
@@ -115,18 +136,6 @@ function formatPersen(n: number) {
   return `${n.toLocaleString("id-ID", { maximumFractionDigits: 1 })}%`;
 }
 
-function formatSisaWaktu(menit: number) {
-  const j = Math.floor(menit / 60);
-  const m = menit % 60;
-  if (j === 0) return `${m} menit lagi`;
-  return m === 0 ? `${j} jam lagi` : `${j} jam ${m} menit lagi`;
-}
-
-function persenAman(bagian: number, total: number) {
-  if (total <= 0) return 0;
-  return Math.min(100, Math.round((bagian / total) * 100));
-}
-
 // ============================================================
 // PAGE
 // ============================================================
@@ -179,39 +188,7 @@ export default function AdminDashboardPage() {
   }
 
   return (
-    <div className="flex flex-col gap-xl pb-xl">
-      {/* Heading */}
-      <div className="flex flex-wrap items-end justify-between gap-md">
-        <div>
-          <h2 className="text-headline-lg text-on-surface">Dashboard Super Admin</h2>
-          <p className="mt-xs text-body-md text-on-surface-variant">
-            {data
-              ? formatTanggal(data.hariIni.tanggal, { weekday: "long", ...TANGGAL_LENGKAP })
-              : "Ringkasan kegiatan CFD"}
-          </p>
-        </div>
-        <div className="flex items-center gap-sm">
-          {diperbarui && (
-            <span className="inline-flex items-center gap-xs rounded-full bg-surface-container-low px-sm py-1 text-label-sm text-on-surface-variant">
-              <span className="relative flex h-2 w-2" aria-hidden="true">
-                <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-secondary opacity-60 motion-reduce:hidden" />
-                <span className="relative inline-flex h-2 w-2 rounded-full bg-secondary" />
-              </span>
-              Diperbarui {diperbarui.toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit" })}
-            </span>
-          )}
-          <button
-            type="button"
-            onClick={() => load(true)}
-            disabled={refreshing || loading}
-            className="pt-btn pt-btn-secondary"
-          >
-            <RefreshCw className={`h-4 w-4 ${refreshing ? "animate-spin" : ""}`} />
-            Muat ulang
-          </button>
-        </div>
-      </div>
-
+    <div className="mx-auto flex w-full max-w-[1400px] flex-col gap-xl pb-xl">
       {error && (
         <div className="flex items-start justify-between gap-md rounded-xl border border-error-container bg-error-container/30 px-md py-sm text-body-sm text-on-error-container">
           <span>{data ? `Gagal memperbarui data: ${error}` : error}</span>
@@ -227,12 +204,16 @@ export default function AdminDashboardPage() {
         <SkeletonDashboard />
       ) : data ? (
         <>
-          <Seksi judul="Hari Ini">
-            <BagianHariIni data={data.hariIni} />
-          </Seksi>
+          <BagianHariIni
+            data={data.hariIni}
+            diperbarui={diperbarui}
+            refreshing={refreshing}
+            onRefresh={() => load(true)}
+          />
 
           <Seksi
-            judul="Tren Kegiatan"
+            label="01"
+            judul="Tren kegiatan"
             deskripsi={`${data.tren.sesi.length} event terakhir dan pendaftaran pedagang ${data.tren.minggu.length} minggu terakhir.`}
           >
             <GrafikKehadiran sesi={data.tren.sesi} />
@@ -241,10 +222,8 @@ export default function AdminDashboardPage() {
               <GrafikPertumbuhan minggu={data.tren.minggu} />
             </div>
           </Seksi>
-
         </>
       ) : null}
-
     </div>
   );
 }
@@ -253,60 +232,47 @@ export default function AdminDashboardPage() {
 // KERANGKA
 // ============================================================
 
-function Seksi({ judul, deskripsi, children }: { judul: string; deskripsi?: string; children: React.ReactNode }) {
+function Seksi({
+  label,
+  judul,
+  deskripsi,
+  children,
+}: {
+  label: string;
+  judul: string;
+  deskripsi?: string;
+  children: React.ReactNode;
+}) {
   return (
-    <section className="flex flex-col gap-md">
-      <div>
-        <h3 className="pt-section-title">{judul}</h3>
-        {deskripsi && <p className="pt-section-desc">{deskripsi}</p>}
-      </div>
-      {children}
-    </section>
-  );
-}
-
-function Kartu({ children, className = "" }: { children: React.ReactNode; className?: string }) {
-  return (
-    <div
-      className={`rounded-2xl border border-outline-variant bg-surface-container-lowest p-lg shadow-[0_1px_3px_rgba(11,28,48,0.05)] ${className}`}
+    <motion.section
+      initial={{ opacity: 0, y: 16 }}
+      whileInView={{ opacity: 1, y: 0 }}
+      viewport={{ once: true, margin: "-60px" }}
+      transition={{ duration: 0.5, ease: EASE }}
+      className="flex flex-col gap-md"
     >
-      {children}
-    </div>
-  );
-}
-
-function JudulKartu({ icon: Icon, judul, keterangan }: { icon?: LucideIcon; judul: string; keterangan?: string }) {
-  return (
-    <div className="mb-md flex flex-wrap items-start justify-between gap-x-sm gap-y-xs">
-      <div className="flex items-center gap-sm">
-        {Icon && <Icon className="h-4 w-4 text-primary" strokeWidth={2.2} />}
-        <h4 className="text-title-md text-on-surface">{judul}</h4>
+      <div>
+        <div className="flex items-center gap-sm">
+          <span className="rounded-md bg-primary/10 px-1.5 py-0.5 font-mono text-[11px] font-semibold text-primary">{label}</span>
+          <h3 className="adm-display text-[24px] leading-tight font-semibold text-on-surface">{judul}</h3>
+        </div>
+        {deskripsi && <p className="mt-1 text-body-sm text-on-surface-variant">{deskripsi}</p>}
       </div>
-      {keterangan && <span className="text-label-sm text-on-surface-variant">{keterangan}</span>}
-    </div>
-  );
-}
-
-function Kosong({ teks }: { teks: string }) {
-  return (
-    <div className="flex min-h-[120px] items-center justify-center rounded-xl bg-surface-container-low px-md text-center text-body-sm text-on-surface-variant">
-      {teks}
-    </div>
+      {children}
+    </motion.section>
   );
 }
 
 function SkeletonDashboard() {
   return (
     <div className="flex flex-col gap-lg" aria-busy="true">
-      <div className="grid grid-cols-1 gap-md lg:grid-cols-3">
-        {[0, 1, 2].map((i) => (
-          <div key={i} className="h-[168px] animate-pulse rounded-2xl bg-surface-container-high" />
+      <div className="h-[260px] animate-pulse rounded-3xl bg-surface-container-high" />
+      <div className="grid grid-cols-1 gap-md sm:grid-cols-2 xl:grid-cols-4">
+        {[0, 1, 2, 3].map((i) => (
+          <div key={i} className="h-[150px] animate-pulse rounded-2xl bg-surface-container-high" />
         ))}
       </div>
-      <div className="grid grid-cols-1 gap-md xl:grid-cols-2">
-        <div className="h-[280px] animate-pulse rounded-2xl bg-surface-container-high" />
-        <div className="h-[280px] animate-pulse rounded-2xl bg-surface-container-high" />
-      </div>
+      <div className="h-[280px] animate-pulse rounded-2xl bg-surface-container-high" />
       <div className="flex items-center justify-center gap-sm text-on-surface-variant">
         <Loader2 className="h-4 w-4 animate-spin" />
         <span className="text-body-sm">Memuat dashboard...</span>
@@ -318,39 +284,6 @@ function SkeletonDashboard() {
 // ============================================================
 // 1. KONDISI HARI INI
 // ============================================================
-
-const TAMPILAN_SESI: Record<StatusSesi, { label: string; kartu: string; ikon: LucideIcon; ikonWarna: string }> = {
-  berjalan: {
-    label: "Sedang berjalan",
-    kartu: "border-transparent bg-primary text-on-primary",
-    ikon: Clock,
-    ikonWarna: "bg-white/15 text-on-primary",
-  },
-  terjadwal: {
-    label: "Terjadwal hari ini",
-    kartu: "border-outline-variant bg-surface-container-lowest text-on-surface",
-    ikon: CalendarClock,
-    ikonWarna: "bg-tertiary-fixed text-on-tertiary-fixed",
-  },
-  selesai: {
-    label: "Sudah selesai",
-    kartu: "border-outline-variant bg-surface-container-lowest text-on-surface",
-    ikon: CircleCheck,
-    ikonWarna: "bg-secondary-container text-on-secondary-container",
-  },
-  belum_ada: {
-    label: "Belum dibuka",
-    kartu: "border-outline-variant bg-surface-container-lowest text-on-surface",
-    ikon: CalendarClock,
-    ikonWarna: "bg-surface-container-high text-on-surface-variant",
-  },
-  dibatalkan: {
-    label: "Dibatalkan",
-    kartu: "border-error-container bg-error-container/30 text-on-surface",
-    ikon: AlertTriangle,
-    ikonWarna: "bg-error-container text-on-error-container",
-  },
-};
 
 // Event yang dipilih otomatis (atau saat event pilihan admin sudah tidak
 // ada): berjalan > terjadwal paling awal > selesai paling akhir > dibatalkan.
@@ -369,179 +302,86 @@ function pilihEventUtama(events: EventHariIni[]): EventHariIni | null {
 // dan pedagang hadir diambil dari event yang dipilih admin -- tidak lagi
 // digabung dari semua event (ringkasan gabungan sesi/lapak/hadir dari
 // backend sengaja tidak dipakai di sini).
-function BagianHariIni({ data }: { data: DashboardData["hariIni"] }) {
+function BagianHariIni({
+  data,
+  diperbarui,
+  refreshing,
+  onRefresh,
+}: {
+  data: DashboardData["hariIni"];
+  diperbarui: Date | null;
+  refreshing: boolean;
+  onRefresh: () => void;
+}) {
   const events = data.events ?? [];
   // null = ikut pilihan otomatis; tetap dipertahankan walau data di-refresh.
   const [pilihanId, setPilihanId] = useState<string | null>(null);
   const ev = events.find((e) => e.id === pilihanId) ?? pilihEventUtama(events);
 
-  const status: StatusSesi = ev ? ev.status : "belum_ada";
-  const lapak = ev
-    ? { terisi: ev.klaim, kapasitas: ev.kapasitas, persen: persenAman(ev.klaim, ev.kapasitas) }
-    : { terisi: 0, kapasitas: 0, persen: 0 };
+  const lapak = ev ? { terisi: ev.klaim, kapasitas: ev.kapasitas } : { terisi: 0, kapasitas: 0 };
   const hadir = ev ? { klaim: ev.klaim, checkIn: ev.checkIn, checkOut: ev.checkOut } : { klaim: 0, checkIn: 0, checkOut: 0 };
   // Klaim bisa berubah jadi "batal" kalau sesi sempat ditutup, sementara
   // pedagangnya sudah check-in -- penyebut minimal = jumlah check-in supaya
   // tidak tampil "1 / 0".
   const penyebutHadir = Math.max(hadir.klaim, hadir.checkIn);
   const belumCheckout = Math.max(0, hadir.checkIn - hadir.checkOut);
-  const tampilan = TAMPILAN_SESI[status] ?? TAMPILAN_SESI.belum_ada;
-  const IkonSesi = tampilan.ikon;
-  const gelap = status === "berjalan";
 
   return (
-    <div className="flex flex-col gap-md">
-      {/* Pilih event -- muncul kalau hari ini lebih dari satu event. Semua
-          kartu di bawahnya mengikuti event yang dipilih di sini. */}
-      {events.length > 1 && (
-        <Kartu>
-          <JudulKartu icon={CalendarClock} judul="Pilih event yang ingin dipantau" keterangan={`${events.length} event hari ini`} />
-          <div role="tablist" aria-label="Event hari ini" className="mt-md grid grid-cols-1 gap-sm sm:grid-cols-2 xl:grid-cols-3">
-            {events.map((e) => {
-              const aktif = e.id === ev?.id;
-              const st = LABEL_STATUS_EVENT[e.status] ?? LABEL_STATUS_EVENT.belum_ada;
-              return (
-                <button
-                  key={e.id}
-                  type="button"
-                  role="tab"
-                  aria-selected={aktif}
-                  onClick={() => setPilihanId(e.id)}
-                  className={`flex min-h-[64px] flex-col items-start gap-1 rounded-xl border px-md py-sm text-left transition-colors ${
-                    aktif
-                      ? "border-primary bg-primary/10 shadow-[inset_3px_0_0_var(--color-primary)]"
-                      : "border-outline-variant bg-surface-container-lowest hover:bg-surface-container-low"
-                  }`}
-                >
-                  <span className="flex w-full items-center justify-between gap-sm">
-                    <span className="truncate text-body-md font-medium text-on-surface">{e.nama}</span>
-                    <span className={`pt-pill ${st.pill} shrink-0 py-0.5`}>
-                      <span className={`pt-pill-dot ${e.status === "berjalan" ? "is-pulse" : ""}`} />
-                      {st.label}
-                    </span>
-                  </span>
-                  <span className="text-label-sm tabular-nums text-on-surface-variant">
-                    {e.jamMulai} – {e.jamSelesai} · {e.checkIn}/{e.klaim} hadir · {formatRupiah(e.omset)}
-                  </span>
-                </button>
-              );
-            })}
-          </div>
-        </Kartu>
-      )}
+    <section className="flex flex-col gap-md">
+      <BannerEvent
+        label="Pusat kendali CFD"
+        tanggal={formatTanggal(data.tanggal, { weekday: "long", ...TANGGAL_LENGKAP })}
+        diperbarui={diperbarui}
+        refreshing={refreshing}
+        onRefresh={onRefresh}
+        judul={ev ? ev.nama : "Belum ada event hari ini"}
+        status={ev ? ev.status : "belum_ada"}
+        jam={ev ? `${jamPendek(ev.jamMulai)} – ${jamPendek(ev.jamSelesai)} WIB` : null}
+        info={ev ? { icon: MapPin, teks: `${ev.titik} titik lokasi` } : null}
+        cincin={isiCincin(ev)}
+        events={events.map((e) => ({
+          id: e.id,
+          nama: e.nama,
+          status: e.status,
+          keterangan: `${jamPendek(e.jamMulai)}–${jamPendek(e.jamSelesai)} · ${e.checkIn}/${e.klaim} hadir`,
+        }))}
+        pilihanId={ev?.id ?? null}
+        onPilih={setPilihanId}
+      />
 
-    <div className="grid grid-cols-1 gap-md lg:grid-cols-3">
-      {/* Status sesi */}
-      <div
-        className={`flex flex-col justify-between gap-md rounded-2xl border p-lg shadow-[0_1px_3px_rgba(11,28,48,0.05)] ${tampilan.kartu}`}
-      >
-        <div className="flex items-start gap-md">
-          <span className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-full ${tampilan.ikonWarna}`}>
-            <IkonSesi className="h-5 w-5" strokeWidth={2} />
-          </span>
-          <div className="min-w-0">
-            <p className={`text-label-md ${gelap ? "text-on-primary/80" : "text-on-surface-variant"}`}>
-              Event CFD
-            </p>
-            <p className="mt-1 text-headline-md">{tampilan.label}</p>
-            {ev && (
-              <p className={`mt-1 truncate text-body-sm ${gelap ? "text-on-primary/80" : "text-on-surface-variant"}`}>
-                {ev.nama}
-              </p>
-            )}
-          </div>
-        </div>
-        <p className={`text-body-sm ${gelap ? "text-on-primary/90" : "text-on-surface-variant"}`}>
-          {ev
-            ? `Pukul ${ev.jamMulai} – ${ev.jamSelesai}${
-                ev.status === "berjalan" ? ` · berakhir ${formatSisaWaktu(ev.sisaMenit)}` : ""
-              }`
-            : ""}
-        </p>
+      {/* ---------- Angka utama ---------- */}
+      <div className="grid grid-cols-1 gap-md sm:grid-cols-2 xl:grid-cols-4">
+        <KartuAngka
+          i={0}
+          icon={Store}
+          warna="#2f6fed"
+          judul="Lapak terisi"
+          nilai={lapak.terisi}
+          dari={lapak.kapasitas}
+          keterangan={lapak.kapasitas ? `${Math.max(0, lapak.kapasitas - lapak.terisi)} lapak masih kosong` : "Belum ada lapak di event ini"}
+        />
+        <KartuAngka
+          i={1}
+          icon={Users}
+          warna="#16a06c"
+          judul="Pedagang hadir"
+          nilai={hadir.checkIn}
+          dari={penyebutHadir}
+          keterangan={penyebutHadir === 0 ? (ev ? "Belum ada pedagang yang ikut" : "Belum ada event") : `dari ${penyebutHadir} pedagang terdaftar`}
+        />
+        <KartuAngka
+          i={2}
+          icon={UserCheck}
+          warna="#f59e0b"
+          judul="Masih di lapak"
+          nilai={belumCheckout}
+          keterangan={`${hadir.checkOut} pedagang sudah check-out`}
+        />
+        <KartuAngka i={3} icon={Wallet} warna="#8b5cf6" judul="Omset dilaporkan" nilai={ev?.omset ?? 0} rupiah keterangan="Diisi pedagang saat check-out" />
       </div>
 
-      {/* Lapak terisi */}
-      <Kartu className="flex flex-col justify-between gap-md">
-        <div className="flex items-start justify-between gap-sm">
-          <div>
-            <p className="text-label-md text-on-surface-variant">Lapak Terisi di Event Ini</p>
-            <p className="mt-1 text-display-lg leading-none tabular-nums text-on-surface">
-              {lapak.terisi}
-              <span className="text-headline-md text-on-surface-variant"> / {lapak.kapasitas}</span>
-            </p>
-          </div>
-          <span className="flex h-11 w-11 items-center justify-center rounded-full bg-primary-fixed text-on-primary-fixed">
-            <Store className="h-5 w-5" strokeWidth={2} />
-          </span>
-        </div>
-        <div>
-          <BatangProgres persen={lapak.persen} />
-          <p className="mt-sm flex flex-wrap items-center gap-x-sm gap-y-xs text-body-sm text-on-surface-variant">
-            <span className="rounded-full bg-primary-fixed px-sm py-0.5 text-label-sm font-semibold tabular-nums text-on-primary-fixed">
-              {formatPersen(lapak.persen)}
-            </span>
-            <span>
-              <span className="tabular-nums">{Math.max(0, lapak.kapasitas - lapak.terisi)}</span> lapak masih kosong
-            </span>
-          </p>
-        </div>
-      </Kartu>
-
-      {/* Pedagang hadir */}
-      <Kartu className="flex flex-col justify-between gap-md">
-        <div className="flex items-start justify-between gap-sm">
-          <div>
-            <p className="text-label-md text-on-surface-variant">Pedagang Hadir di Event Ini</p>
-            <p className="mt-1 text-display-lg leading-none tabular-nums text-on-surface">
-              {hadir.checkIn}
-              <span className="text-headline-md text-on-surface-variant"> / {penyebutHadir}</span>
-            </p>
-          </div>
-          <span className="flex h-11 w-11 items-center justify-center rounded-full bg-secondary-container text-on-secondary-container">
-            <Users className="h-5 w-5" strokeWidth={2} />
-          </span>
-        </div>
-        <div>
-          <BatangProgres persen={persenAman(hadir.checkIn, penyebutHadir)} warna="bg-secondary" />
-          <p className="mt-sm text-body-sm text-on-surface-variant">
-            {penyebutHadir === 0
-              ? ev
-                ? "Belum ada pedagang yang ikut event ini."
-                : "Belum ada event hari ini."
-              : `${hadir.checkOut} sudah check-out${belumCheckout > 0 ? ` · ${belumCheckout} masih di lapak` : ""}`}
-          </p>
-        </div>
-      </Kartu>
-
-    </div>
-    </div>
-  );
-}
-
-// Label status event di tombol pilihan event.
-const LABEL_STATUS_EVENT: Record<StatusSesi, { label: string; pill: string }> = {
-  berjalan: { label: "Berjalan", pill: "pt-pill-success" },
-  terjadwal: { label: "Terjadwal", pill: "pt-pill-warning" },
-  selesai: { label: "Selesai", pill: "pt-pill-neutral" },
-  dibatalkan: { label: "Dibatalkan", pill: "pt-pill-danger" },
-  belum_ada: { label: "-", pill: "pt-pill-neutral" },
-};
-
-
-function BatangProgres({ persen, warna = "bg-primary" }: { persen: number; warna?: string }) {
-  return (
-    <div
-      className="h-2 overflow-hidden rounded-full bg-surface-container-high"
-      role="progressbar"
-      aria-valuenow={Math.round(persen)}
-      aria-valuemin={0}
-      aria-valuemax={100}
-    >
-      <div
-        className={`h-full rounded-full ${warna} transition-[width] duration-700`}
-        style={{ width: `${Math.min(100, persen)}%` }}
-      />
-    </div>
+      <AlurPedagang klaim={hadir.klaim} checkIn={hadir.checkIn} checkOut={hadir.checkOut} adaEvent={!!ev} />
+    </section>
   );
 }
 
@@ -938,63 +778,83 @@ function Selisih({ nilai, satuan = "", ringkas = false }: { nilai: number; satua
   );
 }
 
+
+function TooltipKotak({ judul, baris }: { judul: string; baris: { label: string; nilai: string; warna: string }[] }) {
+  return (
+    <div className="rounded-xl border border-outline-variant bg-surface-container-lowest px-3 py-2 text-[12px] shadow-[0_12px_32px_-12px_rgb(11_28_48/0.35)]">
+      <p className="mb-1 font-semibold text-on-surface">{judul}</p>
+      {baris.map((b) => (
+        <p key={b.label} className="flex items-center gap-2 text-on-surface-variant">
+          <span className="h-2 w-2 rounded-full" style={{ background: b.warna }} />
+          {b.label}: <b className="text-on-surface tabular-nums">{b.nilai}</b>
+        </p>
+      ))}
+    </div>
+  );
+}
+
+type SesiTren = DashboardData["tren"]["sesi"][number];
+
 function GrafikOmset({ sesi }: { sesi: DashboardData["tren"]["sesi"] }) {
   const total = sesi.reduce((n, s) => n + s.omset, 0);
-  const maks = Math.max(1, ...sesi.map((s) => s.omset));
-  // viewBox 100 x 100; garis digambar di area y 18..95 supaya label nilai
-  // di atas titik tertinggi gak kepotong.
-  const titik = sesi.map((s, i) => {
-    const x = sesi.length === 1 ? 50 : 4 + (i / (sesi.length - 1)) * 92;
-    const y = 95 - (s.omset / maks) * 77;
-    return { x, y, s };
-  });
-  const garis = titik.map((t) => `${t.x},${t.y}`).join(" ");
-  const area = titik.length > 1 ? `${titik[0].x},100 ${garis} ${titik[titik.length - 1].x},100` : "";
+  const rata = sesi.length ? total / sesi.length : 0;
+  const data = sesi.map((s) => ({ ...s, label: formatTanggal(s.tanggal) }));
 
   return (
     <Kartu>
-      <JudulKartu icon={Wallet} judul="Omset per Event" keterangan={sesi.length ? `Total ${formatRupiah(total)}` : undefined} />
+      <JudulKartu icon={Wallet} judul="Omset per event" keterangan={sesi.length ? `Total ${formatRupiah(total)}` : undefined} />
       {sesi.length === 0 ? (
         <Kosong teks="Belum ada event yang tercatat." />
       ) : (
         <>
-          <div className="mb-sm text-label-sm text-on-surface-variant">Dari omset yang diisi pedagang saat check-out</div>
-          <div className="relative h-[200px] border-b border-outline-variant">
-            <svg
-              viewBox="0 0 100 100"
-              preserveAspectRatio="none"
-              className="absolute inset-0 h-full w-full overflow-visible"
-              aria-hidden="true"
-            >
-              {area && <polygon points={area} className="fill-tertiary-fixed/50" />}
-              {titik.length > 1 && (
-                <polyline
-                  points={garis}
-                  fill="none"
-                  className="stroke-tertiary"
-                  strokeWidth={2.5}
-                  vectorEffect="non-scaling-stroke"
-                  strokeLinejoin="round"
-                  strokeLinecap="round"
+          <p className="mb-sm text-label-sm text-on-surface-variant">
+            Dari omset yang diisi pedagang saat check-out · rata-rata {formatRupiahRingkas(Math.round(rata))} per event
+          </p>
+          <div className="h-[230px]">
+            <ResponsiveContainer width="100%" height="100%">
+              <AreaChart data={data} margin={{ top: 10, right: 8, left: -8, bottom: 0 }}>
+                <defs>
+                  <linearGradient id="adm-omset" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0%" stopColor="#f59e0b" stopOpacity={0.35} />
+                    <stop offset="100%" stopColor="#f59e0b" stopOpacity={0} />
+                  </linearGradient>
+                </defs>
+                <CartesianGrid strokeDasharray="4 4" vertical={false} stroke="var(--color-outline-variant)" />
+                <XAxis dataKey="label" tickLine={false} axisLine={false} tick={{ fontSize: 11, fill: "var(--color-on-surface-variant)" }} />
+                <YAxis
+                  tickLine={false}
+                  axisLine={false}
+                  width={52}
+                  tick={{ fontSize: 11, fill: "var(--color-on-surface-variant)" }}
+                  tickFormatter={(v: number) => formatRupiahRingkas(v)}
                 />
-              )}
-            </svg>
-            {/* Titik & nilai pakai HTML biar bentuknya gak ikut gepeng mengikuti SVG */}
-            {titik.map((t) => (
-              <div
-                key={t.s.sesiId}
-                className="absolute flex flex-col items-center"
-                style={{ left: `${t.x}%`, top: `${t.y}%`, transform: "translate(-50%, calc(-100% + 5px))" }}
-                title={`${t.s.namaSesi} (${formatTanggal(t.s.tanggal)}): ${formatRupiah(t.s.omset)}`}
-              >
-                <span className="mb-1 whitespace-nowrap text-label-sm tabular-nums text-on-surface-variant">
-                  {formatRupiahRingkas(t.s.omset)}
-                </span>
-                <span className="h-2.5 w-2.5 rounded-full border-2 border-surface-container-lowest bg-tertiary" />
-              </div>
-            ))}
+                <ReferenceLine y={rata} stroke="#c2410c" strokeDasharray="5 5" strokeOpacity={0.5} />
+                <Tooltip
+                  cursor={{ stroke: "var(--color-outline-variant)" }}
+                  content={({ active, payload }) => {
+                    if (!active || !payload?.length) return null;
+                    const s = payload[0].payload as SesiTren;
+                    return (
+                      <TooltipKotak
+                        judul={`${s.namaSesi} · ${formatTanggal(s.tanggal)}`}
+                        baris={[{ label: "Omset", nilai: formatRupiah(s.omset), warna: "#f59e0b" }]}
+                      />
+                    );
+                  }}
+                />
+                <Area
+                  type="monotone"
+                  dataKey="omset"
+                  stroke="#f59e0b"
+                  strokeWidth={2.5}
+                  fill="url(#adm-omset)"
+                  dot={{ r: 3.5, fill: "#fff", stroke: "#f59e0b", strokeWidth: 2 }}
+                  activeDot={{ r: 6 }}
+                  animationDuration={900}
+                />
+              </AreaChart>
+            </ResponsiveContainer>
           </div>
-          <LabelSumbuX items={sesi.map((s) => formatTanggal(s.tanggal))} />
         </>
       )}
     </Kartu>
@@ -1002,45 +862,62 @@ function GrafikOmset({ sesi }: { sesi: DashboardData["tren"]["sesi"] }) {
 }
 
 function GrafikPertumbuhan({ minggu }: { minggu: DashboardData["tren"]["minggu"] }) {
-  const maks = Math.max(1, ...minggu.map((m) => m.baru + m.lama));
   const totalSekarang = minggu.length ? minggu[minggu.length - 1].total : 0;
   const tambahan = minggu.reduce((n, m) => n + m.baru + m.lama, 0);
+  const data = minggu.map((m) => ({ ...m, label: formatTanggal(m.mingguMulai) }));
 
   return (
     <Kartu>
       <JudulKartu
         icon={ClipboardList}
-        judul="Pedagang Terdaftar per Minggu"
-        keterangan={`${totalSekarang} pedagang terdaftar · +${tambahan} dalam ${minggu.length} minggu`}
+        judul="Pedagang terdaftar per minggu"
+        keterangan={`${totalSekarang} pedagang · +${tambahan} dalam ${minggu.length} minggu`}
       />
       <div className="mb-sm flex flex-wrap gap-md text-label-sm text-on-surface-variant">
-        <Legenda warna="bg-secondary" label="Pedagang Baru (daftar sendiri)" />
-        <Legenda warna="bg-primary-fixed-dim" label="Pedagang Lama (ditambahkan admin)" />
+        <Legenda warna="bg-[#16a06c]" label="Baru (daftar sendiri)" />
+        <Legenda warna="bg-[#9db4ff]" label="Lama (ditambahkan admin)" />
+        <span className="inline-flex items-center gap-xs">
+          <span className="w-4 border-t-2 border-[#2f6fed]" />
+          Total terdaftar
+        </span>
       </div>
-      <div className="flex h-[160px] items-end gap-sm border-b border-outline-variant">
-        {minggu.map((m) => {
-          const jumlah = m.baru + m.lama;
-          const tinggi = jumlah === 0 ? 0 : Math.max(4, (jumlah / maks) * 80);
-          return (
-            <div
-              key={m.mingguMulai}
-              className="flex h-full min-w-0 flex-1 flex-col items-center justify-end"
-              title={`Minggu mulai ${formatTanggal(m.mingguMulai)}: ${m.baru} baru, ${m.lama} lama · total ${m.total}`}
-            >
-              <span className="mb-1 text-label-sm tabular-nums text-on-surface-variant">{jumlah > 0 ? `+${jumlah}` : ""}</span>
-              <div className="flex w-full max-w-[40px] flex-col overflow-hidden rounded-t-md" style={{ height: `${tinggi}%` }}>
-                <div className="bg-secondary" style={{ flexGrow: m.baru }} />
-                <div className="bg-primary-fixed-dim" style={{ flexGrow: m.lama }} />
-              </div>
-            </div>
-          );
-        })}
-      </div>
-      <LabelSumbuX items={minggu.map((m) => formatTanggal(m.mingguMulai))} />
+      {minggu.length === 0 ? (
+        <Kosong teks="Belum ada data pendaftaran." />
+      ) : (
+        <div className="h-[230px]">
+          <ResponsiveContainer width="100%" height="100%">
+            <ComposedChart data={data} margin={{ top: 10, right: 0, left: -18, bottom: 0 }}>
+              <CartesianGrid strokeDasharray="4 4" vertical={false} stroke="var(--color-outline-variant)" />
+              <XAxis dataKey="label" tickLine={false} axisLine={false} tick={{ fontSize: 11, fill: "var(--color-on-surface-variant)" }} />
+              <YAxis yAxisId="baru" allowDecimals={false} tickLine={false} axisLine={false} tick={{ fontSize: 11, fill: "var(--color-on-surface-variant)" }} />
+              <YAxis yAxisId="total" orientation="right" hide />
+              <Tooltip
+                cursor={{ fill: "var(--color-surface-container-low)" }}
+                content={({ active, payload }) => {
+                  if (!active || !payload?.length) return null;
+                  const m = payload[0].payload as DashboardData["tren"]["minggu"][number];
+                  return (
+                    <TooltipKotak
+                      judul={`Minggu mulai ${formatTanggal(m.mingguMulai)}`}
+                      baris={[
+                        { label: "Baru", nilai: String(m.baru), warna: "#16a06c" },
+                        { label: "Lama", nilai: String(m.lama), warna: "#9db4ff" },
+                        { label: "Total terdaftar", nilai: String(m.total), warna: "#2f6fed" },
+                      ]}
+                    />
+                  );
+                }}
+              />
+              <Bar yAxisId="baru" dataKey="baru" stackId="a" fill="#16a06c" maxBarSize={36} animationDuration={800} />
+              <Bar yAxisId="baru" dataKey="lama" stackId="a" fill="#9db4ff" radius={[6, 6, 0, 0]} maxBarSize={36} animationDuration={800} />
+              <Line yAxisId="total" type="monotone" dataKey="total" stroke="#2f6fed" strokeWidth={2.5} dot={false} animationDuration={1000} />
+            </ComposedChart>
+          </ResponsiveContainer>
+        </div>
+      )}
     </Kartu>
   );
 }
-
 function Legenda({ warna, label }: { warna: string; label: string }) {
   return (
     <span className="inline-flex items-center gap-xs">
@@ -1050,14 +927,3 @@ function Legenda({ warna, label }: { warna: string; label: string }) {
   );
 }
 
-function LabelSumbuX({ items }: { items: string[] }) {
-  return (
-    <div className="flex gap-sm pt-sm">
-      {items.map((label, i) => (
-        <span key={`${label}-${i}`} className="min-w-0 flex-1 truncate text-center text-label-sm text-on-surface-variant">
-          {label}
-        </span>
-      ))}
-    </div>
-  );
-}

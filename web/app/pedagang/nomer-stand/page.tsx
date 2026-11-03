@@ -388,7 +388,7 @@ export default function EventDanNomorStanPage() {
   const lainnya = eventSaya.filter((k) => k.status !== "terdaftar" && k.status !== "check_in");
 
   return (
-    <main className="w-full min-h-screen flex items-start justify-center px-4 py-10 bg-[#f6f7fb]">
+    <main className="w-full min-h-[70vh] flex items-start justify-center px-0 py-2 sm:px-4">
       <div className="w-full max-w-[760px]">
         <div className="mb-5">
           <div className="flex items-center gap-3 mb-1">
@@ -400,7 +400,7 @@ export default function EventDanNomorStanPage() {
             >
               <ArrowLeft size={20} />
             </button>
-            <h1 className="text-[22px] leading-tight font-bold text-[#1a1d29]">
+            <h1 className="adm-display text-[26px] leading-tight font-semibold text-[#1a1d29]">
               {sudahDaftar ? "Event & Nomor Stan" : "Daftar Usaha"}
             </h1>
             {sudahDaftar && kategori && (

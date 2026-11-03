@@ -156,7 +156,7 @@ export default function PendaftaranPedagangPage() {
 
   if (checkingExisting) {
     return (
-      <main className="w-full min-h-screen flex items-center justify-center px-4 py-10 bg-[#f6f7fb]">
+      <main className="w-full min-h-[70vh] flex items-center justify-center px-0 py-2 sm:px-4">
         <p className="text-[13px] text-[#767884]">Memeriksa status pendaftaran...</p>
       </main>
     );
@@ -164,7 +164,7 @@ export default function PendaftaranPedagangPage() {
 
   if (alreadyRegistered) {
     return (
-      <main className="w-full min-h-screen flex items-center justify-center px-4 py-10 bg-[#f6f7fb]">
+      <main className="w-full min-h-[70vh] flex items-center justify-center px-0 py-2 sm:px-4">
         <div className="w-full max-w-[420px]">
           <section className="w-full bg-white rounded-2xl shadow-[0_2px_8px_-2px_rgba(23,29,64,0.06),0_12px_28px_-8px_rgba(23,29,64,0.12)] px-5 py-10 flex flex-col items-center text-center gap-3">
             <div className="w-16 h-16 rounded-2xl bg-[#eef2fd] flex items-center justify-center">
@@ -191,12 +191,12 @@ export default function PendaftaranPedagangPage() {
   }
 
   return (
-    <main className="w-full min-h-screen flex items-center justify-center px-4 py-10 bg-[#f6f7fb]">
+    <main className="w-full min-h-[70vh] flex items-center justify-center px-0 py-2 sm:px-4">
       <div className="w-full max-w-[420px]">
         {/* Header */}
         {!success && (
           <div className="w-full text-center mb-5">
-            <h1 className="text-[20px] leading-tight font-bold text-[#1a1d29] mb-1.5">
+            <h1 className="adm-display text-[24px] leading-tight font-semibold text-[#1a1d29] mb-1.5">
               Pendaftaran Pedagang Baru
             </h1>
             <p className="text-[12.5px] leading-5 text-[#767884] px-2 max-w-[380px] mx-auto">
